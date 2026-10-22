@@ -56,7 +56,7 @@ struct Library *LibInit(__reg("d0") struct McBase *base, __reg("a0") BPTR seglis
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 1;
-	base->lib.lib_Revision = 1;
+	base->lib.lib_Revision = 2;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -238,8 +238,9 @@ static ULONG ResolvePixelClock(__reg("a0") struct BoardInfo *bi, __reg("a1") str
 	if (index >= MC_NCLOCKS)
 		index = MC_NCLOCKS - 1;
 	mi->PixelClock = MC_CLOCK_MIN + index * MC_CLOCK_STEP;
+	/* P96 may divide by these, as for a real clock synthesizer: never 0 */
 	mi->Numerator = index;
-	mi->Denominator = 0;
+	mi->Denominator = 1;
 	/* there is no CRTC: double clocking and interlace mean nothing here */
 	mi->Flags &= ~(GMF_DOUBLECLOCK | GMF_INTERLACE);
 	return index;
@@ -373,7 +374,15 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	bi->PaletteChipType = PCT_Unknown;
 	bi->GraphicsControllerType = GCT_Unknown;
 	bi->BitsPerCannon = 8;
-	bi->Flags = (bi->Flags & ~BIF_INDISPLAYCHAIN) | BIF_GRANTDIRECTACCESS;
+	/* P96 may weigh pixel clocks against memory bandwidth: plenty of it */
+	bi->MemoryClock = 200000000UL;
+	/*
+	 * Bits 0-15 describe the hardware: start from none, like UAE's uaegfx
+	 * does, so nothing preset by rtg.library claims a sprite or blitter.
+	 * Bits 16-31 are user settings and stay. No video switch either: the
+	 * native display keeps its own monitor.
+	 */
+	bi->Flags = (bi->Flags & 0xffff0000UL & ~BIF_INDISPLAYCHAIN) | BIF_GRANTDIRECTACCESS;
 	if (mc->cfg.quiet)
 		bi->Flags |= BIF_QUIET;
 	bi->RGBFormats = MC_FORMATS;

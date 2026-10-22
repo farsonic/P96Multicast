@@ -120,7 +120,7 @@ EOF
 	echo 'Work:mctest LIST >Work:modes.txt'
 	# shown-N while the pattern is still up, so the receiver stops in time
 	for d in $DEPTHS; do
-		echo "Run >Work:mctest-$d.log Work:mctest DEPTH=$d SECS=14"
+		echo "Run >Work:mctest-$d.log Work:mctest WIDTH=640 HEIGHT=480 DEPTH=$d SECS=14"
 		echo 'Wait 10'
 		echo "Echo >Work:shown-$d done"
 		echo 'Wait 6'

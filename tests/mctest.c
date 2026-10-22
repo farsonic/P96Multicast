@@ -4,7 +4,8 @@
  *
  *   mctest LIST                         list display modes
  *   mctest STATUS                       is the card loaded, is its sender running
- *   mctest NAME=Multicast WIDTH=640 HEIGHT=480 DEPTH=8 SECS=10
+ *   mctest DEPTH=8 SECS=10              the first Multicast mode with this depth
+ *   mctest WIDTH=640 HEIGHT=480 DEPTH=16  a particular size
  *
  * The pattern: eight vertical colour bars across the top half, a white
  * frame round the screen, and in the bottom half a 16x16 grid of the first
@@ -78,12 +79,16 @@ static void list_modes(void)
 		mode_name(id, name, sizeof(name));
 		if (!mode_dims(id, &w, &h, &d))
 			w = h = d = 0;
-		printf("%08lx %4u x %4u x %2u  %s\n", id, w, h, d, name);
+		printf("%08lx %4u x %4u x %2u  %s%s\n", id, w, h, d, name,
+		       ModeNotAvailable(id) ? "  (not available)" : "");
 	}
 }
 
-/* first mode whose name contains name, with this size and enough depth */
-static ULONG find_mode(const char *name, UWORD want_w, UWORD want_h, UWORD want_d)
+/*
+ * First mode whose name contains name, with enough depth and this size
+ * (*want_w == 0: any size; the size and depth found are returned).
+ */
+static ULONG find_mode(const char *name, UWORD *want_w, UWORD *want_h, UWORD *want_d)
 {
 	ULONG id = INVALID_ID;
 	char buf[64];
@@ -92,10 +97,32 @@ static ULONG find_mode(const char *name, UWORD want_w, UWORD want_h, UWORD want_
 	while ((id = NextDisplayInfo(id)) != INVALID_ID) {
 		if (!mode_name(id, buf, sizeof(buf)) || !strstr(buf, name))
 			continue;
-		if (mode_dims(id, &w, &h, &d) && w == want_w && h == want_h && d >= want_d)
-			return id;
+		if (!mode_dims(id, &w, &h, &d) || d < *want_d)
+			continue;
+		if (*want_w && (w != *want_w || h != *want_h))
+			continue;
+		*want_w = w;
+		*want_h = h;
+		*want_d = d;
+		return id;
 	}
 	return INVALID_ID;
+}
+
+static const char *screen_error(ULONG err)
+{
+	switch (err) {
+	case OSERR_NOMONITOR:   return "no monitor for this mode (NOMONITOR)";
+	case OSERR_NOCHIPS:     return "the graphics hardware cannot do it (NOCHIPS)";
+	case OSERR_NOMEM:       return "out of memory (NOMEM)";
+	case OSERR_NOCHIPMEM:   return "out of Chip RAM (NOCHIPMEM)";
+	case OSERR_PUBNOTUNIQUE: return "public screen name in use";
+	case OSERR_UNKNOWNMODE: return "unknown display mode (UNKNOWNMODE)";
+	case OSERR_TOODEEP:     return "too deep for this mode (TOODEEP)";
+	case OSERR_ATTACHFAIL:  return "attach failed";
+	case OSERR_NOTAVAILABLE: return "mode not available (NOTAVAILABLE)";
+	}
+	return "unknown reason";
 }
 
 static void draw_clut(struct Screen *scr, UWORD w, UWORD h)
@@ -202,8 +229,8 @@ int main(void)
 	LONG args[A_COUNT] = { 0 };
 	struct RDArgs *rda;
 	const char *name = "Multicast";
-	UWORD w = 640, h = 480, depth = 8, secs = 10;
-	ULONG id;
+	UWORD w = 0, h = 0, depth = 8, secs = 10, want_d;
+	ULONG id, err = 0, na;
 	struct Screen *scr;
 
 	rda = ReadArgs((STRPTR)template, args, NULL);
@@ -233,13 +260,27 @@ int main(void)
 		return RETURN_OK;
 	}
 
-	id = find_mode(name, w, h, depth);
+	/* 32 bit modes report a depth of 24 */
+	want_d = depth > 24 ? 24 : depth;
+	if (!args[A_WIDTH] || !args[A_HEIGHT])
+		w = h = 0;
+	id = find_mode(name, &w, &h, &want_d);
 	if (id == INVALID_ID) {
-		printf("mctest: no \"%s\" mode %ux%ux%u\n", name, w, h, depth);
+		if (w)
+			printf("mctest: no \"%s\" mode %ux%u with depth %u\n", name, w, h, depth);
+		else
+			printf("mctest: no \"%s\" mode with depth %u\n", name, depth);
 		FreeArgs(rda);
 		return RETURN_ERROR;
 	}
-	printf("mctest: mode %08lx\n", id);
+	/* open with the mode's own depth: 24 for P96's 32 bit modes, 32 on AROS */
+	if (depth > 8)
+		depth = want_d;
+	na = ModeNotAvailable(id);
+	printf("mctest: mode %08lx, %ux%u, depth %u%s\n", id, w, h, depth,
+	       na ? " - graphics.library says not available" : "");
+	if (na)
+		printf("mctest: ModeNotAvailable() = $%lx (1 = no chips, 2 = no monitor, 4 = not with genlock)\n", na);
 
 	CyberGfxBase = OpenLibrary("cybergraphics.library", 40);
 	if (depth > 8 && !CyberGfxBase) {
@@ -250,9 +291,9 @@ int main(void)
 
 	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h,
 	                     SA_Depth, depth, SA_Quiet, TRUE, SA_ShowTitle, FALSE,
-	                     SA_Type, CUSTOMSCREEN, TAG_END);
+	                     SA_Type, CUSTOMSCREEN, SA_ErrorCode, (ULONG)&err, TAG_END);
 	if (!scr) {
-		printf("mctest: cannot open screen\n");
+		printf("mctest: cannot open screen: %s (error %lu)\n", screen_error(err), err);
 		if (CyberGfxBase)
 			CloseLibrary(CyberGfxBase);
 		FreeArgs(rda);

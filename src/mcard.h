@@ -20,7 +20,7 @@
 #include "boardinfo.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "1.1"
+#define MC_VERSION_STR "1.2"
 #define MC_DATE "22.10.2026"
 
 extern struct ExecBase *SysBase;
