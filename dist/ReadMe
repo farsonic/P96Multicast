@@ -16,6 +16,8 @@ Contents
   Prefs/Multicast.prefs            example settings
   C/mctest                         test tool (see below)
   Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
+  Client/fake_sender.py            sends a test picture, to try a viewer
+                                   without the Amiga
   Docs/                            README, PROTOCOL (the packet format), BUILD
   Source/                          the full source
 
@@ -27,7 +29,11 @@ Installing on P96 (AmigaOS 3.x)
      Copy DEVS:Monitors/uaegfx DEVS:Monitors/Multicast
    and copy Devs/Monitors/Multicast.info to DEVS:Monitors/
    (or give the copied monitor's icon the ToolType BOARDTYPE=Multicast).
-3. Optional: copy Prefs/Multicast.prefs to ENVARC: and edit it.
+3. Optional: settings (see below). Without a prefs file the defaults
+   are used. To make one:
+     Copy Prefs/Multicast.prefs ENVARC:
+     Copy Prefs/Multicast.prefs ENV:
+   and remove the '#' in front of the lines you change.
 4. Reboot. Multicast modes appear in ScreenMode prefs; open a screen in
    one (or use mctest), start your TCP/IP stack as usual.
 
@@ -66,8 +72,14 @@ Testing
 
 On the receiving machine:
   python3 p96view.py                       window; joins 239.255.96.1:9696
+                                           (no tkinter, as with Homebrew's
+                                           Python: opens a web browser view)
+  python3 p96view.py --web                 web browser view, http://127.0.0.1:8096/
   python3 p96view.py --iface 192.168.1.10  join on a particular interface
   python3 p96view.py --snapshot amiga.png --duration 30
+  python3 fake_sender.py --dest 127.0.0.1 --seconds 0
+                    with "p96view.py --group 127.0.0.1" in another window:
+                    checks the viewer without the Amiga
 numpy makes the viewer much faster but is optional.
 
 Under FS-UAE

@@ -22,7 +22,7 @@ mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Multicast.card "$PKG/Libs/Picasso96/"
 cp build/mctest "$PKG/C/"
-cp client/p96view.py "$PKG/Client/"
+cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"
 cp docs/PROTOCOL.md docs/BUILD.md "$PKG/Docs/"
 git ls-files | while read -r f; do

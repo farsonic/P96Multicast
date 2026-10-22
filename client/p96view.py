@@ -4,9 +4,11 @@
     p96view.py                              join 239.255.96.1:9696, show a window
     p96view.py --group 239.255.96.2 --port 9700
     p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
+    p96view.py --web                        show it in a web browser instead
 
 The protocol is described in docs/PROTOCOL.md. Uses only the standard
-library (tkinter for the window); numpy is used when it is installed.
+library (tkinter for the window, or a web browser when there is no tkinter);
+numpy is used when it is installed.
 """
 import argparse
 import socket
@@ -204,22 +206,25 @@ class Screen:
         return lut[vals].reshape(h * w * 3).tobytes()
 
 
-def write_png(path, width, height, rgb):
-    """Write 8 bit RGB as a PNG with the standard library only."""
+def png_bytes(width, height, rgb, level=6):
+    """Encode 8 bit RGB as a PNG with the standard library only."""
     def chunk(tag, data):
         c = struct.pack(">I", len(data)) + tag + data
         return c + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
 
     row = width * 3
     raw = b"".join(b"\x00" + rgb[y * row:(y + 1) * row] for y in range(height))
-    png = (b"\x89PNG\r\n\x1a\n"
-           + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-           + chunk(b"IDAT", zlib.compress(raw, 6))
-           + chunk(b"IEND", b""))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, level))
+            + chunk(b"IEND", b""))
+
+
+def write_png(path, width, height, rgb):
+    import os
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
-        f.write(png)
-    import os
+        f.write(png_bytes(width, height, rgb))
     os.replace(tmp, path)
 
 
@@ -302,6 +307,108 @@ def run_window(sock, screen, args):  # pragma: no cover - interactive
     print_stats(screen)
 
 
+WEB_PAGE = b"""<!doctype html>
+<html><head><meta charset="utf-8"><title>P96Multicast</title>
+<style>
+ body { margin: 0; background: #111; color: #aaa; font: 13px sans-serif; }
+ #bar { padding: 4px 8px; }
+ img { display: block; margin: 0 auto; image-rendering: pixelated; max-width: 100vw; }
+</style></head>
+<body><div id="bar">waiting for the Amiga...</div><img id="s" alt="">
+<script>
+const img = document.getElementById("s"), bar = document.getElementById("bar");
+let last = -1;
+async function tick() {
+  try {
+    const st = await (await fetch("status", {cache: "no-store"})).json();
+    bar.textContent = st.text;
+    if (st.frame !== last && st.width) {
+      const b = await (await fetch("frame.png?" + st.frame, {cache: "no-store"})).blob();
+      const old = img.src;
+      img.src = URL.createObjectURL(b);
+      if (old) URL.revokeObjectURL(old);
+      last = st.frame;
+    }
+  } catch (e) { bar.textContent = "viewer stopped"; }
+  setTimeout(tick, 80);
+}
+tick();
+</script></body></html>
+"""
+
+
+def run_web(sock, screen, args):  # pragma: no cover - interactive
+    """Receive in a thread; serve the screen to a browser on localhost."""
+    import http.server
+    import json
+    import threading
+    import webbrowser
+
+    lock = threading.Lock()
+    state = {"version": 0, "png": None, "png_version": -1}
+
+    def receive():
+        sock.settimeout(0.5)
+        while True:
+            try:
+                data = sock.recv(65536)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with lock:
+                if screen.handle(data) in (SYNC, MODE, PALETTE):
+                    state["version"] += 1
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def send(self, ctype, body):
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path == "/":
+                self.send("text/html; charset=utf-8", WEB_PAGE)
+            elif path == "/status":
+                with lock:
+                    st = screen.stats
+                    text = ("%dx%d %s, %d frames, %d KB received" % (
+                        screen.width, screen.height, FORMAT_NAMES.get(screen.fmt, "?"),
+                        screen.frames, st["bytes"] >> 10)
+                        if screen.width else "waiting for the Amiga (%d packets so far)"
+                        % st["packets"])
+                    body = {"frame": state["version"], "width": screen.width, "text": text}
+                self.send("application/json", json.dumps(body).encode())
+            elif path == "/frame.png":
+                with lock:
+                    if state["png_version"] != state["version"] and screen.width:
+                        state["png"] = png_bytes(screen.width, screen.height,
+                                                 screen.rgb(), level=1)
+                        state["png_version"] = state["version"]
+                    png = state["png"]
+                if png:
+                    self.send("image/png", png)
+                else:
+                    self.send_error(404)
+            else:
+                self.send_error(404)
+
+    threading.Thread(target=receive, daemon=True).start()
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.web), Handler)
+    url = "http://127.0.0.1:%d/" % server.server_address[1]
+    print("p96view: showing the Amiga screen at %s (Ctrl-C to stop)" % url, file=sys.stderr)
+    if not args.no_browser:
+        webbrowser.open(url)
+    server.serve_forever()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--group", default="239.255.96.1",
@@ -311,6 +418,11 @@ def main(argv=None):
     ap.add_argument("--snapshot", help="no window: write the screen to this PNG")
     ap.add_argument("--duration", type=float, default=0,
                     help="with --snapshot: stop after this many seconds")
+    ap.add_argument("--web", type=int, nargs="?", const=8096, default=None, metavar="PORT",
+                    help="show the screen in a web browser (default port 8096); "
+                         "used automatically when tkinter is missing")
+    ap.add_argument("--no-browser", action="store_true",
+                    help="with --web: do not open the browser, just print the address")
     args = ap.parse_args(argv)
 
     # SIGTERM stops a headless run cleanly (background jobs ignore SIGINT)
@@ -321,8 +433,18 @@ def main(argv=None):
     try:
         if args.snapshot:
             run_headless(sock, screen, args)
+        elif args.web is not None:
+            run_web(sock, screen, args)
         else:
-            run_window(sock, screen, args)
+            try:
+                import tkinter  # noqa: F401
+            except ImportError:
+                print("p96view: no tkinter in this Python (on macOS with Homebrew: "
+                      "brew install python-tk), using the web view", file=sys.stderr)
+                args.web = 8096
+                run_web(sock, screen, args)
+            else:
+                run_window(sock, screen, args)
     except KeyboardInterrupt:
         print_stats(screen)
     return 0
