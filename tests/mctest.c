@@ -12,6 +12,9 @@
  *                                       programs (CON:.../SCREENMULTICAST)
  *   mctest PUBSCREEN=MULTICAST DEFAULT  ... and the default public screen
  *                                       while open: new shells go there
+ *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
+ *                                       card streams it while e.g. the Workbench
+ *                                       stays in front on another board
  *
  * The pattern: eight vertical colour bars across the top half, a white
  * frame round the screen, and in the bottom half a 16x16 grid of the first
@@ -41,8 +44,8 @@ ULONG __FillPixelArray(__reg("a6") void *, __reg("a1") struct RastPort *rp,
                        __reg("d3") UWORD h, __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #define FillPixelArray(rp, x, y, w, h, argb) __FillPixelArray(CyberGfxBase, rp, x, y, w, h, argb)
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S";
-enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_COUNT };
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S";
+enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK, A_COUNT };
 
 /* the bar colours, also known to tests/check_frame.py */
 static const ULONG bars[8] = {
@@ -269,7 +272,7 @@ static void animate(struct Screen *scr, UWORD w, UWORD h, UWORD depth, UWORD sec
  * A public screen on the card, like the Workbench screen, until Ctrl-C and
  * no visitor windows are left.
  */
-static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL def)
+static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL def, BOOL back)
 {
 	struct Screen *scr;
 	ULONG err = 0;
@@ -286,6 +289,8 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL d
 		return RETURN_ERROR;
 	}
 	PubScreenStatus(scr, 0);
+	if (back)
+		ScreenToBack(scr);
 	if (def) {
 		GetDefaultPubScreen(olddefault);
 		SetDefaultPubScreen(name);
@@ -376,7 +381,8 @@ int main(void)
 	}
 
 	if (args[A_PUBSCREEN]) {
-		int rc = pubscreen((char *)args[A_PUBSCREEN], id, w, h, depth, args[A_DEFAULT] != 0);
+		int rc = pubscreen((char *)args[A_PUBSCREEN], id, w, h, depth,
+		                   args[A_DEFAULT] != 0, args[A_BACK] != 0);
 
 		if (CyberGfxBase)
 			CloseLibrary(CyberGfxBase);

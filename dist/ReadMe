@@ -75,6 +75,10 @@ A second screen on the card, next to your Workbench on another board:
                     opens a Workbench-like public screen named MULTICAST on
                     the card; with DEFAULT it is the default public screen
                     while open, so new shells and windows go there:
+  Add BACK to open it behind your other screens: Intuition shows only
+  the front screen on the Amiga's own display, but the card keeps
+  streaming its screen while it is behind. Left-Amiga M / N cycles
+  screens; the mouse works on whichever screen is in front.
   NewShell "CON:20/20/600/200/Multicast Shell/CLOSE"
                     Programs with a PUBSCREEN option can be pointed at it
                     directly. To close it: close its windows, then
