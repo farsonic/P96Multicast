@@ -2,6 +2,7 @@
 #
 #   make                 build/Multicast.card and build/mctest
 #   make check           offset test under vamos, hunk sanity checks
+#   make package         build/P96Multicast.lha
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
 #
 # Toolchain locations (see docs/BUILD.md):
@@ -44,10 +45,13 @@ check: $(BUILD)/offsets $(BUILD)/Multicast.card
 	$(VAMOS) $(BUILD)/offsets
 	python3 tests/check_card.py $(BUILD)/Multicast.card
 
+package: all
+	dist/mkpackage.sh
+
 emu-test: all
 	emu/run_test.sh
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check emu-test clean
+.PHONY: all check package emu-test clean

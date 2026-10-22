@@ -1,0 +1,90 @@
+P96Multicast 1.0 - a P96 graphics card that is the network
+============================================================
+
+Multicast.card is a Picasso96 (P96) card driver without hardware. Its
+video memory is a block of Fast RAM, and a background task sends what is
+on screen as UDP packets, by default to the multicast group 239.255.96.1,
+port 9696. Watch it on another machine with Client/p96view.py.
+
+Needs: a 68020 or better, P96 (or AROS m68k), and a running TCP/IP stack
+with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
+
+Contents
+--------
+  Libs/Picasso96/Multicast.card    the driver
+  Devs/Monitors/Multicast.info     monitor icon, ToolType BOARDTYPE=Multicast
+  Prefs/Multicast.prefs            example settings
+  C/mctest                         test tool (see below)
+  Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
+  Docs/                            README, PROTOCOL (the packet format), BUILD
+  Source/                          the full source
+
+Installing on P96 (AmigaOS 3.x)
+-------------------------------
+1. Copy Libs/Picasso96/Multicast.card to LIBS:Picasso96/
+2. Every P96 monitor in DEVS:Monitors is a copy of the same small program
+   with an icon that names the board. Copy one you already have, e.g.
+     Copy DEVS:Monitors/uaegfx DEVS:Monitors/Multicast
+   and copy Devs/Monitors/Multicast.info to DEVS:Monitors/
+   (or give the copied monitor's icon the ToolType BOARDTYPE=Multicast).
+3. Optional: copy Prefs/Multicast.prefs to ENVARC: and edit it.
+4. Reboot. Multicast modes appear in ScreenMode prefs; open a screen in
+   one (or use mctest), start your TCP/IP stack as usual.
+
+Installing on AROS m68k
+-----------------------
+1. Copy Multicast.card to LIBS:Picasso96/
+2. Copy DEVS:Monitors/P96 DEVS:Monitors/Multicast  (AROS's P96 monitor
+   driver loads the card named after itself; no icon needed)
+3. As above for the prefs. AROS may put the Workbench itself on the card.
+
+Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
+-----------------------------------------------------------------
+  DEST=239.255.96.1   destination, multicast or unicast address
+  PORT=9696           UDP port
+  TTL=1               multicast TTL (1 = this LAN only)
+  FPS=25              update passes per second (1-50); lower it on a 68030
+  RATE=1500           most KB per second to send
+  REFRESH=5           seconds to resend the whole screen in the background
+  VRAM=8              video memory in MB (read at boot)
+  MAXWIDTH=1920       largest mode offered
+  MAXHEIGHT=1200
+  BOARDTYPE=6         P96 board type reported (6 = PicassoII)
+  PRI=-1              sender task priority
+  LOG=T:Multicast.log log file: stack found, modes, send errors, throughput
+
+ENV: wins over ToolTypes. The network settings are read again when the
+TCP/IP stack appears, so the card can start before the network.
+
+Testing
+-------
+  mctest STATUS     is the card loaded, is its sender running, is there a stack
+  mctest LIST       list the display modes (look for "Multicast:")
+  mctest WIDTH=640 HEIGHT=480 DEPTH=8 SECS=20
+                    open a screen on the card with colour bars; depth 8, 16
+                    or 32 (16 and 32 need cybergraphics.library)
+
+On the receiving machine:
+  python3 p96view.py                       window; joins 239.255.96.1:9696
+  python3 p96view.py --iface 192.168.1.10  join on a particular interface
+  python3 p96view.py --snapshot amiga.png --duration 30
+numpy makes the viewer much faster but is optional.
+
+Under FS-UAE
+------------
+* With FS-UAE's built-in network (slirp, uaenet.device unit 0 or the
+  A2065), multicast does not reach the host. Send unicast to the host
+  instead: DEST=10.0.2.2 in ENV:Multicast.prefs, and on the host
+    python3 p96view.py --group 127.0.0.1
+  (any non-multicast --group just listens on the port).
+* With FS-UAE bridged to your LAN (Riptide's uaenet pcap patch) the
+  default multicast works, but the host running FS-UAE cannot see the
+  Amiga's frames through the bridge: watch from another machine.
+
+Status
+------
+Early test version. Dumb frame buffer: no hardware sprite (the pointer is
+drawn into the picture) and no blitter (rtg.library draws with the CPU).
+Tested with AROS m68k's P96 layer in FS-UAE with Riptide 0.12; not yet
+with iComp's P96. The sender compares the whole screen every pass, so on
+slower CPUs lower FPS.
