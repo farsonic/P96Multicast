@@ -153,7 +153,7 @@ void mc_config_line(struct McConfig *cfg, const char *line)
  * the boot, possibly before ENV: is assigned, so a missing volume must fail
  * quietly instead of putting up an "insert volume" requester.
  */
-void mc_config_file(struct McConfig *cfg, const char *path)
+BOOL mc_config_file(struct McConfig *cfg, const char *path)
 {
 	struct Process *me = (struct Process *)FindTask(NULL);
 	APTR oldwin;
@@ -166,11 +166,11 @@ void mc_config_file(struct McConfig *cfg, const char *path)
 	fh = Open((STRPTR)path, MODE_OLDFILE);
 	me->pr_WindowPtr = oldwin;
 	if (!fh)
-		return;
+		return FALSE;
 	buf = AllocMem(2048, MEMF_PUBLIC);
 	if (!buf) {
 		Close(fh);
-		return;
+		return FALSE;
 	}
 	len = Read(fh, buf, 2047);
 	Close(fh);
@@ -191,4 +191,15 @@ void mc_config_file(struct McConfig *cfg, const char *path)
 		}
 	}
 	FreeMem(buf, 2048);
+	return TRUE;
+}
+
+/*
+ * ENV:Multicast.prefs, or ENVARC:Multicast.prefs when ENV: has not been
+ * filled yet (the card may start before the Startup-Sequence copies it).
+ */
+void mc_config_env(struct McConfig *cfg)
+{
+	if (!mc_config_file(cfg, "ENV:Multicast.prefs"))
+		mc_config_file(cfg, "ENVARC:Multicast.prefs");
 }

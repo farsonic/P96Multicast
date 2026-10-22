@@ -20,14 +20,15 @@
 #include "boardinfo.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "1.0"
+#define MC_VERSION_STR "1.1"
 #define MC_DATE "22.10.2026"
 
 extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
 extern struct GfxBase *GfxBase;
 
-/* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs */
+/* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs
+   (ENVARC: if ENV: has none yet) */
 struct McConfig {
 	ULONG dest;        /* IPv4 destination, host byte order (=network on 68k) */
 	UWORD port;
@@ -80,7 +81,8 @@ ULONG mc_bytesperrow(UWORD width, RGBFTYPE fmt);
 /* config.c */
 void mc_config_defaults(struct McConfig *cfg);
 void mc_config_line(struct McConfig *cfg, const char *line);
-void mc_config_file(struct McConfig *cfg, const char *path);
+BOOL mc_config_file(struct McConfig *cfg, const char *path);
+void mc_config_env(struct McConfig *cfg);
 
 /* sender.c */
 BOOL mc_sender_start(struct McCard *mc);

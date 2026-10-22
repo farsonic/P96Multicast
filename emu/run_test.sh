@@ -17,7 +17,8 @@
 # host (10.0.2.2); Ubuntu's fs-uae package is built without slirp, though.
 #
 # Environment: AROSFS (AROS system directory, default /tmp/claude-0/arosfs),
-# RIPTIDE (the Riptide binary), FSUAE_PCAP, DEST, PORT (default 9696).
+# RIPTIDE (the Riptide binary), FSUAE_PCAP, DEST, PORT (default 9696),
+# EXTRA_PREFS (more lines for ENV:Multicast.prefs, e.g. VRAM=64).
 set -u
 cd "$(dirname "$0")/.."
 DEPTHS=${1:-"8 16 32"}
@@ -83,6 +84,7 @@ PORT=$PORT
 FPS=25
 REFRESH=2
 LOG=RAM:Multicast.log
+${EXTRA_PREFS:-}
 EOF
 if ! grep -q waitwork "$AROSFS/S/User-Startup" 2>/dev/null; then
 	cat >> "$AROSFS/S/User-Startup" <<'EOF'

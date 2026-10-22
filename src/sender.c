@@ -484,7 +484,7 @@ static void SenderMain(void)
 	DateStamp(&ds);
 	s->stream = (ds.ds_Days << 20) ^ (ds.ds_Minute << 12) ^ (ds.ds_Tick << 4) ^ (ULONG)mc;
 
-	mc_config_file(&mc->cfg, "ENV:Multicast.prefs");
+	mc_config_env(&mc->cfg);
 	mc_log(s, MC_CARDNAME " " MC_VERSION_STR " sender started, vram %ld KB at $%lx\n",
 	       mc->cfg.vramsize >> 10, (LONG)mc->bi->MemoryBase, 0, 0);
 	mc_log(s, "waiting for a TCP/IP stack\n", 0, 0, 0, 0);
@@ -494,7 +494,7 @@ static void SenderMain(void)
 		s->sockbase = open_running_stack();
 		if (s->sockbase) {
 			/* the network settings may have changed since boot */
-			mc_config_file(&mc->cfg, "ENV:Multicast.prefs");
+			mc_config_env(&mc->cfg);
 			if (open_socket(s)) {
 				ULONG d = mc->cfg.dest;
 

@@ -13,6 +13,8 @@
  */
 #include <exec/types.h>
 #include <exec/execbase.h>
+#include <exec/memory.h>
+#include "mc_status.h"
 #include <graphics/displayinfo.h>
 #include <graphics/modeid.h>
 #include <intuition/screens.h>
@@ -149,25 +151,50 @@ static void draw_rgb(struct Screen *scr, UWORD w, UWORD h)
 	FillPixelArray(rp, w - 1, 0, 1, h, 0xffffff);
 }
 
+static const char *errors[] = {
+	"none",
+	"no memory for the card's context",
+	"not even 1 MB of Fast RAM free for video memory (plus 512 KB spare)",
+	"could not create the sender process",
+};
+
 static void status(void)
 {
-	struct Library *card;
+	struct McBase *card;
+	struct McStatus st;
 	struct Task *sender;
 	struct Library *sock;
 
 	Forbid();
-	card = (struct Library *)FindName(&SysBase->LibList, "Multicast.card");
+	card = (struct McBase *)FindName(&SysBase->LibList, "Multicast.card");
+	if (card)
+		st = card->status;
 	sender = FindTask("Multicast.card sender");
 	sock = (struct Library *)FindName(&SysBase->LibList, "bsdsocket.library");
 	Permit();
+
 	printf("Multicast.card: %s", card ? "loaded" : "not loaded");
 	if (card)
-		printf(", version %u.%u, open count %u", card->lib_Version, card->lib_Revision,
-		       card->lib_OpenCnt);
-	printf("\nsender task: %s", sender ? "running" : "not running");
+		printf(", version %u.%u, open count %u", card->lib.lib_Version,
+		       card->lib.lib_Revision, card->lib.lib_OpenCnt);
+	printf("\n");
+	if (card && st.magic == MC_STATUS_MAGIC) {
+		printf("  FindCard called %u times, InitCard %u times, boards set up: %u\n",
+		       st.findcard_calls, st.initcard_calls, st.cards);
+		printf("  last error: %s\n", st.error < 4 ? errors[st.error] : "?");
+		printf("  largest free Fast RAM at FindCard: %lu KB, video memory: %lu KB\n",
+		       st.fast_largest >> 10, st.vramsize >> 10);
+		printf("  SetGC called %lu times, SetPanning %lu times%s\n", st.setgc_calls,
+		       st.panning_calls, st.setgc_calls ? "" : " (no screen shown on the card yet)");
+	} else if (card) {
+		printf("  (version 1.0: no status block)\n");
+	}
+	printf("sender task: %s", sender ? "running" : "not running");
 	if (sender)
 		printf(", state %u, priority %d", sender->tc_State, sender->tc_Node.ln_Pri);
 	printf("\nbsdsocket.library: %s\n", sock ? "in memory" : "not in memory");
+	printf("Fast RAM free now: %lu KB, largest block %lu KB\n",
+	       AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_FAST | MEMF_LARGEST) >> 10);
 }
 
 int main(void)
