@@ -1,0 +1,88 @@
+/*
+ * P96Multicast - Multicast.card internals.
+ *
+ * The card has no hardware: its "video RAM" is a block of Fast RAM, and a
+ * sender process (sender.c) streams what is visible on it to a UDP multicast
+ * group. The BoardInfo functions (card.c) only record the display state the
+ * sender needs.
+ *
+ * BoardInfo functions run in the context of whatever task called rtg.library,
+ * with a6 undefined. Per-card state lives in struct McCard, reached through
+ * bi->CardData[0]; the only globals are library bases, which are the same for
+ * every card.
+ */
+#ifndef P96MC_MCARD_H
+#define P96MC_MCARD_H
+
+#include <exec/types.h>
+#include <exec/libraries.h>
+#include <dos/dosextens.h>
+#include "boardinfo.h"
+
+#define MC_CARDNAME "Multicast.card"
+#define MC_VERSION_STR "1.0"
+#define MC_DATE "22.10.2026"
+
+extern struct ExecBase *SysBase;
+extern struct DosLibrary *DOSBase;
+extern struct GfxBase *GfxBase;
+
+/* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs */
+struct McConfig {
+	ULONG dest;        /* IPv4 destination, host byte order (=network on 68k) */
+	UWORD port;
+	UBYTE ttl;
+	BYTE  pri;         /* sender task priority */
+	UWORD fps;         /* update passes per second */
+	ULONG rate;        /* byte budget per second */
+	UWORD refresh;     /* seconds to resend the whole screen for late joiners */
+	ULONG vramsize;    /* bytes */
+	UWORD maxwidth, maxheight;
+	UWORD boardtype;
+	UWORD quiet;
+	char  log[80];     /* sender log file, "" for none */
+};
+
+struct McCard {
+	struct BoardInfo *bi;
+	struct McConfig cfg;
+	APTR   vram_alloc;     /* AllocMem() block, vram is aligned inside it */
+	ULONG  vram_allocsize;
+
+	/*
+	 * Display state, written by the BoardInfo functions, read by the
+	 * sender under Forbid(). Every change bumps serial.
+	 */
+	volatile ULONG serial;
+	UBYTE *bm_mem;         /* start of the displayed bitmap (SetPanning) */
+	UWORD  bm_width;       /* its width in pixels */
+	WORD   xoff, yoff;     /* top left of the visible part */
+	UWORD  width, height;  /* visible size (SetGC) */
+	RGBFTYPE format;       /* SetDAC */
+	UWORD  display;        /* SetDisplay */
+	UWORD  moniswitch;     /* SetSwitch */
+
+	volatile ULONG pal_serial;
+	UBYTE  pal[256 * 3];
+
+	UBYTE  clockindex;
+
+	struct Process *sender;
+	volatile UWORD sender_quit;
+};
+
+#define MC_CARD(bi) ((struct McCard *)(bi)->CardData[0])
+
+/* card.c */
+ULONG mc_bytesperpixel(RGBFTYPE fmt);
+ULONG mc_bytesperrow(UWORD width, RGBFTYPE fmt);
+
+/* config.c */
+void mc_config_defaults(struct McConfig *cfg);
+void mc_config_line(struct McConfig *cfg, const char *line);
+void mc_config_file(struct McConfig *cfg, const char *path);
+
+/* sender.c */
+BOOL mc_sender_start(struct McCard *mc);
+
+#endif
