@@ -224,6 +224,41 @@ static void status(void)
 	       AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_FAST | MEMF_LARGEST) >> 10);
 }
 
+/*
+ * Show that the picture is live: a white square runs along a black strip at
+ * the bottom of the screen, and a bar below it fills up as the seconds pass.
+ */
+static void fill(struct Screen *scr, UWORD depth, int x, int y, int w, int h, int pen, ULONG rgb)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	if (depth <= 8) {
+		SetAPen(&scr->RastPort, pen);
+		RectFill(&scr->RastPort, x, y, x + w - 1, y + h - 1);
+	} else {
+		FillPixelArray(&scr->RastPort, x, y, w, h, rgb);
+	}
+}
+
+static void animate(struct Screen *scr, UWORD w, UWORD h, UWORD depth, UWORD secs)
+{
+	/* CLUT pens: 7 is black and 0 white (see draw_clut) */
+	int strip = h - 40, sq = 24, x = 0, step = 8, t, ticks = secs * 10;
+
+	fill(scr, depth, 1, strip, w - 2, 39, 7, 0x000000);
+	for (t = 0; t < ticks; t++) {
+		fill(scr, depth, x, strip + 4, sq, sq, 7, 0x000000);
+		x += step;
+		if (x < 0 || x + sq > w) {
+			step = -step;
+			x += 2 * step;
+		}
+		fill(scr, depth, x, strip + 4, sq, sq, 0, 0xffffff);
+		fill(scr, depth, 1, h - 8, (w - 2) * (t + 1) / ticks, 6, 5, 0xff0000);
+		Delay(TICKS_PER_SECOND / 10);
+	}
+}
+
 int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
@@ -303,8 +338,8 @@ int main(void)
 		draw_clut(scr, w, h);
 	else
 		draw_rgb(scr, w, h);
-	printf("mctest: drawn, waiting %u s\n", secs);
-	Delay(secs * TICKS_PER_SECOND);
+	printf("mctest: drawn, animating for %u s\n", secs);
+	animate(scr, w, h, depth, secs);
 	CloseScreen(scr);
 	if (CyberGfxBase)
 		CloseLibrary(CyberGfxBase);
