@@ -18,7 +18,8 @@
 #
 # Environment: AROSFS (AROS system directory, default /tmp/claude-0/arosfs),
 # RIPTIDE (the Riptide binary), FSUAE_PCAP, DEST, PORT (default 9696),
-# EXTRA_PREFS (more lines for ENV:Multicast.prefs, e.g. VRAM=64).
+# EXTRA_PREFS (more lines for ENV:Multicast.prefs, e.g. VRAM=64),
+# EXTRA_AUTORUN (AmigaDOS lines run after the depth tests; \n separates).
 set -u
 cd "$(dirname "$0")/.."
 DEPTHS=${1:-"8 16 32"}
@@ -125,6 +126,7 @@ EOF
 		echo "Echo >Work:shown-$d done"
 		echo 'Wait 6'
 	done
+	[ -n "${EXTRA_AUTORUN:-}" ] && printf '%b\n' "$EXTRA_AUTORUN"
 	echo 'Work:mctest STATUS >>Work:status.txt'
 	echo 'Copy RAM:Multicast.log Work:card.log'
 	echo "Work:ping -c 2 $HOST_IP >Work:ping.txt"

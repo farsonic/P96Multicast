@@ -6,6 +6,12 @@
  *   mctest STATUS                       is the card loaded, is its sender running
  *   mctest DEPTH=8 SECS=10              the first Multicast mode with this depth
  *   mctest WIDTH=640 HEIGHT=480 DEPTH=16  a particular size
+ *   mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=8
+ *                                       a Workbench-like public screen on the
+ *                                       card, open until Ctrl-C, for shells and
+ *                                       programs (CON:.../SCREENMULTICAST)
+ *   mctest PUBSCREEN=MULTICAST DEFAULT  ... and the default public screen
+ *                                       while open: new shells go there
  *
  * The pattern: eight vertical colour bars across the top half, a white
  * frame round the screen, and in the bottom half a 16x16 grid of the first
@@ -35,8 +41,8 @@ ULONG __FillPixelArray(__reg("a6") void *, __reg("a1") struct RastPort *rp,
                        __reg("d3") UWORD h, __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #define FillPixelArray(rp, x, y, w, h, argb) __FillPixelArray(CyberGfxBase, rp, x, y, w, h, argb)
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N";
-enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_COUNT };
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S";
+enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_COUNT };
 
 /* the bar colours, also known to tests/check_frame.py */
 static const ULONG bars[8] = {
@@ -259,6 +265,51 @@ static void animate(struct Screen *scr, UWORD w, UWORD h, UWORD depth, UWORD sec
 	}
 }
 
+/*
+ * A public screen on the card, like the Workbench screen, until Ctrl-C and
+ * no visitor windows are left.
+ */
+static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL def)
+{
+	struct Screen *scr;
+	ULONG err = 0;
+	char olddefault[MAXPUBSCREENNAME + 1];
+
+	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h,
+	                     SA_Depth, depth, SA_PubName, (ULONG)name,
+	                     SA_Title, (ULONG)"Multicast screen", SA_LikeWorkbench, TRUE,
+	                     SA_SharePens, TRUE, SA_Type, PUBLICSCREEN,
+	                     SA_ErrorCode, (ULONG)&err, TAG_END);
+	if (!scr) {
+		printf("mctest: cannot open public screen %s: %s (error %lu)\n", name,
+		       screen_error(err), err);
+		return RETURN_ERROR;
+	}
+	PubScreenStatus(scr, 0);
+	if (def) {
+		GetDefaultPubScreen(olddefault);
+		SetDefaultPubScreen(name);
+	}
+	printf("mctest: public screen %s open on mode %08lx, %ux%ux%u%s\n"
+	       "        open windows on it, e.g. NewShell \"CON:20/20/600/200/Shell/CLOSE/SCREEN%s\"\n"
+	       "        Ctrl-C (or Break) closes it once its windows are closed\n",
+	       name, id, w, h, depth, def ? ", the default public screen" : "", name);
+	fflush(stdout);
+	for (;;) {
+		Wait(SIGBREAKF_CTRL_C);
+		/* bit 0 of the old status is clear while visitors are on it */
+		if (PubScreenStatus(scr, PSNF_PRIVATE) & 1)
+			break;
+		printf("mctest: %s still has windows on it; close them, then Ctrl-C again\n", name);
+		fflush(stdout);
+	}
+	if (def)
+		SetDefaultPubScreen(olddefault[0] ? olddefault : NULL);
+	CloseScreen(scr);
+	printf("mctest: public screen %s closed\n", name);
+	return RETURN_OK;
+}
+
 int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
@@ -322,6 +373,15 @@ int main(void)
 		printf("mctest: needs cybergraphics.library for depth %u\n", depth);
 		FreeArgs(rda);
 		return RETURN_ERROR;
+	}
+
+	if (args[A_PUBSCREEN]) {
+		int rc = pubscreen((char *)args[A_PUBSCREEN], id, w, h, depth, args[A_DEFAULT] != 0);
+
+		if (CyberGfxBase)
+			CloseLibrary(CyberGfxBase);
+		FreeArgs(rda);
+		return rc;
 	}
 
 	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h,

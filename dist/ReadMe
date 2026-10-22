@@ -70,6 +70,16 @@ Testing
                     open a screen on the card with colour bars; depth 8, 16
                     or 32 (16 and 32 need cybergraphics.library)
 
+A second screen on the card, next to your Workbench on another board:
+  Run >NIL: mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=8 DEFAULT
+                    opens a Workbench-like public screen named MULTICAST on
+                    the card; with DEFAULT it is the default public screen
+                    while open, so new shells and windows go there:
+  NewShell "CON:20/20/600/200/Multicast Shell/CLOSE"
+                    Programs with a PUBSCREEN option can be pointed at it
+                    directly. To close it: close its windows, then
+                    Break <process number> (see Status) or Ctrl-C.
+
 On the receiving machine:
   python3 p96view.py                       window; joins 239.255.96.1:9696
                                            (no tkinter, as with Homebrew's
