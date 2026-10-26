@@ -843,9 +843,6 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     screen.all_dirty = True
                     if separate:
                         canvas.configure(width=size[0], height=size[1])
-                        win.title("P96Multicast screen %d of %d (port %d) %dx%d %s" % (
-                            i + 1, len(heads), args.port + i, size[0], size[1],
-                            FORMAT_NAMES.get(screen.fmt, "?")))
                         if not st["placed"]:
                             # side by side as the boards are, like monitors
                             win.geometry("+%d+%d" % (40 + offsets[i][0] + 8 * h.col,
@@ -858,6 +855,14 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     canvas.coords(st["item"], at[0], at[1])
                 st["size"], st["at"] = size, at
                 st["ptr_serial"] = -1
+            if separate:
+                text = "P96Multicast screen %d of %d (port %d) %dx%d %s%s" % (
+                    i + 1, len(heads), args.port + i, size[0], size[1],
+                    FORMAT_NAMES.get(screen.fmt, "?"),
+                    "" if screen.display else ": display off (its screen is not shown)")
+                if st.get("wait") != text:
+                    st["wait"] = text
+                    win.title(text)
             d = screen.take_dirty()
             if d:
                 x, y, w, hh = d
