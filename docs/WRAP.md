@@ -4,10 +4,11 @@
 between it and rtg.library. rtg.library still does the graphics, and the
 real driver still drives the hardware. Wrap.card sees every call between
 the two. It passes them through, counts them and records what is on
-display, and can mirror the screen to a second board (`MIRROR=`, below).
-It is the base for further features that need to watch or redirect a real
-board: spanning a screen across monitors, a software or viewer-drawn
-pointer, and driver call logging.
+display, and it can show the screen on other boards, called heads: all of
+it on a second board (`MIRROR=`), or one big screen across up to four
+monitors, a tile on each (`SPAN=`, below), so windows move from monitor to
+monitor by being dragged. Next on the list: a viewer-drawn pointer and
+driver call logging.
 
 ## How it works
 
@@ -67,34 +68,43 @@ WaitBlitter) unwrapped, for speed.
 |---|---|---|
 | `CARD` | (none) | the card driver to wrap: a name in `LIBS:Picasso96/`, or a path |
 | `DRAW` | 1 | 0 leaves the drawing functions unwrapped |
-| `MIRROR` | (none) | a card driver to mirror the first wrapped board onto |
-| `MIRRORFPS` | 25 | mirror copies per second (1-50) |
+| `MIRROR` | (none) | a card driver to mirror the first wrapped board onto (one head) |
+| `SPAN` | (none) | `CxR`, e.g. `2x2` or `4x1`: one big screen on C x R heads (at most 4) |
+| `HEAD` | (none) | with `SPAN`: the card driver of every head |
+| `HEAD1`...`HEAD4` | `HEAD` | with `SPAN`: the card driver of one head (left to right, top to bottom) |
+| `MIRRORFPS` | 25 | head updates per second (1-50) |
 
 The settings are read when FindCard runs, so only from `ENV:`/`ENVARC:`.
 The monitor's ToolTypes are passed on to the real card's InitCard untouched.
 
-## Mirror
+## Heads: mirror and span
 
-With `MIRROR=card`, Wrap.card (in its InitCard, for the first board it
-wraps) opens that card driver too and sets up one of its boards on a
-BoardInfo of its own. rtg.library never hears of this board: no screen
-opens on it, nothing draws on it, and it offers no modes. A process,
-"Wrap.card mirror", then follows what the thunks record about the wrapped
-board, MIRRORFPS times a second:
+Heads are boards of other card drivers that show the first wrapped board's
+screen. Wrap.card (in its InitCard, for the first board it wraps) opens
+each head's card driver and sets up one of its boards on a BoardInfo of
+its own. rtg.library never hears of these boards: no screen opens on them,
+nothing draws on them, and they offer no modes. A process, "Wrap.card
+heads", then follows what the thunks record about the wrapped board,
+MIRRORFPS times a second:
 
-* a new mode: the same on the mirror, the way rtg.library sets one
+* a new mode: the same on each head, the way rtg.library sets one
   (ResolvePixelClock, SetClock, SetGC with a copy of the wrapped board's
   ModeInfo, SetDAC, CalculateBytesPerRow, SetPanning onto the start of the
-  mirror's video memory);
-* a palette change (SetColorArray): the wrapped board's CLUT on the mirror;
-* display on or off (SetDisplay, SetSwitch): the same on the mirror;
-* and every pass, it copies the visible part of the wrapped board's screen
-  into the mirror's video memory, row by row.
+  head's video memory);
+* a palette change (SetColorArray): the wrapped board's CLUT on each head;
+* display on or off (SetDisplay, SetSwitch): the same on the heads;
+* and every pass, it copies each head's part of the screen into the head's
+  video memory, row by row.
 
-The pixels are copied as they are, so the mirror's card has to offer the
-wrapped board's pixel format (wrapstat says so if not). The mirror can be a
-second board of the same driver. With Multicast.card, `BOARDS=2` in
-`Multicast.prefs` gives a second board that streams to PORT+1:
+The pixels are copied as they are, so a head's card has to offer the
+wrapped board's pixel format (wrapstat says so if not).
+
+### MIRROR: the same screen twice
+
+`MIRROR=card` is one head showing what the wrapped board shows (its
+visible part, where it is scrolled to). It can be a second board of the
+same driver. With Multicast.card, `BOARDS=2` in `Multicast.prefs` gives a
+second board that streams to PORT+1:
 
 ```
 # ENVARC:Wrap.prefs                # ENVARC:Multicast.prefs
@@ -109,17 +119,66 @@ CARD=uaegfx.card
 MIRROR=Multicast.card
 ```
 
-The mirror copies the whole visible screen every pass: about 1.2 MB per
-pass at 640x480 in 32 bit. That's fine in an emulator or on a fast CPU, but
-a lot over Zorro on a real machine. Copying only what changed (Multicast's
-sender already compares tiles) is the next step for real hardware.
+### SPAN: one screen on up to four monitors
+
+`SPAN=CxR` makes C x R heads (at most 4), left to right and top to bottom,
+each showing its tile of one big screen. It is one Intuition screen, so
+every program works unchanged: windows are dragged from monitor to monitor,
+open anywhere on it, and the pointer goes everywhere. The big screen is
+either:
+
+* **a screen larger than its display mode** (works with any mode list, AROS
+  included): for 2x2 heads of 640x480, open a 1280x960 screen in a 640x480
+  mode. Each head shows one mode-sized tile of the screen's bitmap, wherever
+  the wrapped board itself is scrolled to. Wrap.card uses this layout when
+  the bitmap is at least C times the mode's width;
+* **one big mode**, e.g. a 2560x1024 mode made in P96's mode editor for 2x1
+  heads: the mode is split evenly between the heads, each getting its tile's
+  size with the big mode's refresh rate.
+
+The wrapped board is best a virtual one: Multicast.card's first board
+holds the big screen in Fast RAM (it needs no monitor of its own, though it
+streams too), and the heads are the real monitors:
+
+```
+# ENVARC:Wrap.prefs
+CARD=Multicast.card
+SPAN=2x1
+HEAD1=PicassoIV.card
+HEAD2=ZZ9000.card
+```
+
+Or all four on the network, as `emu/span_test.sh` runs it (BOARDS=5 in
+`Multicast.prefs`: board 1 is the big screen, boards 2 to 5 the heads,
+ports 9697 to 9700):
+
+```
+CARD=Multicast.card
+SPAN=2x2
+HEAD=Multicast.card
+```
+
+A card with a hardware sprite draws the pointer only on its own display,
+so the wrapped board should be one without (like Multicast.card): rtg.library
+then draws the pointer into the screen, and it shows on whichever head it
+is over.
+
+### Cost
+
+Every pass copies every head's whole tile: 4 x 600 KB for four 640x480
+heads in 16 bit. On top of that, Multicast.card's senders compare their
+whole screen each pass. In the emulated 68040 of the tests, five boards and
+four heads at 25 passes a second left too little CPU for the network, so
+`span_test.sh` runs both at 10. Copying only what changed is the next step.
+Heads that are Multicast boards could skip the copy altogether by showing
+the big bitmap directly (SetPanning with the big screen's width).
 
 ## Known limits
 
 * **AROS gives a card driver one board.** `p96gfx.hidd` calls a `.card`
   library's FindCard once, while rtg.library calls it until it fails. So
   `BOARDS=2` in Multicast.card should give two independent boards on P96
-  (not tested yet), but on AROS only Wrap.card's mirror reaches the second.
+  (not tested yet), but on AROS only Wrap.card's heads reach the others.
 
 * **AROS also calls the wrapped card directly.** AROS's `p96gfx.hidd`
   calls `FindCard` on every `.card` library in memory, so after Wrap.card
@@ -145,6 +204,12 @@ sender already compares tiles) is the next step for real hardware.
   Wrap.card wrapping Multicast.card, opens and draws 8, 16 and 32 bit
   screens with mctest, and checks `wrapstat`: the board is set up through
   Wrap.card and SetGC and SetPanning went through it. It needs no network.
+* `make emu-span` (`emu/span_test.sh`) is a 2x2 span over the network:
+  Multicast.card's first board holds a 1280x960 screen in a 640x480 mode,
+  and its boards 2 to 5 are the heads. mctest `SPAN=2x2` draws the test
+  pattern in each head's tile and moves an orange window from head 1 to
+  head 4. At each step, every head must show its pattern, and only the head
+  the window is on must show the window.
 * `make emu-mirror` (`emu/mirror_test.sh`) is the mirror over the network,
   like `make emu-test` (Riptide, FSUAE_PCAP, root). Wrap.card wraps
   Multicast.card's first board and mirrors it onto the second. mctest

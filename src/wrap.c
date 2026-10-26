@@ -9,8 +9,8 @@
  * function with every register as rtg.library passed it. This version
  * changes nothing on the way: it is the base for mirroring, spanning and
  * other features that need to see what the driver is asked to do.
- * MIRROR= adds the first of them: mirror.c shows the first board's screen
- * on a board of another card as well.
+ * MIRROR= and SPAN= add the first of them: mirror.c shows the first
+ * board's screen on boards of other cards too, all of it or a tile each.
  *
  * The real driver keeps its BoardInfo to itself: Wrap.card never touches
  * CardData or ChipData, and bi->CardBase points at the real driver, for
@@ -61,6 +61,12 @@ static struct WrapBoard boards[WRAP_MAXBOARDS];
 static struct WrapMirror mirror;
 static struct Library *inner;
 
+/* MIRROR=, SPAN=, HEAD= and HEAD1= ... as read; heads_config() sorts them out */
+static char mirror_card[WRAP_NAMELEN];
+static char head_card[WRAP_NAMELEN];
+static char head_cards[WRAP_MAXHEADS][WRAP_NAMELEN];
+static UWORD span_cols, span_rows;
+
 /* ---------------------------------------------------------------- library */
 
 struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR seglist,
@@ -78,7 +84,7 @@ struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR segl
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 0;
-	base->lib.lib_Revision = 1;
+	base->lib.lib_Revision = 2;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -126,6 +132,15 @@ static BOOL same_name(const char *a, const char *b)
 	return !*a && !*b;
 }
 
+static LONG parse_num(const char **s)
+{
+	LONG n = 0;
+
+	while (**s >= '0' && **s <= '9')
+		n = n * 10 + (*(*s)++ - '0');
+	return n;
+}
+
 /* key matches s up to '=' or a blank, ignoring case */
 static const char *match_key(const char *s, const char *key)
 {
@@ -166,15 +181,58 @@ static void config_line(const char *line)
 	} else if ((v = match_key(line, "draw")) != NULL) {
 		status->draw = *v != '0';
 	} else if ((v = match_key(line, "mirror")) != NULL) {
-		copy_name(mirror.card, v);
+		copy_name(mirror_card, v);
 	} else if ((v = match_key(line, "mirrorfps")) != NULL) {
-		LONG n = 0;
+		LONG n = parse_num(&v);
 
-		while (*v >= '0' && *v <= '9')
-			n = n * 10 + (*v++ - '0');
 		if (n >= 1 && n <= 50)
 			mirror.fps = n;
+	} else if ((v = match_key(line, "span")) != NULL) {
+		/* SPAN=2x2, columns x rows */
+		LONG c = parse_num(&v), r;
+
+		if (*v == 'x' || *v == 'X') {
+			v++;
+			r = parse_num(&v);
+			if (c >= 1 && r >= 1 && c * r <= WRAP_MAXHEADS) {
+				span_cols = c;
+				span_rows = r;
+			}
+		}
+	} else if ((v = match_key(line, "head")) != NULL) {
+		copy_name(head_card, v);
+	} else {
+		static const char *keys[WRAP_MAXHEADS] = { "head1", "head2", "head3", "head4" };
+		int i;
+
+		for (i = 0; i < WRAP_MAXHEADS; i++)
+			if ((v = match_key(line, keys[i])) != NULL)
+				copy_name(head_cards[i], v);
 	}
+}
+
+/*
+ * The heads from the settings: SPAN= with HEAD= (or HEAD1= ...) for each,
+ * else MIRROR= as one head.
+ */
+static void heads_config(void)
+{
+	UWORD i, n;
+
+	if (span_cols * span_rows > 1) {
+		mirror.cols = span_cols;
+		mirror.rows = span_rows;
+		n = span_cols * span_rows;
+		for (i = 0; i < n; i++)
+			copy_name(mirror.head[i].card, head_cards[i][0] ? head_cards[i] : head_card);
+	} else if (mirror_card[0]) {
+		mirror.cols = mirror.rows = 1;
+		n = 1;
+		copy_name(mirror.head[0].card, mirror_card);
+	} else {
+		n = 0;
+	}
+	mirror.nheads = n;
 }
 
 /* Needs a process. A missing ENV: must fail quietly, as in config.c. */
@@ -274,6 +332,7 @@ static BOOL open_inner(void)
 	if (FindTask(NULL)->tc_Node.ln_Type == NT_PROCESS) {
 		if (!config_file("ENV:Wrap.prefs"))
 			config_file("ENVARC:Wrap.prefs");
+		heads_config();
 	}
 	if (!status->card[0]) {
 		status->error = WRAP_ERR_NOCARD;
@@ -455,7 +514,7 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	}
 	install_thunks(b);
 	b->initialised = 1;
-	if (b == &boards[0] && mirror.card[0] && !mirror.bi)
+	if (b == &boards[0] && mirror.nheads && !mirror.task && !mirror.head[0].lib)
 		wrap_mirror_start(b, inner, &mirror);
 	return TRUE;
 }

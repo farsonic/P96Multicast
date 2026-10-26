@@ -6,6 +6,7 @@
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
 #   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
 #   make emu-mirror      ... and mirroring it to a second board, over the network
+#   make emu-span        ... and spanning one screen over four boards, over the network
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -85,7 +86,10 @@ emu-wrap: all
 emu-mirror: all
 	emu/mirror_test.sh
 
+emu-span: all
+	emu/span_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span clean

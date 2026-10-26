@@ -184,7 +184,7 @@ frame() {   # PNG WIDTH HEIGHT WHAT
 }
 for d in $STEPS; do
 	show "mctest-$d.log"
-	tr -d '\r' < "$work/wrapstat-$d.txt" 2>/dev/null | sed -n '/^mirror:/,$p'
+	tr -d '\r' < "$work/wrapstat-$d.txt" 2>/dev/null | sed -n '/^heads:/,$p'
 	frame "$OUT/frame-$d-a.png" 640 480 "depth $d: the wrapped board (port 9696)"
 	frame "$OUT/frame-$d-b.png" 640 480 "depth $d: the mirror (port 9697)"
 	# the same picture: all but the animated square and bar

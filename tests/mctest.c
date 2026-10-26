@@ -15,6 +15,13 @@
  *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
  *                                       card streams it while e.g. the Workbench
  *                                       stays in front on another board
+ *   mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16 [MARK=Work:span] [STEP=10]
+ *                                       for Wrap.card's SPAN=: a screen of 2x2
+ *                                       times the mode's size, the test pattern
+ *                                       in each head's tile, and a window that
+ *                                       moves from head to head every STEP
+ *                                       seconds, creating MARK-1, MARK-2, ...
+ *                                       as it gets to head 1, 2, ...
  *
  * The pattern: eight vertical colour bars across the top half, a white
  * frame round the screen, and in the bottom half a 16x16 grid of the first
@@ -44,8 +51,12 @@ ULONG __FillPixelArray(__reg("a6") void *, __reg("a1") struct RastPort *rp,
                        __reg("d3") UWORD h, __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #define FillPixelArray(rp, x, y, w, h, argb) __FillPixelArray(CyberGfxBase, rp, x, y, w, h, argb)
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S";
-enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK, A_COUNT };
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N";
+enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
+       A_SPAN, A_MARK, A_STEP, A_COUNT };
+
+/* SPAN's window: its colour, and where it sits in each head's tile */
+#define SPAN_WINDOW_RGB 0xff8000
 
 /* the bar colours, also known to tests/check_frame.py */
 static const ULONG bars[8] = {
@@ -173,24 +184,29 @@ static void draw_clut(struct Screen *scr, UWORD w, UWORD h)
 	Draw(rp, 0, 0);
 }
 
-static void draw_rgb(struct Screen *scr, UWORD w, UWORD h)
+/* the pattern in the w x h rectangle at ox,oy */
+static void draw_rgb_at(struct RastPort *rp, int ox, int oy, UWORD w, UWORD h)
 {
-	struct RastPort *rp = &scr->RastPort;
 	int i, y;
 
-	FillPixelArray(rp, 0, 0, w, h, 0x000000);
+	FillPixelArray(rp, ox, oy, w, h, 0x000000);
 	for (i = 0; i < 8; i++)
-		FillPixelArray(rp, i * w / 8, 0, (i + 1) * w / 8 - i * w / 8, h / 2, bars[i]);
+		FillPixelArray(rp, ox + i * w / 8, oy, (i + 1) * w / 8 - i * w / 8, h / 2, bars[i]);
 	for (y = h / 2; y < h; y += 4)
 		for (i = 0; i < 16; i++) {
 			ULONG r = (y - h / 2) * 255 / (h / 2), g = i * 17;
 
-			FillPixelArray(rp, i * w / 16, y, w / 16, 4, (r << 16) | (g << 8) | 0x40);
+			FillPixelArray(rp, ox + i * w / 16, oy + y, w / 16, 4, (r << 16) | (g << 8) | 0x40);
 		}
-	FillPixelArray(rp, 0, 0, w, 1, 0xffffff);
-	FillPixelArray(rp, 0, h - 1, w, 1, 0xffffff);
-	FillPixelArray(rp, 0, 0, 1, h, 0xffffff);
-	FillPixelArray(rp, w - 1, 0, 1, h, 0xffffff);
+	FillPixelArray(rp, ox, oy, w, 1, 0xffffff);
+	FillPixelArray(rp, ox, oy + h - 1, w, 1, 0xffffff);
+	FillPixelArray(rp, ox, oy, 1, h, 0xffffff);
+	FillPixelArray(rp, ox + w - 1, oy, 1, h, 0xffffff);
+}
+
+static void draw_rgb(struct Screen *scr, UWORD w, UWORD h)
+{
+	draw_rgb_at(&scr->RastPort, 0, 0, w, h);
 }
 
 static const char *errors[] = {
@@ -272,6 +288,76 @@ static void animate(struct Screen *scr, UWORD w, UWORD h, UWORD depth, UWORD sec
 		fill(scr, depth, 1, h - 8, (w - 2) * (t + 1) / ticks, 6, 5, 0xff0000);
 		Delay(TICKS_PER_SECOND / 10);
 	}
+}
+
+static void mark(const char *prefix, int n)
+{
+	char name[120];
+	BPTR fh;
+
+	if (!prefix)
+		return;
+	snprintf(name, sizeof(name), "%s-%d", prefix, n);
+	fh = Open((STRPTR)name, MODE_NEWFILE);
+	if (fh)
+		Close(fh);
+}
+
+/*
+ * SPAN=CxR: one screen of C x R times the mode's size, larger than the
+ * display, as Wrap.card's SPAN= shows it on C x R heads. The test pattern
+ * goes in each head's tile, and an ordinary Intuition window (WX, WY in
+ * the tile) moves from head to head, left to right and top to bottom.
+ */
+static int span(ULONG id, UWORD w, UWORD h, UWORD depth, UWORD cols, UWORD rows,
+                const char *markname, UWORD step)
+{
+	int wx = w / 2 - 100, wy = h * 3 / 4 - 60;
+	struct Screen *scr;
+	struct Window *win;
+	ULONG err = 0;
+	int c, r, n;
+
+	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, cols * w, SA_Height, rows * h,
+	                     SA_Depth, depth, SA_Quiet, TRUE, SA_ShowTitle, FALSE,
+	                     SA_AutoScroll, TRUE, SA_Type, CUSTOMSCREEN,
+	                     SA_ErrorCode, (ULONG)&err, TAG_END);
+	if (!scr) {
+		printf("mctest: cannot open a %dx%d screen: %s (error %lu)\n", cols * w, rows * h,
+		       screen_error(err), err);
+		return RETURN_ERROR;
+	}
+	for (r = 0; r < rows; r++)
+		for (c = 0; c < cols; c++)
+			draw_rgb_at(&scr->RastPort, c * w, r * h, w, h);
+	win = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)scr, WA_Left, wx, WA_Top, wy,
+	                     WA_Width, 200, WA_Height, 120, WA_Title, (ULONG)"Move me",
+	                     WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_SmartRefresh, TRUE,
+	                     WA_Activate, TRUE, TAG_END);
+	if (!win) {
+		printf("mctest: cannot open the window\n");
+		CloseScreen(scr);
+		return RETURN_ERROR;
+	}
+	FillPixelArray(win->RPort, win->BorderLeft, win->BorderTop,
+	               win->Width - win->BorderLeft - win->BorderRight,
+	               win->Height - win->BorderTop - win->BorderBottom, SPAN_WINDOW_RGB);
+	printf("mctest: %dx%d screen for %ux%u heads of %ux%u, depth %u\n", cols * w, rows * h,
+	       cols, rows, w, h, depth);
+	for (n = 0; n < cols * rows; n++) {
+		c = n % cols;
+		r = n / cols;
+		MoveWindow(win, c * w + wx - win->LeftEdge, r * h + wy - win->TopEdge);
+		Delay(TICKS_PER_SECOND / 2);
+		printf("mctest: window on head %d, at %d,%d\n", n + 1, win->LeftEdge, win->TopEdge);
+		fflush(stdout);
+		mark(markname, n + 1);
+		Delay(step * TICKS_PER_SECOND);
+	}
+	CloseWindow(win);
+	CloseScreen(scr);
+	printf("mctest: done\n");
+	return RETURN_OK;
 }
 
 /*
@@ -384,6 +470,29 @@ int main(void)
 		printf("mctest: needs cybergraphics.library for depth %u\n", depth);
 		FreeArgs(rda);
 		return RETURN_ERROR;
+	}
+
+	if (args[A_SPAN]) {
+		const char *sp = (const char *)args[A_SPAN];
+		int cols = 0, rows = 0, rc;
+
+		while (*sp >= '0' && *sp <= '9')
+			cols = cols * 10 + *sp++ - '0';
+		if (*sp == 'x' || *sp == 'X')
+			sp++;
+		while (*sp >= '0' && *sp <= '9')
+			rows = rows * 10 + *sp++ - '0';
+		if (cols < 1 || rows < 1 || depth <= 8) {
+			printf("mctest: SPAN=CxR, e.g. 2x2, with DEPTH=16 or 32\n");
+			rc = RETURN_ERROR;
+		} else {
+			rc = span(id, w, h, depth, cols, rows, (const char *)args[A_MARK],
+			          args[A_STEP] ? *(LONG *)args[A_STEP] : 10);
+		}
+		if (CyberGfxBase)
+			CloseLibrary(CyberGfxBase);
+		FreeArgs(rda);
+		return rc;
 	}
 
 	if (args[A_PUBSCREEN]) {

@@ -62,9 +62,10 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   BOARDTYPE=6         P96 board type reported (6 = PicassoII)
   PRI=-1              sender task priority
   LOG=T:Multicast.log log file: stack found, modes, send errors, throughput
-  BOARDS=1            boards to offer (1-4): board n sends to PORT+n, its
+  BOARDS=1            boards to offer (1-8): board n sends to PORT+n, its
                       modes are called Multicast2:..., and it logs to LOG.2
-                      (P96; AROS takes one board per card, see Wrap.card)
+                      (P96; AROS takes one board per card, see Wrap.card).
+                      VRAM= is for each board
 
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.
@@ -118,9 +119,11 @@ Wrap.card (experimental)
 ------------------------
 Wrap.card loads another card driver and passes every call between it and
 rtg.library through, counting the calls and recording what is on display.
-With MIRROR= it also shows the screen on a second board, e.g. a Multicast
-board, so the screen of a real graphics card goes out on the network too.
-Docs/WRAP.md has the details.
+It can show the screen on other boards ("heads"): MIRROR= puts the same
+screen on a second board, e.g. a Multicast board, so the screen of a real
+graphics card goes out on the network too; SPAN=2x2 shows one big screen
+on four monitors, a tile on each, so windows are dragged from monitor to
+monitor. Docs/WRAP.md has the details.
 1. Copy Libs/Picasso96/Wrap.card to LIBS:Picasso96/, next to the real card.
 2. P96: set the board's monitor icon ToolType BOARDTYPE=Wrap.
    AROS: Copy DEVS:Monitors/P96 DEVS:Monitors/Wrap, and remove the real
@@ -131,6 +134,11 @@ Docs/WRAP.md has the details.
 Mirror: add MIRROR=Multicast.card to Wrap.prefs. If CARD= is also
 Multicast.card, put BOARDS=2 in Multicast.prefs: the mirror then streams
 to port 9697 (python3 p96view.py --port 9697).
+Span: SPAN=2x2 and HEAD=<card> (or HEAD1= ... HEAD4=) in Wrap.prefs, then
+open a screen twice as wide and high as its mode (1280x960 in a 640x480
+mode for 2x2), or use a mode that big. With CARD=Multicast.card and
+HEAD=Multicast.card, BOARDS=5: the heads stream to ports 9697-9700.
+Try it: mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16
 Tested on AROS m68k only, wrapping Multicast.card.
 
 Status

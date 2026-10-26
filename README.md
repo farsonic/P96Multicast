@@ -41,9 +41,11 @@ p96gfx.hidd, WinUAE) and is checked by `tests/offsets.c`.
 loads a real card driver (`CARD=uaegfx.card` in `ENV:Wrap.prefs`) and sits
 between it and rtg.library, putting a thunk in front of every BoardInfo
 function. It passes every call through unchanged, counts them and records
-what is on display (`wrapstat` shows it), and with `MIRROR=Multicast.card`
-it copies the screen onto a second board, so a real board's screen can be
-streamed to the network too. See [docs/WRAP.md](docs/WRAP.md).
+what is on display (`wrapstat` shows it). It can show the screen on other
+boards ("heads"): `MIRROR=Multicast.card` streams a real board's screen to
+the network too, and `SPAN=2x2` shows one big screen across four monitors,
+a tile on each, so windows are dragged from monitor to monitor. See
+[docs/WRAP.md](docs/WRAP.md).
 
 ## Installing
 
@@ -76,7 +78,7 @@ P96. `ENV:` wins over ToolTypes.
 | `PRI` | -1 | sender task priority |
 | `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
 | `QUIET` | 0 | set BIF_QUIET |
-| `BOARDS` | 1 | boards to offer (1-4); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there only Wrap.card's mirror uses a second |
+| `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 
 ## Watching
 
@@ -99,6 +101,7 @@ python3 tests/test_client.py
 make emu-test   # AROS + Riptide in FS-UAE, end to end
 make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
 make emu-mirror # ... mirroring it to a second Multicast board, over the network
+make emu-span   # ... one 1280x960 screen on four Multicast boards, a window moved between them
 ```
 
 ## Layout
@@ -116,4 +119,4 @@ make emu-mirror # ... mirroring it to a second Multicast board, over the network
 | `client/p96view.py` | viewer / receiver |
 | `tests/` | offset test, hunk checks, client tests, `mctest` and `wrapstat` (Amiga), `wraptest` with `Fake.card` (vamos) |
 | `emu/run_test.sh` | end-to-end test on FS-UAE |
-| `emu/wrap_test.sh`, `emu/mirror_test.sh` | Wrap.card on FS-UAE, and its mirror over the network |
+| `emu/wrap_test.sh`, `emu/mirror_test.sh`, `emu/span_test.sh` | Wrap.card on FS-UAE, its mirror and span over the network |

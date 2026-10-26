@@ -1,17 +1,25 @@
 /*
- * P96Multicast - Wrap.card's mirror: the first wrapped board's screen on a
- * second board.
+ * P96Multicast - Wrap.card's heads: the first wrapped board's screen on up
+ * to WRAP_MAXHEADS other boards.
  *
- * MIRROR=card names a card driver. Wrap.card sets up one board of it on a
- * BoardInfo of its own (rtg.library never sees this board, so nothing else
- * draws on it or switches it) and starts a process that, MIRRORFPS times a
+ * Each head is one board of a card driver (MIRROR=, HEAD=, HEAD1= ...),
+ * set up on a BoardInfo of Wrap.card's own: rtg.library never sees it, so
+ * nothing else draws on it or switches it. A process, MIRRORFPS times a
  * second, follows what the thunks recorded about the wrapped board: on a
- * new mode it sets the same mode on the mirror (ResolvePixelClock, SetClock,
- * SetGC, SetDAC, SetPanning), it passes palette changes on with
- * SetColorArray and the display state with SetSwitch and SetDisplay, and it
- * copies the visible part of the wrapped board's screen into the mirror's
- * video memory. The pixels are copied as they are, so the mirror has to
- * offer the same pixel format.
+ * new mode it sets each head's mode (ResolvePixelClock, SetClock, SetGC,
+ * SetDAC, SetPanning), it passes palette changes on with SetColorArray and
+ * the display state with SetSwitch and SetDisplay, and it copies each
+ * head's part of the screen into the head's video memory.
+ *
+ * MIRROR= is one head showing what the wrapped board shows. SPAN=CxR is
+ * C x R heads showing one big screen, each its tile, so windows move from
+ * monitor to monitor by being dragged across. The big screen is either a
+ * screen larger than its display mode (a 1280x960 screen in a 640x480 mode
+ * for 2x2: the heads show the mode's size each, wherever the wrapped board
+ * itself is scrolled to) or one big mode, split evenly between the heads.
+ *
+ * The pixels are copied as they are, so the heads have to offer the
+ * wrapped board's pixel format.
  */
 #include <exec/memory.h>
 #include <exec/execbase.h>
@@ -21,7 +29,7 @@
 #include <clib/alib_protos.h>
 #include "wrap.h"
 
-/* the BoardInfo functions the mirror calls, a6 = the mirror card's base */
+/* the BoardInfo functions the heads get, a6 = the head card's base */
 typedef ULONG (*ResolvePixelClockFn)(__reg("a0") struct BoardInfo *, __reg("a1") struct ModeInfo *,
                                      __reg("d0") ULONG clock, __reg("d7") ULONG fmt,
                                      __reg("a6") struct Library *);
@@ -41,36 +49,40 @@ typedef ULONG (*SetStateFn)(__reg("a0") struct BoardInfo *, __reg("d0") ULONG st
                             __reg("a6") struct Library *);
 
 /* rtg.library's private part of a BoardInfo, after MemorySpaceSize: room to spare */
-#define MIRROR_BISIZE (sizeof(struct BoardInfo) + 8192)
+#define HEAD_BISIZE (sizeof(struct BoardInfo) + 8192)
 
-struct Mirror {
+struct Head {
+	struct WrapHead *h;        /* its public state */
+	struct ModeInfo mode;
+	BOOL  ok;                  /* it shows the current mode: copy */
+};
+
+struct Heads {
 	struct WrapBoard *src;     /* the wrapped board */
 	struct Library *inner;     /* its card */
 	struct WrapMirror *m;
-	struct BoardInfo *bi;      /* the mirror's board */
-	struct Library *card;      /* the mirror's card */
-	struct ModeInfo mode;      /* the mirror's mode */
+	struct Head head[WRAP_MAXHEADS];
 
 	/* the wrapped board's screen, from the last snapshot */
 	ULONG serial, pal_serial;
-	UBYTE *src_mem;            /* top left visible pixel */
-	ULONG src_bpr;
-	UWORD w, h, bm_width;
+	UWORD w, h, bm_width;      /* its mode and bitmap width */
 	ULONG fmt, bpp;
+	UBYTE *src_mem;            /* top left of what the heads show */
+	ULONG src_bpr;
+	UWORD tw, th;              /* each head's tile */
 	UWORD on;
-	BOOL  ok;                  /* the mirror shows this mode: copy */
 };
 
-static struct Mirror mirror;
+static struct Heads heads;
 
 /*
  * A BoardInfo as rtg.library hands one to FindCard: library bases, the
  * lists and the lock initialised, every function an rts (some drivers call
  * the functions they leave alone, and a board nobody draws on needs none).
  */
-static struct BoardInfo *new_boardinfo(struct Library *card)
+static struct BoardInfo *new_boardinfo(struct Library *card, UWORD num)
 {
-	struct BoardInfo *bi = AllocMem(MIRROR_BISIZE, MEMF_PUBLIC | MEMF_CLEAR);
+	struct BoardInfo *bi = AllocMem(HEAD_BISIZE, MEMF_PUBLIC | MEMF_CLEAR);
 	APTR *slots;
 	int i;
 
@@ -82,7 +94,7 @@ static struct BoardInfo *new_boardinfo(struct Library *card)
 	bi->ExecBase = SysBase;
 	bi->UtilBase = OpenLibrary("utility.library", 37);
 	bi->CardBase = card;
-	bi->BoardNum = 1;
+	bi->BoardNum = num;
 	InitSemaphore(&bi->BoardLock);
 	NewList((struct List *)&bi->ResolutionsList);
 	NewList((struct List *)&bi->SpecialFeatures);
@@ -95,195 +107,267 @@ static void free_boardinfo(struct BoardInfo *bi)
 {
 	if (bi->UtilBase)
 		CloseLibrary(bi->UtilBase);
-	FreeMem(bi, MIRROR_BISIZE);
+	FreeMem(bi, HEAD_BISIZE);
 }
 
-static void set_state(struct Mirror *mr, UWORD on)
+static void set_state(struct Head *hd, UWORD on)
 {
-	struct BoardInfo *bi = mr->bi;
+	struct BoardInfo *bi = hd->h->bi;
 
-	((SetStateFn)bi->SetSwitch)(bi, on, mr->card);
-	((SetStateFn)bi->SetDisplay)(bi, on, mr->card);
-	mr->m->display = on;
+	((SetStateFn)bi->SetSwitch)(bi, on, hd->h->lib);
+	((SetStateFn)bi->SetDisplay)(bi, on, hd->h->lib);
+	hd->h->display = on;
 }
 
-static void set_palette(struct Mirror *mr)
+static void set_palette(struct Heads *hs, struct Head *hd)
 {
-	struct BoardInfo *bi = mr->bi;
+	struct BoardInfo *bi = hd->h->bi;
 	int i;
 
 	for (i = 0; i < 256; i++)
-		bi->CLUT[i] = mr->src->bi->CLUT[i];
-	((SetColorArrayFn)bi->SetColorArray)(bi, 0, 256, mr->card);
+		bi->CLUT[i] = hs->src->bi->CLUT[i];
+	((SetColorArrayFn)bi->SetColorArray)(bi, 0, 256, hd->h->lib);
 }
 
-/* the wrapped board shows a new mode: the same on the mirror */
-static void set_mode(struct Mirror *mr, struct WrapDisplay *d)
+/* a head's mode: the wrapped board's, at the tile's size */
+static void set_mode(struct Heads *hs, struct Head *hd, UWORD x, UWORD y)
 {
-	struct BoardInfo *bi = mr->bi;
-	struct BoardInfo *sbi = mr->src->bi;
-	struct WrapMirror *m = mr->m;
+	struct WrapHead *h = hd->h;
+	struct BoardInfo *bi = h->bi;
+	struct Library *card = h->lib;
 	ULONG bpr;
 
-	mr->ok = FALSE;
-	mr->w = d->width;
-	mr->h = d->height;
-	mr->bm_width = d->bm_width;
-	mr->fmt = d->format;
-	mr->bpp = wrap_bytesperpixel(d->format);
-	if (!mr->w || !mr->h || !mr->bpp || !d->mem)
-		return;
-	if (!(bi->RGBFormats & RGBFF(mr->fmt))) {
-		m->error = WRAP_MERR_FORMAT;
+	hd->ok = FALSE;
+	h->x = x;
+	h->y = y;
+	if (!(bi->RGBFormats & RGBFF(hs->fmt))) {
+		h->error = WRAP_MERR_FORMAT;
 		return;
 	}
-
-	/* the wrapped card's rows, through its thunk, which sets its a6 */
-	mr->src_bpr = ((BytesPerRowFn)sbi->CalculateBytesPerRow)(sbi, mr->bm_width, mr->fmt,
-	                                                         mr->inner);
-	mr->src_mem = d->mem + d->yoff * mr->src_bpr + d->xoff * mr->bpp;
-
-	mr->mode = d->mode;
-	mr->mode.Node.ln_Succ = mr->mode.Node.ln_Pred = NULL;
-	bi->ModeInfo = &mr->mode;
-	bi->RGBFormat = mr->fmt;
-	((ResolvePixelClockFn)bi->ResolvePixelClock)(bi, &mr->mode, mr->mode.PixelClock, mr->fmt,
-	                                             mr->card);
-	((SetClockFn)bi->SetClock)(bi, mr->card);
-	((SetGCFn)bi->SetGC)(bi, &mr->mode, 0, mr->card);
-	((SetDACFn)bi->SetDAC)(bi, mr->fmt, mr->card);
-	bpr = ((BytesPerRowFn)bi->CalculateBytesPerRow)(bi, mr->w, mr->fmt, mr->card);
-	if (!bpr || bpr * mr->h > bi->MemorySize) {
-		m->error = WRAP_MERR_TOOBIG;
+	hd->mode = hs->src->disp.mode;
+	hd->mode.Node.ln_Succ = hd->mode.Node.ln_Pred = NULL;
+	if (hd->mode.Width != hs->tw || hd->mode.Height != hs->th) {
+		/* a part of one big mode: the same refresh, roughly */
+		hd->mode.HorTotal = (ULONG)hd->mode.HorTotal * hs->tw / hd->mode.Width;
+		hd->mode.VerTotal = (ULONG)hd->mode.VerTotal * hs->th / hd->mode.Height;
+		hd->mode.PixelClock = hd->mode.PixelClock / hd->mode.Width * hs->tw /
+		                      hd->mode.Height * hs->th;
+		hd->mode.Width = hs->tw;
+		hd->mode.Height = hs->th;
+	}
+	bi->ModeInfo = &hd->mode;
+	bi->RGBFormat = hs->fmt;
+	((ResolvePixelClockFn)bi->ResolvePixelClock)(bi, &hd->mode, hd->mode.PixelClock, hs->fmt,
+	                                             card);
+	((SetClockFn)bi->SetClock)(bi, card);
+	((SetGCFn)bi->SetGC)(bi, &hd->mode, 0, card);
+	((SetDACFn)bi->SetDAC)(bi, hs->fmt, card);
+	bpr = ((BytesPerRowFn)bi->CalculateBytesPerRow)(bi, hs->tw, hs->fmt, card);
+	if (!bpr || bpr * hs->th > bi->MemorySize) {
+		h->error = WRAP_MERR_TOOBIG;
 		return;
 	}
-	m->mem = bi->MemoryBase;
-	m->bpr = bpr;
-	((SetPanningFn)bi->SetPanning)(bi, m->mem, mr->w, 0, 0, mr->fmt, mr->card);
-	if (mr->fmt == RGBFB_CLUT)
-		set_palette(mr);
-	m->width = mr->w;
-	m->height = mr->h;
-	m->format = mr->fmt;
-	m->setups++;
-	m->error = WRAP_MERR_NONE;
-	mr->ok = TRUE;
+	h->mem = bi->MemoryBase;
+	h->bpr = bpr;
+	((SetPanningFn)bi->SetPanning)(bi, h->mem, hs->tw, 0, 0, hs->fmt, card);
+	if (hs->fmt == RGBFB_CLUT)
+		set_palette(hs, hd);
+	h->width = hs->tw;
+	h->height = hs->th;
+	h->format = hs->fmt;
+	h->setups++;
+	h->error = WRAP_MERR_NONE;
+	hd->ok = TRUE;
 }
 
-static void mirror_pass(struct Mirror *mr)
+/*
+ * The wrapped board shows something new: where the heads' tiles are, and
+ * their mode if it changed. A mirror shows what is visible; a span shows
+ * the whole bitmap from its top left.
+ */
+static void follow(struct Heads *hs, struct WrapDisplay *d)
+{
+	struct WrapMirror *m = hs->m;
+	struct BoardInfo *sbi = hs->src->bi;
+	BOOL span = m->nheads > 1;
+	BOOL newmode;
+	UWORD tw, th, i, on;
+
+	if (!d->width || !d->height || !d->mem || !wrap_bytesperpixel(d->format)) {
+		tw = th = 0;
+	} else if (!span) {
+		tw = d->width;
+		th = d->height;
+	} else if (d->bm_width >= m->cols * d->width) {
+		tw = d->width;            /* a screen larger than its mode */
+		th = d->height;
+	} else {
+		tw = d->width / m->cols;  /* one big mode */
+		th = d->height / m->rows;
+	}
+	newmode = tw != hs->tw || th != hs->th || d->format != hs->fmt ||
+	          d->bm_width != hs->bm_width;
+	hs->w = d->width;
+	hs->h = d->height;
+	hs->fmt = d->format;
+	hs->bpp = wrap_bytesperpixel(d->format);
+	hs->tw = tw;
+	hs->th = th;
+	if (tw && (newmode || !hs->src_bpr))
+		/* the wrapped card's rows, through its thunk, which sets its a6 */
+		hs->src_bpr = ((BytesPerRowFn)sbi->CalculateBytesPerRow)(sbi, d->bm_width, d->format,
+		                                                         hs->inner);
+	hs->bm_width = d->bm_width;
+	hs->src_mem = d->mem;
+	if (tw && !span)
+		hs->src_mem += d->yoff * hs->src_bpr + d->xoff * hs->bpp;
+
+	on = tw && d->display && d->moniswitch;
+	for (i = 0; i < m->nheads; i++) {
+		struct Head *hd = &hs->head[i];
+
+		if (!hd->h->bi)
+			continue;
+		if (tw && (newmode || !hd->ok))
+			set_mode(hs, hd, (i % m->cols) * tw, (i / m->cols) * th);
+		if ((on && hd->ok) != hd->h->display)
+			set_state(hd, on && hd->ok);
+	}
+}
+
+static void heads_pass(struct Heads *hs)
 {
 	struct WrapDisplay d;
-	struct WrapMirror *m = mr->m;
-	UWORD on;
-	UBYTE *src, *dst;
-	ULONG len, y;
+	struct WrapMirror *m = hs->m;
+	BOOL newpal;
+	UWORD i;
 
 	Forbid();
-	d = mr->src->disp;
+	d = hs->src->disp;
 	Permit();
 
-	if (d.serial != mr->serial) {
-		mr->serial = d.serial;
-		if (d.width != mr->w || d.height != mr->h || d.format != mr->fmt ||
-		    d.bm_width != mr->bm_width || !mr->ok)
-			set_mode(mr, &d);
-		else
-			mr->src_mem = d.mem + d.yoff * mr->src_bpr + d.xoff * mr->bpp;
-		on = d.display && d.moniswitch && mr->ok;
-		if (on != m->display)
-			set_state(mr, on);
+	if (d.serial != hs->serial) {
+		hs->serial = d.serial;
+		follow(hs, &d);
 	}
-	if (!mr->ok || !m->display)
-		return;
-	if (d.pal_serial != mr->pal_serial) {
-		mr->pal_serial = d.pal_serial;
-		if (mr->fmt == RGBFB_CLUT)
-			set_palette(mr);
-	}
+	newpal = d.pal_serial != hs->pal_serial;
+	hs->pal_serial = d.pal_serial;
 
-	src = mr->src_mem;
-	dst = m->mem;
-	len = mr->w * mr->bpp;
-	for (y = 0; y < mr->h; y++) {
-		CopyMem(src, dst, len);
-		src += mr->src_bpr;
-		dst += m->bpr;
+	for (i = 0; i < m->nheads; i++) {
+		struct Head *hd = &hs->head[i];
+		struct WrapHead *h = hd->h;
+		UBYTE *src, *dst;
+		ULONG len, y;
+
+		if (!hd->ok || !h->display)
+			continue;
+		if (newpal && hs->fmt == RGBFB_CLUT)
+			set_palette(hs, hd);
+		src = hs->src_mem + h->y * hs->src_bpr + h->x * hs->bpp;
+		dst = h->mem;
+		len = h->width * hs->bpp;
+		for (y = 0; y < h->height; y++) {
+			CopyMem(src, dst, len);
+			src += hs->src_bpr;
+			dst += h->bpr;
+		}
+		h->frames++;
 	}
-	m->frames++;
+	m->passes++;
 }
 
-static void MirrorMain(void)
+static void HeadsMain(void)
 {
 	struct Task *me = FindTask(NULL);
-	struct Mirror *mr;
+	struct Heads *hs;
 	ULONG ticks;
+	UWORD i;
 
 	/* the parent sets tc_UserData right after creating us */
-	while (!(mr = me->tc_UserData))
+	while (!(hs = me->tc_UserData))
 		Delay(1);
-	ticks = TICKS_PER_SECOND / mr->m->fps;
+	ticks = TICKS_PER_SECOND / hs->m->fps;
 	if (!ticks)
 		ticks = 1;
-	mr->serial = mr->src->disp.serial - 1;
+	hs->serial = hs->src->disp.serial - 1;
 	while (!(SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)) {
-		mirror_pass(mr);
+		heads_pass(hs);
 		Delay(ticks);
 	}
-	set_state(mr, 0);
+	for (i = 0; i < hs->m->nheads; i++)
+		if (hs->head[i].h->bi)
+			set_state(&hs->head[i], 0);
 	Forbid();
-	mr->m->task = NULL;
+	hs->m->task = NULL;
+}
+
+/* one head: its card, a board of it, set up */
+static void head_start(struct WrapHead *h, UWORD num)
+{
+	struct BoardInfo *bi;
+	struct Library *card;
+
+	card = wrap_open_card(h->card);
+	if (!card) {
+		h->error = WRAP_MERR_OPEN;
+		return;
+	}
+	bi = new_boardinfo(card, num);
+	if (!bi) {
+		h->error = WRAP_MERR_NOMEM;
+		CloseLibrary(card);
+		return;
+	}
+	if (!InnerFindCard(bi, card)) {
+		h->error = WRAP_MERR_NOBOARD;
+		free_boardinfo(bi);
+		CloseLibrary(card);
+		return;
+	}
+	/* a board that was found cannot be given back: from here on it stays */
+	h->lib = card;
+	if (!InnerInitCard(bi, NULL, card)) {
+		h->error = WRAP_MERR_INIT;
+		return;
+	}
+	h->bi = bi;
 }
 
 /*
  * From Wrap.card's InitCard, for the first wrapped board, in rtg.library's
- * process. A mirror that cannot be set up leaves the wrapped board alone.
+ * process. Heads that cannot be set up are left out; the wrapped board
+ * works either way.
  */
 void wrap_mirror_start(struct WrapBoard *b, struct Library *inner, struct WrapMirror *m)
 {
-	struct Mirror *mr = &mirror;
-	struct BoardInfo *bi;
+	struct Heads *hs = &heads;
 	struct Process *p;
+	UWORD i, n = 0;
 
-	mr->src = b;
-	mr->inner = inner;
-	mr->m = m;
-	mr->card = wrap_open_card(m->card);
-	if (!mr->card) {
-		m->error = WRAP_MERR_OPEN;
-		return;
+	hs->src = b;
+	hs->inner = inner;
+	hs->m = m;
+	for (i = 0; i < m->nheads; i++) {
+		hs->head[i].h = &m->head[i];
+		head_start(&m->head[i], i + 1);
+		if (m->head[i].bi)
+			n++;
 	}
-	bi = new_boardinfo(mr->card);
-	if (!bi) {
-		m->error = WRAP_MERR_NOMEM;
-		CloseLibrary(mr->card);
+	if (!n)
 		return;
-	}
-	if (!InnerFindCard(bi, mr->card)) {
-		m->error = WRAP_MERR_NOBOARD;
-		free_boardinfo(bi);
-		CloseLibrary(mr->card);
-		return;
-	}
-	/* a board that was found cannot be given back: from here on it stays */
-	m->lib = mr->card;
-	if (!InnerInitCard(bi, NULL, mr->card)) {
-		m->error = WRAP_MERR_INIT;
-		return;
-	}
-	mr->bi = bi;
-	m->bi = bi;
 
 	Forbid();
-	p = CreateNewProcTags(NP_Entry, (ULONG)MirrorMain,
-	                      NP_Name, (ULONG)"Wrap.card mirror",
+	p = CreateNewProcTags(NP_Entry, (ULONG)HeadsMain,
+	                      NP_Name, (ULONG)"Wrap.card heads",
 	                      NP_Priority, -1,
 	                      NP_StackSize, 4096,
 	                      TAG_END);
 	if (p) {
-		p->pr_Task.tc_UserData = mr;
+		p->pr_Task.tc_UserData = hs;
 		m->task = p;
 	}
 	Permit();
 	if (!p)
-		m->error = WRAP_MERR_NOTASK;
+		for (i = 0; i < m->nheads; i++)
+			m->head[i].error = WRAP_MERR_NOTASK;
 }

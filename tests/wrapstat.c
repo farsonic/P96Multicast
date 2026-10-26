@@ -3,7 +3,7 @@
  * has been asked to do.
  *
  *   wrapstat            the wrapped card, its boards, display state, calls,
- *                       and the mirror (MIRROR=)
+ *                       and the heads (MIRROR=, SPAN=)
  *   wrapstat ALL        ... also the slots that are not wrapped
  */
 #include <exec/types.h>
@@ -24,10 +24,10 @@ static const char *errors[] = {
 };
 
 static const char *mirror_errors[] = {
-	"none", "the MIRROR= card did not open", "its FindCard found no board",
-	"its InitCard failed", "no memory", "no mirror process",
+	"none", "its card did not open", "its FindCard found no board",
+	"its InitCard failed", "no memory", "no process to copy the screen",
 	"it cannot show the wrapped board's pixel format",
-	"the screen does not fit in its video memory"
+	"its tile does not fit in its video memory"
 };
 
 static const char template[] = "ALL/S";
@@ -111,17 +111,32 @@ int main(void)
 				printf("  %-30s -\n", slot_names[j]);
 		}
 	}
-	if (mirror.card[0]) {
-		printf("mirror: MIRROR=%s MIRRORFPS=%u, %s\n", mirror.card, mirror.fps,
-		       mirror.task ? "running" : "not running");
-		printf("  last error: %s\n", mirror.error < sizeof(mirror_errors) / sizeof(mirror_errors[0]) ?
-		       mirror_errors[mirror.error] : "?");
-		if (mirror.bi)
-			printf("  board %s, display %s, %ux%u, format %lu, at 0x%08lx, %lu bytes per row\n",
-			       mirror.bi->BoardName ? mirror.bi->BoardName : "(no name)",
-			       mirror.display ? "on" : "off", mirror.width, mirror.height,
-			       mirror.format, (ULONG)mirror.mem, mirror.bpr);
-		printf("  modes set up %lu, frames copied %lu\n", mirror.setups, mirror.frames);
+	if (mirror.nheads) {
+		if (mirror.nheads > 1)
+			printf("heads: SPAN=%ux%u", mirror.cols, mirror.rows);
+		else
+			printf("heads: MIRROR=%s", mirror.head[0].card);
+		printf(" MIRRORFPS=%u, %s, %lu passes\n", mirror.fps,
+		       mirror.task ? "running" : "not running", mirror.passes);
+	}
+	for (i = 0; i < mirror.nheads && i < WRAP_MAXHEADS; i++) {
+		struct WrapHead *h = &mirror.head[i];
+
+		printf("head %d: %s, %s", i + 1, h->card, h->bi ? "set up" : "not set up");
+		if (h->error) {
+			const char *e = "?";
+
+			if (h->error < sizeof(mirror_errors) / sizeof(mirror_errors[0]))
+				e = mirror_errors[h->error];
+			printf(", %s", e);
+		}
+		printf("\n");
+		if (h->bi)
+			printf("  board %s, display %s, tile at %u,%u, %ux%u, format %lu, at 0x%08lx,"
+			       " %lu bytes per row, %lu modes, %lu frames\n",
+			       h->bi->BoardName ? h->bi->BoardName : "(no name)",
+			       h->display ? "on" : "off", h->x, h->y, h->width, h->height,
+			       h->format, (ULONG)h->mem, h->bpr, h->setups, h->frames);
 	}
 	FreeArgs(rda);
 	return RETURN_OK;

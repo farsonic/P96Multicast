@@ -54,6 +54,9 @@ CARD=uaegfx.card
 #DRAW=1
 # MIRROR= a card driver to show the same screen on, e.g. Multicast.card
 #MIRROR=Multicast.card
+# SPAN= one big screen on CxR heads, each HEAD= (or HEAD1= ... HEAD4=)
+#SPAN=2x2
+#HEAD=Multicast.card
 #MIRRORFPS=25
 EOF
 

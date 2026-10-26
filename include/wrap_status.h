@@ -127,35 +127,48 @@ struct WrapBoard {
 };
 
 /*
- * MIRROR=card: Wrap.card sets up one board of that card driver on a
- * BoardInfo of its own, which rtg.library never sees, and a process copies
- * what the first wrapped board shows onto it, following its mode, palette
- * and display state.
+ * Heads: boards of other card drivers that show the first wrapped board's
+ * screen. Wrap.card sets each one up on a BoardInfo of its own, which
+ * rtg.library never sees, and a process copies the screen onto them,
+ * following its mode, palette and display state.
+ *
+ * MIRROR=card: one head, showing what the wrapped board shows.
+ * SPAN=CxR, HEAD=card (HEAD1= ... HEAD4= for each one): C x R heads, left
+ * to right and top to bottom, each showing its tile of one big screen.
  */
+#define WRAP_MAXHEADS 4
+
 #define WRAP_MERR_NONE    0
-#define WRAP_MERR_OPEN    1  /* the MIRROR= card did not open */
+#define WRAP_MERR_OPEN    1  /* the head's card did not open */
 #define WRAP_MERR_NOBOARD 2  /* its FindCard found no board */
 #define WRAP_MERR_INIT    3  /* its InitCard failed */
 #define WRAP_MERR_NOMEM   4
-#define WRAP_MERR_NOTASK  5  /* no mirror process */
+#define WRAP_MERR_NOTASK  5  /* no process to copy the screen */
 #define WRAP_MERR_FORMAT  6  /* it cannot show the wrapped board's pixel format */
-#define WRAP_MERR_TOOBIG  7  /* the screen does not fit in its video memory */
+#define WRAP_MERR_TOOBIG  7  /* its tile does not fit in its video memory */
+
+struct WrapHead {
+	char  card[WRAP_NAMELEN];  /* its card driver */
+	UWORD error;           /* WRAP_MERR_*, for the last attempt */
+	UWORD display;         /* its display is on */
+	struct Library *lib;   /* its card driver, open */
+	struct BoardInfo *bi;  /* its board, once set up */
+	ULONG setups;          /* modes set up on it */
+	ULONG frames;          /* passes that copied its tile */
+	UWORD x, y;            /* its tile in the wrapped board's screen */
+	UWORD width, height;   /* and its mode */
+	ULONG format;
+	UBYTE *mem;            /* where it shows it */
+	ULONG bpr;             /* its bytes per row */
+};
 
 struct WrapMirror {
-	char  card[WRAP_NAMELEN];  /* MIRROR= */
 	UWORD fps;             /* MIRRORFPS= */
-	UWORD error;           /* WRAP_MERR_*, for the last attempt */
-	struct Library *lib;   /* the mirror's card driver */
-	struct BoardInfo *bi;  /* its board */
-	struct Process *task;  /* the mirror process, while it runs */
-	ULONG setups;          /* modes set up on the mirror */
-	ULONG frames;          /* passes that copied the screen */
-	UWORD width, height;   /* the mirror's current mode */
-	ULONG format;
-	UWORD display;         /* the mirror's display is on */
-	UWORD pad;
-	UBYTE *mem;            /* where the mirror shows it */
-	ULONG bpr;             /* its bytes per row */
+	UWORD cols, rows;      /* SPAN=, 1x1 for MIRROR= */
+	UWORD nheads;          /* cols * rows, 0 for none */
+	struct Process *task;  /* the process copying the screen */
+	ULONG passes;
+	struct WrapHead head[WRAP_MAXHEADS];
 };
 
 /* WrapStatus.error */

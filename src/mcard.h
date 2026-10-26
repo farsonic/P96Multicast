@@ -50,7 +50,7 @@ struct McConfig {
  * sender. Board n sends to PORT + n and is called "Multicast<n+1>" from the
  * second one on, so its modes can be told apart.
  */
-#define MC_MAXBOARDS 4
+#define MC_MAXBOARDS 8
 
 struct McCard {
 	struct BoardInfo *bi;
