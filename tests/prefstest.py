@@ -34,8 +34,8 @@ def setup():
         os.makedirs(os.path.join(DIR, d))
 
 
-def run(*args):
-    cmd = VAMOS + ["-V", "p96:" + ROOT,
+def run(*args, cwd=None):
+    cmd = VAMOS + (["--cwd", cwd] if cwd else []) + ["-V", "p96:" + ROOT,
                    "-a", "ENV:p96:build/prefstest.d/env",
                    "-a", "ENVARC:p96:build/prefstest.d/envarc",
                    "-a", "LIBS:p96:build/prefstest.d/libs",
@@ -126,6 +126,23 @@ def main():
           os.path.exists(os.path.join(DIR, "sys", "Storage", "Monitors", "Multicast")),
           "DEVS:Monitors/Multicast moved to SYS:Storage/Monitors (Wrap.card sets it up)")
     check(read("envarc", "Wrap.prefs") == read("env", "Wrap.prefs"), "INSTALL saves to ENVARC:")
+
+    # from a shell that gives the program no PROGDIR: of its own (bash):
+    # the package's Libs/Picasso96 in the current directory
+    shutil.rmtree(libs)
+    pkg = os.path.join(DIR, "pkg", "Libs", "Picasso96")
+    os.makedirs(pkg)
+    for c in ("Multicast.card", "Wrap.card"):
+        shutil.copy(os.path.join(ROOT, "build", c), pkg)
+    rc, out = run("INSTALL", cwd="p96:build/prefstest.d/pkg")
+    check("Copied Libs/Picasso96/Multicast.card to LIBS:Picasso96/Multicast.card" in out,
+          "the cards found in the current directory's Libs/Picasso96: %r" % out.splitlines()[:2])
+    # a copy onto itself is no copy: FROM= the installed cards
+    size = os.path.getsize(os.path.join(libs, "Multicast.card"))
+    rc, out = run("INSTALL", "FROM=LIBS:Picasso96")
+    check("already in LIBS:Picasso96" in out and "Could not copy" not in out and
+          os.path.getsize(os.path.join(libs, "Multicast.card")) == size,
+          "FROM= the installed cards: left alone, not copied onto themselves")
 
     print("prefstest: %s" % ("FAILED" if fails else "passed"))
     return 1 if fails else 0

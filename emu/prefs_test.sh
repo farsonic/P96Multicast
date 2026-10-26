@@ -4,7 +4,7 @@
 # set up. No network needed.
 #
 # Boot 1, on an AROS without the cards: from a package laid out like the
-# LhA (Work:pkg/C/MulticastPrefs, Work:pkg/Libs/Picasso96/*.card),
+# LhA (Work:pkg/MulticastPrefs, Work:pkg/Libs/Picasso96/*.card),
 #   MulticastPrefs SET ...      settings into ENVARC: and ENV:
 #   MulticastPrefs INSTALL      cards to LIBS:Picasso96, DEVS:Monitors/Multicast
 #                               and its icon
@@ -39,7 +39,8 @@ command -v fs-uae >/dev/null 2>&1 || { echo "SKIP: fs-uae not installed"; exit 0
 rm -rf "$OUT"
 mkdir -p "$OUT/work/pkg/C" "$OUT/work/pkg/Libs/Picasso96"
 work=$(cd "$OUT/work" && pwd)
-cp build/MulticastPrefs build/mctest "$work/pkg/C/"
+cp build/MulticastPrefs "$work/pkg/"
+cp build/mctest "$work/pkg/C/"
 cp build/Multicast.card build/Wrap.card "$work/pkg/Libs/Picasso96/"
 
 if [ $NET = 1 ]; then
@@ -140,9 +141,9 @@ boot() {
 
 cat > "$work/autorun" <<'EOF3'
 FailAt 21
-Work:pkg/C/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 >Work:set.txt
-Work:pkg/C/MulticastPrefs INSTALL >Work:install.txt
-Work:pkg/C/MulticastPrefs SHOW >Work:show.txt
+Work:pkg/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 >Work:set.txt
+Work:pkg/MulticastPrefs INSTALL >Work:install.txt
+Work:pkg/MulticastPrefs SHOW >Work:show.txt
 List DEVS:Monitors >Work:monitors.txt
 Echo >Work:boot1.done done
 EOF3
@@ -151,14 +152,14 @@ boot boot1.done
 {
 	echo 'FailAt 21'
 	echo 'Work:pkg/C/mctest STATUS >Work:status2.txt'
-	echo 'Work:pkg/C/MulticastPrefs STATUS >Work:prefsstatus2.txt'
+	echo 'Work:pkg/MulticastPrefs STATUS >Work:prefsstatus2.txt'
 	if [ $NET = 1 ]; then
 		echo 'Run >Work:riptide.log Work:pkg/C/Riptide CONFIG=Work:riptide.conf'
 		echo 'Wait 3'
 		echo 'Run >Work:pubscreen.log Work:pkg/C/mctest PUBSCREEN=MCPREFS WIDTH=640 HEIGHT=480 DEPTH=8'
 		echo 'Wait 3'
 		for n in 0 1 2 3; do
-			echo "Run >Work:gui-$n.log Work:pkg/C/MulticastPrefs PUBSCREEN=MCPREFS PAGE=$n TIMEOUT=12"
+			echo "Run >Work:gui-$n.log Work:pkg/MulticastPrefs PUBSCREEN=MCPREFS PAGE=$n TIMEOUT=12"
 			echo 'Wait 3'
 			echo "Echo >Work:gui-$n x"
 			echo 'Wait 10'
@@ -181,7 +182,7 @@ has() {   # FILE TEXT WHAT
 	if tr -d '\r' < "$1" 2>/dev/null | grep -q "$2"; then pass "$3"; else fail "$3"; fi
 }
 has "$AROSFS/Prefs/Env-Archive/Multicast.prefs" "MODES=640x480,800x600,1280x960" "settings saved to ENVARC:"
-has "$work/install.txt" "Copied PROGDIR:/Libs/Picasso96/Multicast.card" "Multicast.card copied from the package"
+has "$work/install.txt" "Copied PROGDIR:Libs/Picasso96/Multicast.card" "Multicast.card copied from the package"
 has "$work/install.txt" "Made DEVS:Monitors/Multicast from DEVS:Monitors/P96" "monitor made from AROS's P96 monitor"
 [ -f "$AROSFS/Libs/Picasso96/Multicast.card" ] && cmp -s build/Multicast.card "$AROSFS/Libs/Picasso96/Multicast.card" \
 	&& pass "LIBS:Picasso96/Multicast.card in place" || fail "LIBS:Picasso96/Multicast.card in place"

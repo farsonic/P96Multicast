@@ -6,9 +6,9 @@
  * monitor is a copy of the same small program. AROS's DEVS:Monitors/P96
  * loads the card named after the file instead. So:
  *
- *   1. Multicast.card and Wrap.card go to LIBS:Picasso96/, from next to
- *      this program (PROGDIR:, PROGDIR:Libs/Picasso96/ or the package's
- *      Libs/Picasso96/ beside it).
+ *   1. Multicast.card and Wrap.card go to LIBS:Picasso96/, from FROM=, or
+ *      the package's Libs/Picasso96/ beside this program or in the current
+ *      directory (install_card).
  *   2. The monitor: DEVS:Monitors/Wrap if Wrap.card is used (CARD= set),
  *      else DEVS:Monitors/Multicast, copied from a P96 monitor already
  *      there (one whose icon has BOARDTYPE=, or AROS's P96), with an icon
@@ -262,29 +262,62 @@ static BOOL write_icon(const char *monitor, const char *template, const char *na
 	return ok;
 }
 
+/* TRUE if a and b are the same file (one copied onto the other would be lost) */
+static BOOL same_file(const char *a, const char *b)
+{
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR oldwin = me->pr_WindowPtr;
+	BPTR la, lb;
+	BOOL same = FALSE;
+
+	me->pr_WindowPtr = (APTR)-1;
+	la = Lock((STRPTR)a, ACCESS_READ);
+	lb = Lock((STRPTR)b, ACCESS_READ);
+	me->pr_WindowPtr = oldwin;
+	if (la && lb) {
+		char na[160], nb[160];
+
+		/* SameLock, and the full names as well, for file systems it can't tell */
+		same = SameLock(la, lb) == LOCK_SAME ||
+		       (NameFromLock(la, (STRPTR)na, sizeof(na)) &&
+		        NameFromLock(lb, (STRPTR)nb, sizeof(nb)) && !mp_stricmp(na, nb));
+	}
+	if (la)
+		UnLock(la);
+	if (lb)
+		UnLock(lb);
+	return same;
+}
+
+/*
+ * Where the package's cards are: FROM=, then Libs/Picasso96 beside the
+ * program or in the current directory (a shell like bash may not give the
+ * program a PROGDIR: of its own), then the program's or the current
+ * directory itself. Never LIBS:Picasso96 itself: that is where they go.
+ */
 static void install_card(const char *file)
 {
-	static const char *from[] = { NULL, "PROGDIR:/Libs/Picasso96/", "PROGDIR:Libs/Picasso96/",
-	                              "PROGDIR:" };
+	static const char *from[] = { NULL, "PROGDIR:Libs/Picasso96/", "Libs/Picasso96/",
+	                              "PROGDIR:", "" };
 	char src[160], dst[100];
 	int i;
 
 	snprintf(dst, sizeof(dst), "LIBS:Picasso96/%s", file);
-	for (i = source ? 0 : 1; i < 4; i++) {
+	for (i = source ? 0 : 1; i < 5; i++) {
 		const char *d = i ? from[i] : source;
 		int l = strlen(d);
 
 		snprintf(src, sizeof(src), "%s%s%s", d,
 		         l && d[l - 1] != ':' && d[l - 1] != '/' ? "/" : "", file);
-		if (exists(src))
+		if (exists(src) && !same_file(src, dst))
 			break;
 	}
-	if (i == 4) {
+	if (i == 5) {
 		if (exists(dst))
-			notef("%s is already in LIBS:Picasso96 (no newer copy next to %s)", file,
-			      "MulticastPrefs");
+			notef("%s is already in LIBS:Picasso96 (no other copy found%s)", file,
+			      source ? "" : "; FROM= says where");
 		else {
-			notef("%s not found next to MulticastPrefs%s", file, "");
+			notef("%s not found: give FROM=<the package's Libs/Picasso96>%s", file, "");
 			failed = TRUE;
 		}
 		return;
