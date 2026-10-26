@@ -30,7 +30,7 @@ def check(ok, what):
 
 def setup():
     shutil.rmtree(DIR, ignore_errors=True)
-    for d in ("env", "envarc", "libs", "devs/Monitors", "sys"):
+    for d in ("env", "envarc", "libs", "devs/Monitors", "sys", "c"):
         os.makedirs(os.path.join(DIR, d))
 
 
@@ -41,6 +41,7 @@ def run(*args, cwd=None):
                    "-a", "LIBS:p96:build/prefstest.d/libs",
                    "-a", "DEVS:p96:build/prefstest.d/devs",
                    "-a", "SYS:p96:build/prefstest.d/sys",
+                   "-a", "C:p96:build/prefstest.d/c",
                    "build/MulticastPrefs"] + list(args)
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = "\n".join(l for l in p.stdout.splitlines())
@@ -134,9 +135,17 @@ def main():
     os.makedirs(pkg)
     for c in ("Multicast.card", "Wrap.card"):
         shutil.copy(os.path.join(ROOT, "build", c), pkg)
+    os.makedirs(os.path.join(DIR, "pkg", "C"))
+    for t in ("mctest", "wrapstat"):
+        shutil.copy(os.path.join(ROOT, "build", t), os.path.join(DIR, "pkg", "C"))
+    write("c", "mctest", "an old mctest")
     rc, out = run("INSTALL", cwd="p96:build/prefstest.d/pkg")
     check("Copied Libs/Picasso96/Multicast.card to LIBS:Picasso96/Multicast.card" in out,
           "the cards found in the current directory's Libs/Picasso96: %r" % out.splitlines()[:2])
+    with open(os.path.join(ROOT, "build", "mctest"), "rb") as a, \
+            open(os.path.join(DIR, "c", "mctest"), "rb") as b:
+        check(a.read() == b.read() and os.path.exists(os.path.join(DIR, "c", "wrapstat")),
+              "mctest and wrapstat copied to C:, the old mctest replaced")
     # a copy onto itself is no copy: FROM= the installed cards
     size = os.path.getsize(os.path.join(libs, "Multicast.card"))
     rc, out = run("INSTALL", "FROM=LIBS:Picasso96")

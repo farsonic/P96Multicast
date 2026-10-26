@@ -8,7 +8,8 @@
  *
  *   1. Multicast.card and Wrap.card go to LIBS:Picasso96/, from FROM=, or
  *      the package's Libs/Picasso96/ beside this program or in the current
- *      directory (install_card).
+ *      directory (install_card); mctest and wrapstat from the package's C/
+ *      to C:, so an old copy there doesn't answer for the new cards.
  *   2. The monitor: DEVS:Monitors/Wrap if Wrap.card is used (CARD= set),
  *      else DEVS:Monitors/Multicast, copied from a P96 monitor already
  *      there (one whose icon has BOARDTYPE=, or AROS's P96), with an icon
@@ -331,6 +332,31 @@ static void install_card(const char *file)
 	}
 }
 
+/* the package's tools to C: (a tool not found is only mentioned) */
+static void install_tool(const char *file)
+{
+	static const char *from[] = { "PROGDIR:C/", "C/" };
+	char src[100], dst[100];
+	int i;
+
+	snprintf(dst, sizeof(dst), "C:%s", file);
+	for (i = 0; i < 2; i++) {
+		snprintf(src, sizeof(src), "%s%s", from[i], file);
+		if (exists(src) && !same_file(src, dst))
+			break;
+	}
+	if (i == 2) {
+		notef("%s: not found in the package's C/, C:%s left as it is", file, file);
+		return;
+	}
+	if (copy_file(src, dst))
+		notef("Copied %s to %s", src, dst);
+	else {
+		notef("Could not copy %s to %s", src, dst);
+		failed = TRUE;
+	}
+}
+
 BOOL install(void (*note)(const char *), BOOL dry_run, const char *from)
 {
 	const char *card = prefs_value(find_setting("CARD"));
@@ -349,6 +375,8 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from)
 
 	install_card("Multicast.card");
 	install_card("Wrap.card");
+	install_tool("mctest");
+	install_tool("wrapstat");
 
 	snprintf(monitor, sizeof(monitor), "DEVS:Monitors/%s", monitor_name);
 	snprintf(icon, sizeof(icon), "%s.info", monitor);
