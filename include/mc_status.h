@@ -45,6 +45,8 @@ struct McStatus {
 	ULONG vramsize;        /* video memory taken, bytes */
 	ULONG setgc_calls;     /* SetGC: rtg.library set up a display mode */
 	ULONG panning_calls;   /* SetPanning: a bitmap was put on display */
+	UWORD modes_before;    /* resolutions P96 had for the board at InitCard */
+	UWORD modes_added;     /* ... and the card's own it added (modes.c) */
 
 	/* BLITTER=1, the first board */
 	UWORD blitter;         /* the drawing functions are recorded */

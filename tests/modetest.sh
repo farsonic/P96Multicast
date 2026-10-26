@@ -30,3 +30,9 @@ run 3 2560x1024
 # MODES=NONE: P96's settings
 printf 'VRAM=1\nMODES=NONE\n' > "$DIR/env/Multicast.prefs"
 run 0
+# P96 has modes of its own for the board already (Picasso96Mode settings):
+# without MODES= the card adds none; with it, none P96 has (640x480, 0x5003)
+printf 'VRAM=4\n' > "$DIR/env/Multicast.prefs"
+run 0 - PRE
+printf 'VRAM=4\nMODES=640x480,800x600\n' > "$DIR/env/Multicast.prefs"
+run 1 800x600 PRE

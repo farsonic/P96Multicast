@@ -7,7 +7,14 @@
  * Multicast.card does that, with the sizes in MODES= or a built-in list,
  * each in every depth class whose screen fits in the video memory. A frame
  * buffer has no monitor, so the timings only have to be plausible.
- * MODES=NONE leaves the list to P96's settings.
+ *
+ * P96 also adds the modes its settings have for the board, and refuses two
+ * resolutions with the same DisplayID ("at least one DisplayID already
+ * exists"). So the card never adds a size or a DisplayID that is already in
+ * the list, and without MODES= it adds none at all if the list already has
+ * some when InitCard runs: the user's Picasso96Mode settings win. MODES=NONE
+ * leaves the list to P96's settings in any case. How many were there before
+ * and how many the card added is in the status block (mctest STATUS).
  *
  * AROS's p96gfx.hidd makes its own list from a fixed table after InitCard,
  * so there these are not used.
@@ -15,6 +22,7 @@
 #include <exec/memory.h>
 #include <exec/lists.h>
 #include <proto/exec.h>
+#include <clib/alib_protos.h>
 #include "mcard.h"
 
 /* P96's numbers for the usual sizes: the table in UAE's picasso96_win.cpp.
@@ -96,16 +104,37 @@ static void fill_mode(struct ModeInfo *mi, UWORD w, UWORD h, UBYTE depth)
 	mi->Denominator = 1;
 }
 
+/* a resolution of this size or with this DisplayID is already in the list */
+static BOOL taken(struct BoardInfo *bi, UWORD w, UWORD h, ULONG id)
+{
+	struct LibResolution *r;
+
+	for (r = (struct LibResolution *)bi->ResolutionsList.mlh_Head; r->Node.ln_Succ;
+	     r = (struct LibResolution *)r->Node.ln_Succ)
+		if ((r->Width == w && r->Height == h) || r->DisplayID == id)
+			return TRUE;
+	return FALSE;
+}
+
 void mc_modes_build(struct McCard *mc)
 {
 	struct BoardInfo *bi = mc->bi;
 	struct McConfig *cfg = &mc->cfg;
 	static const UBYTE depths[MAXMODES] = { 0, 8, 16, 24, 32 };
 	UWORD sizes[MC_MAXMODES][2];
-	UWORD n = 0, unknown = 0, i;
+	UWORD n = 0, unknown = 0, i, before = 0, added = 0;
+	struct Node *nd;
 	UBYTE *p;
 
-	if (cfg->nomodes)
+	/* what P96 put in the list before InitCard (an empty list may be unset) */
+	if (bi->ResolutionsList.mlh_Head && bi->ResolutionsList.mlh_TailPred)
+		for (nd = (struct Node *)bi->ResolutionsList.mlh_Head; nd->ln_Succ; nd = nd->ln_Succ)
+			before++;
+	else
+		NewList((struct List *)&bi->ResolutionsList);
+	if (mc->boardnum == 0)
+		mc_status->modes_before = before;
+	if (cfg->nomodes || (!cfg->nmodes && before))
 		return;
 	if (cfg->nmodes) {
 		for (i = 0; i < cfg->nmodes; i++) {
@@ -150,6 +179,9 @@ void mc_modes_build(struct McCard *mc)
 		}
 		if (!any)
 			continue;
+		res->DisplayID = display_id(w, h, mc->boardnum, &unknown);
+		if (taken(bi, w, h, res->DisplayID))
+			continue;
 		/* "Multicast:640x480" */
 		while (*b && name < res->Name + MAXRESOLUTIONNAMELENGTH - 11)
 			*name++ = *b++;
@@ -160,12 +192,14 @@ void mc_modes_build(struct McCard *mc)
 		*name = 0;
 		CopyMem("P96-0:", res->P96ID, 6);
 		res->Node.ln_Name = res->P96ID;
-		res->DisplayID = display_id(w, h, mc->boardnum, &unknown);
 		res->Width = w;
 		res->Height = h;
 		res->Flags = P96F_PUBLIC;
 		res->BoardInfo = bi;
 		AddTail((struct List *)&bi->ResolutionsList, &res->Node);
+		added++;
+		if (mc->boardnum == 0)
+			mc_status->modes_added = added;
 		/* a MODES= size beyond MAXWIDTH x MAXHEIGHT raises the board's limits */
 		for (k = CHUNKY; k < MAXMODES; k++) {
 			if (!res->Modes[k])

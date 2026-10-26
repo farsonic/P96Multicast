@@ -267,6 +267,8 @@ static void status(void)
 		       st.fast_largest >> 10, st.vramsize >> 10);
 		printf("  SetGC called %lu times, SetPanning %lu times%s\n", st.setgc_calls,
 		       st.panning_calls, st.setgc_calls ? "" : " (no screen shown on the card yet)");
+		printf("  screen modes: %u from P96's settings when InitCard ran, %u added by the card\n",
+		       st.modes_before, st.modes_added);
 		if (st.blitter) {
 			int k;
 

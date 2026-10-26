@@ -3,9 +3,10 @@
  * this program in the place of rtg.library, and checks the screen modes it
  * puts in bi->ResolutionsList (src/modes.c).
  *
- *   modetest PATH COUNT [WxH]   PATH: Multicast.card's file
- *                               COUNT: the resolutions expected
- *                               WxH: one that must be among them
+ *   modetest PATH COUNT [WxH [PRE]]  PATH: Multicast.card's file
+ *                               COUNT: the resolutions the card is to add
+ *                               WxH: one that must be among them (- for none)
+ *                               PRE: P96 has a 640x480 of its own already
  *
  * tests/modetest.sh sets up LIBS: and ENV: for it.
  */
@@ -36,11 +37,11 @@ int main(int argc, char **argv)
 	static const UBYTE depths[MAXMODES] = { 0, 8, 16, 24, 32 };
 	struct Library *card;
 	struct BoardInfo *bi;
-	struct LibResolution *res;
+	struct LibResolution *res, pre;
 	int count = 0, want = argc > 2 ? atoi(argv[2]) : -1, found = 0, good = 1;
 	UWORD fw = 0, fh = 0;
 
-	if (argc > 3)
+	if (argc > 3 && argv[3][0] != '-')
 		sscanf(argv[3], "%hux%hu", &fw, &fh);
 	card = OpenLibrary((STRPTR)(argc > 1 ? argv[1] : "LIBS:Picasso96/Multicast.card"), 0);
 	check(card != NULL, "Multicast.card opens");
@@ -50,6 +51,14 @@ int main(int argc, char **argv)
 	bi->CardBase = card;
 	bi->ExecBase = SysBase;
 	NewList((struct List *)&bi->ResolutionsList);
+	if (argc > 4) {
+		/* a resolution from P96's settings, there before InitCard */
+		memset(&pre, 0, sizeof(pre));
+		pre.Width = 640;
+		pre.Height = 480;
+		pre.DisplayID = 0x50031000;
+		AddTail((struct List *)&bi->ResolutionsList, &pre.Node);
+	}
 	check(__FindCard(card, bi), "FindCard");
 	/* InitCard fails here when vamos cannot start the sender; the modes come before */
 	__InitCard(card, bi, NULL);
@@ -58,6 +67,8 @@ int main(int argc, char **argv)
 	     res->Node.ln_Succ; res = (struct LibResolution *)res->Node.ln_Succ) {
 		int k, n = 0;
 
+		if (res == &pre)
+			continue;
 		count++;
 		printf("  %08lx %4ux%-4u %-22s", res->DisplayID, res->Width, res->Height, res->Name);
 		for (k = CHUNKY; k < MAXMODES; k++) {

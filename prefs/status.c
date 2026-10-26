@@ -75,6 +75,7 @@ int status_lines(char lines[][80], int max)
 			if (ms.error)
 				LINE("  setup failed: error %u", ms.error);
 			LINE("  video memory: %lu KB", ms.vramsize >> 10);
+			LINE("  modes: %u from P96, %u from the card", ms.modes_before, ms.modes_added);
 			LINE("  modes set %lu, screens shown %lu", ms.setgc_calls, ms.panning_calls);
 			if (ms.blitter)
 				LINE("  drawing calls: %lu of %lu tiles", ms.tiles_explained, ms.tiles_changed);
