@@ -211,6 +211,7 @@ the magic, the version, a type and the stream.
 | `CPU` | 20 | most percent of the time the background scan may take |
 | `HISTORY` | 512 | KB of sent datagrams kept for repairs |
 | `REFRESH` | 10 | seconds between whole screens while no viewer talks back (0 = never) |
+| `SPLIT` | 1x1 | the screen in C×R parts, each a stream of its own on PORT, PORT+1, ... (a sender each, with its own shadow, history and ring position) |
 
 ## What it costs
 

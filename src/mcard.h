@@ -47,6 +47,7 @@ struct McConfig {
 	UWORD boardtype;
 	UWORD boards;      /* boards to offer, 1-MC_MAXBOARDS */
 	UWORD blitter;     /* send the drawing functions as orders (BLITTER=1) */
+	UWORD split_cols, split_rows;  /* SPLIT=CxR: a stream for each part of the screen */
 	UWORD pointer;     /* a hardware pointer, drawn by the viewers (POINTER=1) */
 	UWORD scan;        /* seconds to compare the whole screen at most once */
 	UWORD cpu;         /* percent of the CPU the background comparing may take */
@@ -64,6 +65,9 @@ struct McConfig {
  * second one on, so its modes can be told apart.
  */
 #define MC_MAXBOARDS 8
+
+/* SPLIT=CxR: at most this many parts, each sent to a port of its own */
+#define MC_MAXVIEWS 4
 
 /*
  * The order ring: the drawing functions (orders.c) put what they draw on
@@ -129,10 +133,16 @@ struct McCard {
 	APTR   modes;          /* the resolutions made for P96 (modes.c) */
 	ULONG  modessize;
 
-	/* the order ring: bytes put in and taken off so far */
+	/*
+	 * The order ring: bytes put in so far, and taken off by the slowest
+	 * sender (each part of a SPLIT= screen has its own, view_tail).
+	 */
 	UBYTE *ring;
 	volatile ULONG ring_head, ring_tail;
-	volatile UWORD ring_lost;    /* it overflowed: compare everything */
+	volatile ULONG view_tail[MC_MAXVIEWS];
+	volatile ULONG ring_lost;    /* times it overflowed: compare everything */
+	volatile UWORD ring_full;
+	UWORD  nviews;               /* senders: SPLIT= columns x rows */
 
 	/* POINTER=1: the hardware pointer */
 	volatile ULONG ptr_serial;   /* shape or colours changed */

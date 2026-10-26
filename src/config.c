@@ -25,6 +25,7 @@ void mc_config_defaults(struct McConfig *cfg)
 	cfg->cpu = 20;
 	cfg->history = 512UL * 1024;
 	cfg->pointer = 1;
+	cfg->split_cols = cfg->split_rows = 1;
 	cfg->vramsize = 8UL * 1024 * 1024;
 	cfg->maxwidth = 1920;
 	cfg->maxheight = 1200;
@@ -138,6 +139,19 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 		/* KB */
 		if (parse_num(v, &n) && n >= 16 && n <= 4096)
 			cfg->history = n * 1024;
+	} else if ((v = match_key(line, "split")) != NULL) {
+		/* SPLIT=2x1: columns x rows, at most MC_MAXVIEWS parts */
+		LONG c, r;
+
+		if (parse_num(v, &c)) {
+			while (*v >= '0' && *v <= '9')
+				v++;
+			if ((*v == 'x' || *v == 'X') && parse_num(v + 1, &r) && c >= 1 && r >= 1 &&
+			    c * r <= MC_MAXVIEWS) {
+				cfg->split_cols = c;
+				cfg->split_rows = r;
+			}
+		}
 	} else if ((v = match_key(line, "pointer")) != NULL) {
 		if (parse_num(v, &n))
 			cfg->pointer = n != 0;

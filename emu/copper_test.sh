@@ -10,7 +10,9 @@
 #   emu/copper_test.sh [TIMEOUT]
 #
 # Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-copper),
-# DEPTHS (default "8 16 32"), EXTRA_PREFS (more lines for Multicast.prefs).
+# DEPTHS (default "8 16 32"), EXTRA_PREFS (more lines for Multicast.prefs),
+# VIEW_ARGS (more for the viewer: with EXTRA_PREFS=SPLIT=2x1, --span 2x1; the
+# parts put together must then be the card's screen).
 set -u
 cd "$(dirname "$0")/.."
 TIMEOUT=${1:-1500}
@@ -124,7 +126,7 @@ status=0
 SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
 # the viewer, keeping its picture in the card's format too
-python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP \
+python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP ${VIEW_ARGS:-} \
 	--snapshot "$OUT/last.png" --raw "$OUT/view.raw" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
 vpid=$!
 start=$(date +%s)

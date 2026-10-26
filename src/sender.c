@@ -52,6 +52,9 @@ struct Viewer {
 
 struct Sender {
 	struct McCard *mc;
+	UWORD  view;                     /* which part of a SPLIT= screen, 0 for the first */
+	WORD   vx, vy;                   /* its top left on the screen */
+	ULONG  lost_seen;                /* mc->ring_lost, last handled */
 	struct McConfig *cfg;
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
@@ -145,9 +148,9 @@ static void mc_log(struct Sender *s, const char *fmt, LONG a, LONG b, LONG c, LO
 		return;
 	for (i = 0; s->mc->cfg.log[i]; i++)
 		path[i] = s->mc->cfg.log[i];
-	if (s->mc->boardnum) {
+	if (s->mc->boardnum || s->view) {
 		path[i++] = '.';
-		path[i++] = '1' + s->mc->boardnum;
+		path[i++] = '1' + s->mc->boardnum + s->view;
 	}
 	path[i] = 0;
 	args[0] = a;
@@ -192,7 +195,7 @@ static UWORD get16(const UBYTE *p)
 
 static BOOL first_board(struct Sender *s)
 {
-	return s->mc->boardnum == 0;
+	return s->mc->boardnum == 0 && s->view == 0;
 }
 
 /* ---------------------------------------------------------------- datagrams */
@@ -226,6 +229,13 @@ static void finish(struct Sender *s)
 }
 
 static void flush_solid(struct Sender *s);
+static void set_tail(struct Sender *s, ULONG tail);
+
+/* what a sender process is started with: its board, and its part of the screen */
+struct Start {
+	struct McCard *mc;
+	UWORD view;
+};
 
 /* a record of len bytes: returns where its body goes */
 static UBYTE *rec(struct Sender *s, UBYTE type, ULONG len)
@@ -353,8 +363,8 @@ static void send_pointer_pos(struct Sender *s)
 	UBYTE *p = rec(s, CU_POINTERPOS, 6);
 
 	s->pos_serial = mc->pos_serial;
-	s->ptr_vx = mc->ptr_x - s->xoff;
-	s->ptr_vy = mc->ptr_y - s->yoff;
+	s->ptr_vx = mc->ptr_x - s->xoff - s->vx;
+	s->ptr_vy = mc->ptr_y - s->yoff - s->vy;
 	put16(p, s->ptr_vx);
 	put16(p + 2, s->ptr_vy);
 	p[4] = mc->ptr_on;
@@ -581,13 +591,23 @@ static BOOL snapshot(struct Sender *s)
 	}
 	if (bmw < w)
 		bmw = w;
+	/* SPLIT=: this sender's part of the screen */
+	{
+		UWORD cols = mc->cfg.split_cols ? mc->cfg.split_cols : 1;
+		UWORD rows = mc->cfg.split_rows ? mc->cfg.split_rows : 1;
+
+		w /= cols;
+		h /= rows;
+		s->vx = (s->view % cols) * w;
+		s->vy = (s->view / cols) * h;
+	}
 	newmode = w != s->w || h != s->h || fmt != s->fmt || !s->sh.mem;
 	moved = bm != s->bm || xoff != s->xoff || yoff != s->yoff;
 	s->bm = bm;
 	s->xoff = xoff;
 	s->yoff = yoff;
 	s->bpr = mc_bytesperrow(bmw, fmt);
-	s->src = bm + yoff * s->bpr + xoff * bpp;
+	s->src = bm + (yoff + s->vy) * s->bpr + (xoff + s->vx) * bpp;
 
 	if (newmode) {
 		free_tiles(s);
@@ -632,10 +652,7 @@ static BOOL snapshot(struct Sender *s)
 	}
 	if (newmode || moved) {
 		/* what is on the ring was drawn for the old screen */
-		Forbid();
-		mc->ring_tail = mc->ring_head;
-		mc->ring_lost = 0;
-		Permit();
+		set_tail(s, mc->ring_head);
 	}
 	if (newmode || !s->visible) {
 		s->visible = TRUE;
@@ -648,6 +665,28 @@ static BOOL snapshot(struct Sender *s)
 }
 
 /* ---------------------------------------------------------------- orders */
+
+/*
+ * This sender has taken the ring up to tail. The writers may overwrite only
+ * what every sender has taken: the ring's tail is the one furthest behind.
+ */
+static void set_tail(struct Sender *s, ULONG tail)
+{
+	struct McCard *mc = s->mc;
+	ULONG oldest = tail, head;
+	UWORD i;
+
+	Forbid();
+	head = mc->ring_head;
+	mc->view_tail[s->view] = tail;
+	for (i = 0; i < mc->nviews; i++)
+		if (head - mc->view_tail[i] > head - oldest)
+			oldest = mc->view_tail[i];
+	mc->ring_tail = oldest;
+	if (head - oldest < MC_RING_SIZE / 2)
+		mc->ring_full = 0;
+	Permit();
+}
 
 /* clip to the screen; *cx, *cy: how much was cut off on the left and the top */
 static BOOL clip(struct Sender *s, LONG *x, LONG *y, LONG *w, LONG *h, LONG *cx, LONG *cy)
@@ -712,14 +751,14 @@ static void order_text(struct Sender *s, struct McText *m, LONG x, LONG y, LONG 
 
 static void order(struct Sender *s, struct McRec *r)
 {
-	LONG x = r->x, y = r->y, w = r->w, h = r->h, cx, cy;
+	LONG x = r->x - s->vx, y = r->y - s->vy, w = r->w, h = r->h, cx, cy;
 	UBYTE px[4], *p;
 
 	if (r->type == MC_R_PAD)
 		return;
 	if (r->type == MC_R_COPY) {
 		struct McCopy *c = (struct McCopy *)r;
-		LONG sx = c->sx, sy = c->sy;
+		LONG sx = c->sx - s->vx, sy = c->sy - s->vy;
 
 		if (!clip(s, &x, &y, &w, &h, &cx, &cy))
 			return;
@@ -805,12 +844,10 @@ static void take_orders(struct Sender *s)
 
 	if (!mc->ring)
 		return;
-	if (mc->ring_lost) {
-		/* drawing went faster than the sender: compare everything */
-		Forbid();
-		mc->ring_tail = mc->ring_head;
-		mc->ring_lost = 0;
-		Permit();
+	if (mc->ring_lost != s->lost_seen) {
+		/* drawing went faster than the senders: compare everything */
+		s->lost_seen = mc->ring_lost;
+		set_tail(s, mc->ring_head);
 		for (t = 0; t < s->ntiles; t++)
 			if (!s->heat[t])
 				s->heat[t] = 1;
@@ -818,14 +855,14 @@ static void take_orders(struct Sender *s)
 		return;
 	}
 	head = mc->ring_head;
-	tail = mc->ring_tail;
+	tail = mc->view_tail[s->view];
 	while (tail != head && room_orders(s)) {
 		struct McRec *r = (struct McRec *)(mc->ring + (tail & (MC_RING_SIZE - 1)));
 
 		order(s, r);
 		tail += r->len;
 	}
-	mc->ring_tail = tail;
+	set_tail(s, tail);
 }
 
 /* ---------------------------------------------------------------- viewers */
@@ -955,8 +992,8 @@ static BOOL mouse(struct Sender *s, WORD *x, WORD *y)
 	scr = s->ibase->FirstScreen;
 	if (!scr)
 		return FALSE;
-	*x = scr->MouseX - s->xoff;
-	*y = scr->MouseY - s->yoff;
+	*x = scr->MouseX - s->xoff - s->vx;
+	*y = scr->MouseY - s->yoff - s->vy;
 	return TRUE;
 }
 
@@ -1097,7 +1134,8 @@ static void pass(struct Sender *s)
 		if (mc->ptr_serial != s->ptr_serial)
 			send_pointer(s);
 		if (mc->pos_serial != s->pos_serial ||
-		    (mc->ptr_on && (mc->ptr_x - s->xoff != s->ptr_vx || mc->ptr_y - s->yoff != s->ptr_vy)))
+		    (mc->ptr_on && (mc->ptr_x - s->xoff - s->vx != s->ptr_vx ||
+		                     mc->ptr_y - s->yoff - s->vy != s->ptr_vy)))
 			send_pointer_pos(s);
 		take_orders(s);
 		compare(s);
@@ -1148,7 +1186,7 @@ static BOOL open_socket(struct Sender *s)
 	IoctlSocket(s->sock, FIONBIO, (APTR)&one);
 	s->to.sin_len = sizeof(s->to);
 	s->to.sin_family = AF_INET;
-	s->to.sin_port = s->mc->cfg.port + s->mc->boardnum;
+	s->to.sin_port = s->mc->cfg.port + s->mc->boardnum + s->view;
 	s->to.sin_addr.s_addr = s->mc->cfg.dest;
 	return TRUE;
 }
@@ -1182,25 +1220,29 @@ static BOOL alloc_history(struct Sender *s)
 static void SenderMain(void)
 {
 	struct Task *me = FindTask(NULL);
+	struct Start *start;
 	struct McCard *mc;
 	struct Sender *s;
 	struct DateStamp ds;
 	ULONG ticks;
 
 	/* the parent sets tc_UserData right after creating us */
-	while (!(mc = me->tc_UserData))
+	while (!(start = me->tc_UserData))
 		Delay(1);
+	mc = start->mc;
 
 	s = AllocMem(sizeof(*s), MEMF_PUBLIC | MEMF_CLEAR);
 	if (!s)
 		return;
 	s->mc = mc;
+	s->view = start->view;
 	s->cfg = &mc->cfg;
 	s->serial = mc->serial - 1;
 	s->ptr_serial = mc->ptr_serial - 1;
 	s->sock = -1;
 	DateStamp(&ds);
-	s->stream = (ds.ds_Days << 20) ^ (ds.ds_Minute << 12) ^ (ds.ds_Tick << 4) ^ (ULONG)mc;
+	s->stream = (ds.ds_Days << 20) ^ (ds.ds_Minute << 12) ^ (ds.ds_Tick << 4) ^ (ULONG)mc ^
+	            ((ULONG)s->view << 28);
 
 	mc_config_env(&mc->cfg);
 	mc_log(s, MC_CARDNAME " " MC_VERSION_STR " sender started, vram %ld KB at $%lx\n",
@@ -1270,34 +1312,65 @@ static void SenderMain(void)
 		FreeMem(s->hist, s->nhist * CU_MAX_DGRAM);
 	if (s->hlen)
 		FreeMem(s->hlen, s->nhist * sizeof(UWORD));
-	FreeMem(s, sizeof(*s));
-	Forbid();
-	mc->sender = NULL;
+	{
+		UWORD view = s->view;
+
+		FreeMem(s, sizeof(*s));
+		Forbid();
+		if (!view)
+			mc->sender = NULL;
+	}
 }
 
 BOOL mc_sender_start(struct McCard *mc)
 {
-	/* "Multicast.card sender", then "Multicast.card sender 2", ... */
-	static char names[MC_MAXBOARDS][24];
-	char *name = names[mc->boardnum];
+	/*
+	 * "Multicast.card sender", "Multicast.card sender 2" for the second
+	 * board, ...; with SPLIT=, the further parts' senders are
+	 * "Multicast.card part 2" and so on.
+	 */
+	static char names[MC_MAXBOARDS][MC_MAXVIEWS][24];
+	static struct Start starts[MC_MAXBOARDS][MC_MAXVIEWS];
 	struct Process *p;
+	UWORD v, n = mc->cfg.split_cols * mc->cfg.split_rows;
 
-	CopyMem("Multicast.card sender", name, 22);
-	if (mc->boardnum) {
-		name[21] = ' ';
-		name[22] = '1' + mc->boardnum;
-		name[23] = 0;
+	if (n < 1 || n > MC_MAXVIEWS)
+		n = 1;
+	mc->nviews = n;
+	for (v = 0; v < n; v++) {
+		char *name = names[mc->boardnum][v];
+
+		mc->view_tail[v] = mc->ring_head;
+		if (v) {
+			CopyMem("Multicast.card part ", name, 20);
+			name[20] = '1' + v;
+			name[21] = mc->boardnum ? '/' : 0;
+			name[22] = '1' + mc->boardnum;
+			name[23] = 0;
+		} else {
+			CopyMem("Multicast.card sender", name, 22);
+			if (mc->boardnum) {
+				name[21] = ' ';
+				name[22] = '1' + mc->boardnum;
+				name[23] = 0;
+			}
+		}
+		starts[mc->boardnum][v].mc = mc;
+		starts[mc->boardnum][v].view = v;
+		Forbid();
+		p = CreateNewProcTags(NP_Entry, (ULONG)SenderMain,
+		                      NP_Name, (ULONG)name,
+		                      NP_Priority, mc->cfg.pri,
+		                      NP_StackSize, 8192,
+		                      TAG_END);
+		if (p) {
+			p->pr_Task.tc_UserData = &starts[mc->boardnum][v];
+			if (!v)
+				mc->sender = p;
+		}
+		Permit();
+		if (!p)
+			return v > 0;
 	}
-	Forbid();
-	p = CreateNewProcTags(NP_Entry, (ULONG)SenderMain,
-	                      NP_Name, (ULONG)name,
-	                      NP_Priority, mc->cfg.pri,
-	                      NP_StackSize, 8192,
-	                      TAG_END);
-	if (p) {
-		p->pr_Task.tc_UserData = mc;
-		mc->sender = p;
-	}
-	Permit();
-	return p != NULL;
+	return TRUE;
 }

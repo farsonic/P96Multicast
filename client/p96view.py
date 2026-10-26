@@ -724,6 +724,26 @@ def composite(heads):
     return w, h, bytes(out)
 
 
+def write_raw_wall(path, heads):
+    """All heads as one screen in the card's format (write_raw's), if they share it."""
+    import os
+    offsets, w, h = wall(heads)
+    bpp = heads[0].screen.bpp
+    if any(hd.screen.bpp != bpp for hd in heads):
+        return
+    out = bytearray(w * h * bpp)
+    for hd, (ox, oy) in zip(heads, offsets):
+        scr, row = hd.screen, hd.screen.width * bpp
+        for y in range(scr.height):
+            o = ((oy + y) * w + ox) * bpp
+            out[o:o + row] = scr.pixels[y * row:(y + 1) * row]
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(struct.pack(">IIHH", w, h, heads[0].screen.fmt, bpp))
+        f.write(out)
+    os.replace(tmp, path)
+
+
 def receive_some(sock, viewer, limit=4000):
     """Whatever has arrived, without waiting. Returns the record types applied."""
     types = []
@@ -753,6 +773,8 @@ def run_headless(heads, args):
                 write_raw(args.raw, scr)
         else:
             write_png(args.snapshot, *composite(heads))
+            if args.raw:
+                write_raw_wall(args.raw, heads)
 
     while end is None or time.time() < end:
         select.select([h.sock for h in heads], [], [], 0.05)

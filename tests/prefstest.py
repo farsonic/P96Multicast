@@ -215,14 +215,15 @@ def main():
     print("    " + out.replace("\n", "\n    "))
     wrap = read("envarc", "Wrap.prefs") or []
     mc = read("envarc", "Multicast.prefs") or []
-    check(rc == 0 and "CARD=Multicast.card" in wrap and "SPAN=2x1" in wrap and
-          "HEAD=Multicast.card" in wrap and "BOARDS=3" in mc and
-          os.path.exists(os.path.join(mon, "Wrap")) and os.path.exists(os.path.join(mon, "uaegfx"))
-          and not os.path.exists(os.path.join(mon, "Multicast")),
-          "SETUP=DESKTOP: a Multicast screen over two Multicast boards, uaegfx kept: %r %r"
+    check(rc == 0 and not any(l.startswith("CARD=") for l in wrap) and "SPLIT=2x1" in mc and
+          "BOARDS=1" in mc and any(l.startswith("MODES=1280x480,1600x600") for l in mc) and
+          os.path.exists(os.path.join(mon, "Multicast")) and os.path.exists(os.path.join(mon, "uaegfx"))
+          and not os.path.exists(os.path.join(mon, "Wrap")),
+          "SETUP=DESKTOP: one Multicast screen split in two, uaegfx kept, no Wrap: %r %r"
           % (wrap, mc))
-    check("SPAN=2x1 DEFAULT" in out and "--span 2x1 --port 9697" in out,
+    check("WIDTH=1600 HEIGHT=600 DEPTH=16 DEFAULT" in out and "--span 2x1" in out,
           "... and how to open the screen and watch it")
+    rc, out = run("INSTALL", "SETUP=SINGLE", "DRY", cwd="p96:build/prefstest.d/pkg")
     rc, out = run("INSTALL", "SETUP=SPAN2x2", "DRY", cwd="p96:build/prefstest.d/pkg")
     check(rc == 0 and "2x2" in out, "SETUP=SPAN2x2: %r" % out)
     rc, out = run("INSTALL", "SETUP=SPAN3x3", "DRY", cwd="p96:build/prefstest.d/pkg")
@@ -233,7 +234,8 @@ def main():
     write("devs", "Picasso96Settings", "\x00\x01junk Multicast\x00more")
     rc, out = run("INSTALL", "DRY", "FROM=p96:build")
     check("Picasso96Mode has some for Multicast" in out, "Picasso96Settings with Multicast: no MODES=")
-    rc, out = run("INSTALL", "SETUP=DESKTOP", "DRY", "FROM=p96:build")
+    rc, out = run("SET", "CARD=Multicast.card", "MIRROR=Multicast.card")
+    rc, out = run("INSTALL", "DRY", "FROM=p96:build")
     check("the card's own, MODES=" in out,
           "... but under Wrap.card (a Wrap board) the card's own modes: %r" % out)
     rc, out = run("INSTALL", "SETUP=NONSENSE", "FROM=p96:build")

@@ -101,6 +101,7 @@ P96. `ENV:` wins over ToolTypes.
 | `HISTORY` | 512 | KB of sent datagrams kept, to repair what viewers lost |
 | `REFRESH` | 10 | while no viewer talks back: seconds between whole screens (0 = never) |
 | `POINTER` | 1 | a hardware pointer, drawn by the viewers (0: rtg.library draws it) |
+| `SPLIT` | 1x1 | the screen in CxR parts (at most 4), each sent to a port of its own (PORT, PORT+1, ...): with `p96view.py --span CxR`, a window for each, like monitors, and windows dragged from one to the other. `SETUP=DESKTOP` sets it up |
 | `VRAM` | 8 | video memory in MB (read at boot only) |
 | `MAXWIDTH`, `MAXHEIGHT` | 1920, 1200 | largest screen mode offered |
 | `BOARDTYPE` | 6 | P96 board type reported to rtg.library (6 = PicassoII) |

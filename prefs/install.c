@@ -567,6 +567,7 @@ static BOOL apply_setup(const char *setup)
 		set("MIRROR", "");
 		set("SPAN", "");
 		set("BOARDS", mp_stricmp(setup, "two") ? "1" : "2");
+		set("SPLIT", "");
 		say(mp_stricmp(setup, "two") ? "Setup: one Multicast screen" :
 		    "Setup: two Multicast screens (ports 9696 and 9697)");
 		return TRUE;
@@ -587,6 +588,7 @@ static BOOL apply_setup(const char *setup)
 		set("HEADSHARE", "1");
 		set("MIRRORFPS", "10");
 		set("BOARDS", "1");
+		set("SPLIT", "");
 		notef("Setup: the %s screen mirrored to a Multicast board%s", card,
 		      " (port 9696)");
 		return TRUE;
@@ -622,6 +624,7 @@ static BOOL apply_setup(const char *setup)
 		set("MIRRORFPS", "10");
 		snprintf(nb, sizeof(nb), "%ld", cols * rows);
 		set("BOARDS", nb);
+		set("SPLIT", "");
 		notef("Setup: the %s screen over %s Multicast boards, a part on each,", card, size);
 		say(cols * rows == 2 ? "       one desktop (ports 9696 and 9697)" :
 		    "       one desktop (ports from 9696 on)");
@@ -630,28 +633,30 @@ static BOOL apply_setup(const char *setup)
 	if ((setup[0] | 32) == 'd' && (setup[1] | 32) == 'e' && (setup[2] | 32) == 's' &&
 	    (setup[3] | 32) == 'k' && (setup[4] | 32) == 't' && (setup[5] | 32) == 'o' &&
 	    (setup[6] | 32) == 'p') {
-		/* DESKTOP, DESKTOP2x2: a screen of its own over Multicast boards, a part on each */
+		/*
+		 * DESKTOP, DESKTOP2x2: one Multicast board, its screen split in
+		 * parts, each sent to a port of its own (SPLIT=) for a window each.
+		 * No Wrap.card: the board keeps its own modes, twice as wide.
+		 */
 		const char *size = setup[7] ? setup + 7 : "2x1";
-		const char *why = prefs_check(find_setting("SPAN"), size);
-		LONG cols = size[0] - '0', rows = size[2] - '0';
+		const char *why = prefs_check(find_setting("SPLIT"), size);
 
 		if (why) {
 			notef("Setup DESKTOP%s: %s", setup + 7, why);
 			return FALSE;
 		}
-		set("CARD", "Multicast.card");
+		set("CARD", "");
 		set("MIRROR", "");
-		set("SPAN", size);
-		set("HEAD", "Multicast.card");
-		set("HEAD1", "");
-		set("HEAD2", "");
-		set("HEAD3", "");
-		set("HEAD4", "");
-		set("HEADSHARE", "1");
-		set("MIRRORFPS", "10");
-		snprintf(nb, sizeof(nb), "%ld", cols * rows + 1);
-		set("BOARDS", nb);
-		notef("Setup: a Multicast screen of its own over %s Multicast windows%s", size,
+		set("SPAN", "");
+		set("BOARDS", "1");
+		set("SPLIT", size);
+		set("VRAM", "16");
+		set("MODES", size[0] == '2' && size[2] == '1' ?
+		    "1280x480,1600x600,2048x768,2560x1024,640x480,800x600" :
+		    size[0] == '2' && size[2] == '2' ?
+		    "1280x960,1600x1200,2048x1536,640x480,800x600" :
+		    "640x480,800x600,1024x768,1280x1024");
+		notef("Setup: one Multicast screen split %s, a window for each part%s", size,
 		      ", one desktop; the Workbench stays where it is");
 		return TRUE;
 	}
@@ -729,18 +734,22 @@ static void summary(void)
 	const char *span = prefs_value(find_setting("SPAN"));
 	const char *dest = prefs_value(find_setting("DEST"));
 	const char *boards = prefs_value(find_setting("BOARDS"));
+	const char *split = prefs_value(find_setting("SPLIT"));
 	BOOL multicast = (dest[0] == '2' && dest[1] == '2') || (dest[0] == '2' && dest[1] == '3');
 	char line[160];
 	struct Library *mc;
 
 	say("After the reboot:");
-	if (is_multicast_card(card) && *span) {
-		notef("  open the screen: mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=16 "
-		      "SPAN=%s DEFAULT%s", span, "");
-		say("  (Run >NIL: in front keeps the Shell; programs then open on it, e.g.");
+	if (!*card && *split && strcmp(split, "1x1")) {
+		const char *wh = !strcmp(split, "2x1") ? "WIDTH=1600 HEIGHT=600" :
+		                 !strcmp(split, "2x2") ? "WIDTH=1600 HEIGHT=1200" : "WIDTH=800 HEIGHT=600";
+
+		notef("  open the screen: Run >NIL: mctest PUBSCREEN=MULTICAST %s DEPTH=16 DEFAULT%s",
+		      wh, "");
+		say("  (programs then open on it, e.g.");
 		say("   NewShell \"CON:20/20/600/200/Shell/CLOSE/SCREENMULTICAST\")");
-		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s --port 9697%s",
-		         span, multicast ? "" : " --group 127.0.0.1");
+		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s",
+		         split, multicast ? "" : " --group 127.0.0.1");
 		say(line);
 		say("  a window for each part; drag windows from one to the other");
 		goto running;

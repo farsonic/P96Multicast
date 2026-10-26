@@ -143,9 +143,12 @@ static struct McRec *reserve(struct McCard *mc, ULONG len)
 		goto full;
 	return (struct McRec *)(mc->ring + at);
 full:
-	if (!mc->ring_lost && mc->boardnum == 0)
-		mc_status->ring_lost++;
-	mc->ring_lost = 1;
+	if (!mc->ring_full) {
+		mc->ring_full = 1;
+		mc->ring_lost++;
+		if (mc->boardnum == 0)
+			mc_status->ring_lost++;
+	}
 	return NULL;
 }
 
