@@ -30,14 +30,21 @@
 #include "mcard.h"
 
 /*
- * DisplayIDs from the top of P96's range down: index 0xff, 0xfe, ... for
- * the first board, 24 lower for each further one. Picasso96Mode's settings
+ * Multicast.card 1.3 numbered from 0xff down, and Picasso96Mode saves the
+ * modes it is shown, so those IDs may be in the settings now: 2.0 starts
+ * lower. Neither range is one P96 gives a mode of its own.
+ */
+#define MC_ID_TOP 0xdf
+
+/*
+ * DisplayIDs from high in P96's range down: index MC_ID_TOP, one less, ...
+ * for the first board, 24 lower for each further one. Picasso96Mode's settings
  * and UAE's table number from the bottom (up to 0xb9), so the card's modes
  * never take an ID P96 gives a mode of its own, whenever P96 adds those.
  */
 static ULONG display_id(UWORD board, UWORD i)
 {
-	return 0x50001000UL | ((ULONG)(0xff - board * MC_MAXMODES - i) << 16);
+	return 0x50001000UL | ((ULONG)(MC_ID_TOP - board * MC_MAXMODES - i) << 16);
 }
 
 /*

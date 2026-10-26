@@ -34,13 +34,13 @@ run 0
 # P96 has a 640x480 of its own in the list already: the card skips that size
 printf 'VRAM=4\nMODES=640x480,800x600\n' > "$DIR/env/Multicast.prefs"
 run 1 800x600 PRE
-# Picasso96Mode saved the card's first DisplayID (0x50ff1000): the card skips it
-printf 'junk\120\377\020\000junk' > "$DIR/devs/Picasso96Settings"
+# Picasso96Mode saved the card's first DisplayID (0x50df1000): the card skips it
+printf 'junk\120\337\020\000junk' > "$DIR/devs/Picasso96Settings"
 printf 'VRAM=4\nMODES=640x480,800x600\n' > "$DIR/env/Multicast.prefs"
 out=$(run 2 800x600)
 echo "$out"
-if echo "$out" | grep -qi "50ff1000"; then
-	echo "modetest: FAILED: 50ff1000 is in Picasso96Settings, the card used it anyway"
+if echo "$out" | grep -qi "50df1000"; then
+	echo "modetest: FAILED: 50df1000 is in Picasso96Settings, the card used it anyway"
 	exit 1
 fi
 rm -f "$DIR/devs/Picasso96Settings"
