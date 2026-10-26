@@ -18,21 +18,18 @@ run() {
 		-a LIBS:p96:build/modetest.d/libs -a ENV:p96:build/modetest.d/env \
 		build/modetest LIBS:multicast.library "$@"
 }
-# built-in list up to 1920x1200, 4 MB: 1920x1200 fits only in 8 and 16 bit
+# without MODES=: none, P96's settings are the modes
 printf 'VRAM=4\n' > "$DIR/env/Multicast.prefs"
-run 11 1920x1200
-# MAXWIDTH/MAXHEIGHT trim the built-in list
-printf 'VRAM=4\nMAXWIDTH=1024\nMAXHEIGHT=768\n' > "$DIR/env/Multicast.prefs"
-run 4 1024x768
-# MODES=, with a size P96 has no number for
+run 0
+# MODES=, with sizes that fit in only some depths in 4 MB
+printf 'VRAM=4\nMODES=320x240,1920x1200\n' > "$DIR/env/Multicast.prefs"
+run 2 1920x1200
+# MODES= beyond MAXWIDTH, which it raises
 printf 'VRAM=8\nMODES=640x480, 1280x960,2560x1024\n' > "$DIR/env/Multicast.prefs"
 run 3 2560x1024
 # MODES=NONE: P96's settings
 printf 'VRAM=1\nMODES=NONE\n' > "$DIR/env/Multicast.prefs"
 run 0
-# P96 has modes of its own for the board already (Picasso96Mode settings):
-# without MODES= the card adds none; with it, none P96 has (640x480, 0x5003)
-printf 'VRAM=4\n' > "$DIR/env/Multicast.prefs"
-run 0 - PRE
+# P96 has a 640x480 of its own in the list already: the card skips that size
 printf 'VRAM=4\nMODES=640x480,800x600\n' > "$DIR/env/Multicast.prefs"
 run 1 800x600 PRE

@@ -85,9 +85,20 @@ int main(int argc, char **argv)
 				good = 0;
 		}
 		printf("\n");
+		/* IDs from the top of the range (0xc0 and up), apart from P96's own */
 		if (!n || res->BoardInfo != bi || !(res->Flags & P96F_PUBLIC) ||
-		    strncmp(res->Node.ln_Name, "P96-0:Multicast:", 16) || !res->DisplayID)
+		    strncmp(res->Node.ln_Name, "P96-0:Multicast:", 16) ||
+		    (res->DisplayID & 0xff00ffffUL) != 0x50001000UL ||
+		    ((res->DisplayID >> 16) & 0xff) < 0xc0)
 			good = 0;
+		{
+			struct LibResolution *o;
+
+			for (o = (struct LibResolution *)res->Node.ln_Succ; o->Node.ln_Succ;
+			     o = (struct LibResolution *)o->Node.ln_Succ)
+				if (o->DisplayID == res->DisplayID)
+					good = 0;
+		}
 		if (res->Width == fw && res->Height == fh)
 			found = 1;
 	}
@@ -97,7 +108,7 @@ int main(int argc, char **argv)
 		sprintf(what, "%d resolutions", want);
 		check(count == want, what);
 	}
-	check(good, "names, IDs, flags, a ModeInfo for each depth that fits, within the board's limits");
+	check(good, "names, unique high IDs, flags, a ModeInfo per depth that fits, within the limits");
 	if (fw)
 		check(found, "the asked-for size is there");
 	printf("modetest: %s\n", fails ? "FAILED" : "passed");

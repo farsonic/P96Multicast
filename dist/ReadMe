@@ -31,8 +31,8 @@ The easy way: MulticastPrefs
 Double-click MulticastPrefs (in this package's top drawer, or run it from
 a Shell). It sets everything up without P96's own tools:
   Network    where to send, port, rate, updates per second, log file
-  Display    boards, video memory, and the screen modes the card offers
-             (a list of sizes; P96 shows them without Picasso96Mode)
+  Display    boards, video memory, and the screen modes: P96's own
+             (Picasso96Mode), or a list of sizes the card adds itself
   Wrap.card  wrap another card, mirror it, or one screen over 2-4 monitors
   Status     what the running cards say, and what is installed
 Install copies the cards to LIBS:Picasso96, makes DEVS:Monitors/Multicast
@@ -89,10 +89,12 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
                       modes are called Multicast2:..., and it logs to LOG.2
                       (P96; AROS takes one board per card, see Wrap.card).
                       VRAM= is for each board
-  MODES=...           the screen modes the card offers P96, e.g.
-                      MODES=640x480,800x600,1280x960 (without it: a built-in
-                      list up to MAXWIDTH x MAXHEIGHT; MODES=NONE: P96's
-                      own settings from Picasso96Mode; AROS uses its own)
+  MODES=...           screen modes the card adds for P96, e.g.
+                      MODES=640x480,800x600,1280x960: then no Picasso96Mode
+                      setup is needed. Without it, P96's own modes from
+                      Picasso96Mode, as before. With both, remove the
+                      board's modes in Picasso96Mode, or sizes show twice.
+                      AROS uses its own fixed list.
   BLITTER=0           1: the card records the drawing rtg.library hands it
                       (mctest STATUS shows how much); for measuring
 

@@ -85,7 +85,10 @@ static const struct Field fields[] = {
 };
 #define NFIELDS (sizeof(fields) / sizeof(fields[0]))
 
-static const char *modesrc_names[] = { "Built-in list", "This list", "P96's settings", NULL };
+static const char *modesrc_names[] = { "P96's settings", "This list", NULL };
+
+/* "This list" with nothing in it starts with these */
+static const char *standard_modes = "640x480,800x600,1024x768,1280x720,1280x960,1280x1024,1920x1080";
 static const char *wrap_names[] = { "No", "Wrap only", "Mirror", "Span", NULL };
 
 #define ID_PAGE    1
@@ -239,9 +242,7 @@ static int modesrc(void)
 {
 	const char *v = prefs_get(find_setting("MODES"));
 
-	if (!v || !*v)
-		return 0;
-	return mp_stricmp(v, "none") ? 1 : 2;
+	return v && *v && mp_stricmp(v, "none") ? 1 : 0;
 }
 
 static BOOL make_gadgets(struct Screen *scr)
@@ -500,12 +501,10 @@ static BOOL collect(void)
 	}
 	if (src == 0) {
 		prefs_set(find_setting("MODES"), "");
-	} else if (src == 2) {
-		prefs_set(find_setting("MODES"), "NONE");
 	} else {
 		modes_to(buf, sizeof(buf));
 		if (!nmodes) {
-			tell("MulticastPrefs", "Screen modes: the list is empty.\nAdd sizes, or choose the built-in list.");
+			tell("MulticastPrefs", "Screen modes: the list is empty.\nAdd sizes, or choose P96's settings.");
 			return FALSE;
 		}
 		if (!set_or_say(find_setting("MODES"), buf))
@@ -682,7 +681,10 @@ int gui(int start_page, int timeout, const char *pubscreen)
 				default:
 					i = g->GadgetID - ID_FIELD;
 					if (i >= 0 && i < NFIELDS) {
-						if (fields[i].what == F_ADD)
+						if (fields[i].what == F_MODESRC && code == 1 && !nmodes) {
+							modes_from(standard_modes);
+							modes_show();
+						} else if (fields[i].what == F_ADD)
 							add_mode();
 						else if (fields[i].what == F_REMOVE)
 							remove_mode();

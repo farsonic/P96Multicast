@@ -54,8 +54,8 @@ drawer: a prefs editor for everything below, without P96's own tools. Its
 Install button copies the cards to `LIBS:Picasso96`, makes the monitor and
 its icon from a P96 monitor already there, moves monitors that would set a
 card up twice to `SYS:Storage/Monitors`, and saves the settings. The card
-offers its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
-setup either. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
+can offer its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
+setup either if you give it a mode list. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
 `INSTALL [DRY]`, `STATUS`.
 
 By hand:
@@ -89,7 +89,7 @@ P96. `ENV:` wins over ToolTypes.
 | `PRI` | -1 | sender task priority |
 | `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
 | `QUIET` | 0 | set BIF_QUIET |
-| `MODES` | (built-in) | screen modes offered to P96: `640x480,800x600,...`; without it a built-in list up to MAXWIDTH x MAXHEIGHT; `NONE`: P96's own settings (Picasso96Mode). AROS uses its own fixed list |
+| `MODES` | (none) | screen modes the card adds for P96: `640x480,800x600,...`, so no Picasso96Mode setup is needed. Without it (or `NONE`) the modes are P96's own, from Picasso96Mode. With both, remove the board's modes in Picasso96Mode, or sizes show twice. AROS uses its own fixed list |
 | `BLITTER` | 0 | 1: offer rtg.library drawing functions that record what they change and leave the drawing to rtg.library; for measuring (mctest STATUS, WORKLOAD), the start of protocol 2 |
 | `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 

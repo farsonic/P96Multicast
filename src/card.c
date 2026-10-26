@@ -56,7 +56,7 @@ struct Library *LibInit(__reg("d0") struct McBase *base, __reg("a0") BPTR seglis
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 1;
-	base->lib.lib_Revision = 2;
+	base->lib.lib_Revision = 3;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);

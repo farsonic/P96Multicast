@@ -26,7 +26,7 @@ const struct Setting settings[] = {
 	{ "VRAM",      FILE_MC, T_NUM,  1, 256,     "8",     "Video memory per board, MB (at boot)" },
 	{ "MAXWIDTH",  FILE_MC, T_NUM,  320, 4096,  "1920",  "Widest built-in mode" },
 	{ "MAXHEIGHT", FILE_MC, T_NUM,  200, 4096,  "1200",  "Highest built-in mode" },
-	{ "MODES",     FILE_MC, T_MODES, 0, 0,      "",      "Screen modes: WxH,WxH,... (none: built-in list; NONE: P96's settings)" },
+	{ "MODES",     FILE_MC, T_MODES, 0, 0,      "",      "Screen modes the card adds: WxH,WxH,... (none: P96's own, Picasso96Mode)" },
 	{ "BOARDS",    FILE_MC, T_NUM,  1, 8,       "1",     "Boards to offer (more for Wrap.card's heads)" },
 	{ "BLITTER",   FILE_MC, T_BOOL, 0, 1,       "0",     "Record what the drawing calls change (measuring)" },
 	{ "BOARDTYPE", FILE_MC, T_NUM,  0, 255,     "6",     "P96 board type reported" },
