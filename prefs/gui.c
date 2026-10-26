@@ -61,7 +61,7 @@ struct Field {
 };
 
 static const struct Field fields[] = {
-	{ 0, F_MAP,     0,             "",                 NULL, 8 },
+	{ 0, F_MAP,     0,             "",                 NULL, 10 },
 	{ 0, F_LAYOUT,  CYCLE_KIND,    "Monitors",         NULL },
 	{ 0, F_MONSIZE, CYCLE_KIND,    "Each monitor",     NULL },
 	{ 0, F_COLOURS, CYCLE_KIND,    "Colours",          NULL },
