@@ -12,12 +12,17 @@
 # window from head 1 to head 4. At each step, every head must show its test
 # pattern, and only the head the window is on must show the window.
 #
-# Five boards sending and four heads copied cost the emulated 68040 a lot,
-# so the card and the heads run at 10 passes a second here.
+# FPS (Multicast.card's passes a second), MIRRORFPS (the heads') and
+# HEADSHARE (0: the heads get copies of what changed in their tiles; 1: they
+# show the big screen's bitmap themselves) can be set in the environment.
+# The defaults, 10, 10 and 0, pass in the emulated 68040, as does
+# HEADSHARE=1 with MIRRORFPS=25. At FPS=25 the five senders' comparisons
+# leave the network too little CPU.
 #
 #   emu/span_test.sh [TIMEOUT]
 #
-# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-span).
+# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-span),
+# FPS, MIRRORFPS, HEADSHARE.
 set -u
 cd "$(dirname "$0")/.."
 TIMEOUT=${1:-420}
@@ -62,14 +67,15 @@ cat > "$AROSFS/Prefs/Env-Archive/Wrap.prefs" <<EOF
 CARD=Multicast.card
 SPAN=2x2
 HEAD=Multicast.card
-MIRRORFPS=10
+MIRRORFPS=${MIRRORFPS:-10}
+HEADSHARE=${HEADSHARE:-0}
 EOF
 cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
 # written by emu/span_test.sh
 BOARDS=5
 DEST=$GROUP
 PORT=9696
-FPS=10
+FPS=${FPS:-10}
 REFRESH=2
 LOG=RAM:Multicast.log
 EOF

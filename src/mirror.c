@@ -8,8 +8,20 @@
  * second, follows what the thunks recorded about the wrapped board: on a
  * new mode it sets each head's mode (ResolvePixelClock, SetClock, SetGC,
  * SetDAC, SetPanning), it passes palette changes on with SetColorArray and
- * the display state with SetSwitch and SetDisplay, and it copies each
- * head's part of the screen into the head's video memory.
+ * the display state with SetSwitch and SetDisplay, and it copies what
+ * changed in each head's part of the screen into the head's video memory.
+ *
+ * Nothing says which pixels changed: rtg.library and programs write into
+ * the bitmap directly. So each head keeps a shadow of its tile in Fast RAM,
+ * and every pass compares the screen with it in chunks of CHUNK bytes; only
+ * chunks that differ are written, to the shadow and to the head. The head's
+ * video memory (on a Zorro card, slow to read) is only ever written. Without
+ * room for a shadow, a head compares with its video memory instead.
+ *
+ * HEADSHARE=1 skips all of that for heads that can show any memory, like
+ * Multicast.card's boards: such a head is panned onto its part of the
+ * wrapped board's bitmap itself (SetPanning with the bitmap's width and the
+ * tile's offset), and nothing is compared or copied at all.
  *
  * MIRROR= is one head showing what the wrapped board shows. SPAN=CxR is
  * C x R heads showing one big screen, each its tile, so windows move from
@@ -51,10 +63,19 @@ typedef ULONG (*SetStateFn)(__reg("a0") struct BoardInfo *, __reg("d0") ULONG st
 /* rtg.library's private part of a BoardInfo, after MemorySpaceSize: room to spare */
 #define HEAD_BISIZE (sizeof(struct BoardInfo) + 8192)
 
+/* compared and copied in chunks of this many bytes of a row */
+#define CHUNK 64
+
 struct Head {
 	struct WrapHead *h;        /* its public state */
 	struct ModeInfo mode;
 	BOOL  ok;                  /* it shows the current mode: copy */
+	BOOL  shared;              /* it shows the wrapped board's bitmap itself */
+	BOOL  full;                /* copy everything in the next pass */
+	UBYTE *shadow;             /* its tile as last copied, or NULL */
+	ULONG shadow_size;
+	ULONG srow;                /* shadow bytes per row */
+	ULONG copied;              /* bytes copied, below a KB */
 };
 
 struct Heads {
@@ -69,6 +90,9 @@ struct Heads {
 	ULONG fmt, bpp;
 	UBYTE *src_mem;            /* top left of what the heads show */
 	ULONG src_bpr;
+	UBYTE *bm_mem;             /* the wrapped board's bitmap */
+	WORD  xoff, yoff;          /* and where it is scrolled to */
+	BOOL  span;
 	UWORD tw, th;              /* each head's tile */
 	UWORD on;
 };
@@ -103,6 +127,36 @@ static struct BoardInfo *new_boardinfo(struct Library *card, UWORD num)
 	return bi;
 }
 
+/* TRUE if n bytes at a and b differ; a and b may be unaligned (68020+) */
+static BOOL differ(const UBYTE *a, const UBYTE *b, ULONG n)
+{
+	const ULONG *la = (const ULONG *)a, *lb = (const ULONG *)b;
+
+	for (; n >= 4; n -= 4)
+		if (*la++ != *lb++)
+			return TRUE;
+	a = (const UBYTE *)la;
+	b = (const UBYTE *)lb;
+	while (n--)
+		if (*a++ != *b++)
+			return TRUE;
+	return FALSE;
+}
+
+/* a shadow for the head's tile, if Fast RAM has room for it and some to spare */
+static void new_shadow(struct Head *hd, ULONG srow, UWORD rows)
+{
+	ULONG size = srow * rows;
+
+	if (hd->shadow)
+		FreeMem(hd->shadow, hd->shadow_size);
+	hd->shadow = NULL;
+	if (AvailMem(MEMF_FAST | MEMF_LARGEST) > size + 512 * 1024)
+		hd->shadow = AllocMem(size, MEMF_FAST);
+	hd->shadow_size = size;
+	hd->srow = srow;
+}
+
 static void free_boardinfo(struct BoardInfo *bi)
 {
 	if (bi->UtilBase)
@@ -127,6 +181,19 @@ static void set_palette(struct Heads *hs, struct Head *hd)
 	for (i = 0; i < 256; i++)
 		bi->CLUT[i] = hs->src->bi->CLUT[i];
 	((SetColorArrayFn)bi->SetColorArray)(bi, 0, 256, hd->h->lib);
+}
+
+/* HEADSHARE: the head shows its part of the wrapped board's bitmap */
+static void pan(struct Heads *hs, struct Head *hd)
+{
+	struct WrapHead *h = hd->h;
+	struct BoardInfo *bi = h->bi;
+	LONG x = hs->span ? h->x : hs->xoff;
+	LONG y = hs->span ? h->y : hs->yoff;
+
+	((SetPanningFn)bi->SetPanning)(bi, hs->bm_mem, hs->bm_width, x, y, hs->fmt, h->lib);
+	h->mem = hs->bm_mem + y * hs->src_bpr + x * hs->bpp;
+	h->bpr = hs->src_bpr;
 }
 
 /* a head's mode: the wrapped board's, at the tile's size */
@@ -162,14 +229,25 @@ static void set_mode(struct Heads *hs, struct Head *hd, UWORD x, UWORD y)
 	((SetClockFn)bi->SetClock)(bi, card);
 	((SetGCFn)bi->SetGC)(bi, &hd->mode, 0, card);
 	((SetDACFn)bi->SetDAC)(bi, hs->fmt, card);
-	bpr = ((BytesPerRowFn)bi->CalculateBytesPerRow)(bi, hs->tw, hs->fmt, card);
-	if (!bpr || bpr * hs->th > bi->MemorySize) {
-		h->error = WRAP_MERR_TOOBIG;
-		return;
+	/* shared only where the head's rows are laid out as the bitmap's */
+	hd->shared = hs->m->share &&
+	             ((BytesPerRowFn)bi->CalculateBytesPerRow)(bi, hs->bm_width, hs->fmt, card) ==
+	             hs->src_bpr;
+	h->shared = hd->shared;
+	if (hd->shared) {
+		pan(hs, hd);
+	} else {
+		bpr = ((BytesPerRowFn)bi->CalculateBytesPerRow)(bi, hs->tw, hs->fmt, card);
+		if (!bpr || bpr * hs->th > bi->MemorySize) {
+			h->error = WRAP_MERR_TOOBIG;
+			return;
+		}
+		h->mem = bi->MemoryBase;
+		h->bpr = bpr;
+		new_shadow(hd, (ULONG)hs->tw * hs->bpp, hs->th);
+		hd->full = TRUE;
+		((SetPanningFn)bi->SetPanning)(bi, h->mem, hs->tw, 0, 0, hs->fmt, card);
 	}
-	h->mem = bi->MemoryBase;
-	h->bpr = bpr;
-	((SetPanningFn)bi->SetPanning)(bi, h->mem, hs->tw, 0, 0, hs->fmt, card);
 	if (hs->fmt == RGBFB_CLUT)
 		set_palette(hs, hd);
 	h->width = hs->tw;
@@ -218,6 +296,10 @@ static void follow(struct Heads *hs, struct WrapDisplay *d)
 		hs->src_bpr = ((BytesPerRowFn)sbi->CalculateBytesPerRow)(sbi, d->bm_width, d->format,
 		                                                         hs->inner);
 	hs->bm_width = d->bm_width;
+	hs->bm_mem = d->mem;
+	hs->xoff = d->xoff;
+	hs->yoff = d->yoff;
+	hs->span = span;
 	hs->src_mem = d->mem;
 	if (tw && !span)
 		hs->src_mem += d->yoff * hs->src_bpr + d->xoff * hs->bpp;
@@ -230,8 +312,70 @@ static void follow(struct Heads *hs, struct WrapDisplay *d)
 			continue;
 		if (tw && (newmode || !hd->ok))
 			set_mode(hs, hd, (i % m->cols) * tw, (i / m->cols) * th);
+		else if (tw && hd->ok && hd->shared)
+			pan(hs, hd);   /* a new bitmap, or scrolled */
 		if ((on && hd->ok) != hd->h->display)
 			set_state(hd, on && hd->ok);
+	}
+}
+
+/*
+ * The head's tile: the chunks that differ from the shadow (or, without one,
+ * from the head's video memory), merged into runs, to the head and the
+ * shadow. Everything after a new mode.
+ */
+static void copy_changes(struct Heads *hs, struct Head *hd)
+{
+	struct WrapHead *h = hd->h;
+	ULONG len = (ULONG)h->width * hs->bpp;
+	UBYTE *src = hs->src_mem + h->y * hs->src_bpr + h->x * hs->bpp;
+	UBYTE *dst = h->mem;
+	UBYTE *sh = hd->shadow;
+	ULONG copied = 0, y, off, run, n;
+
+	for (y = 0; y < h->height; y++) {
+		if (hd->full) {
+			CopyMem(src, dst, len);
+			if (sh)
+				CopyMem(src, sh, len);
+			copied += len;
+		} else {
+			const UBYTE *cmp = sh ? sh : dst;
+
+			/* run: start of the changed bytes not yet copied, or len for none */
+			run = len;
+			for (off = 0; off < len; off += n) {
+				n = len - off < CHUNK ? len - off : CHUNK;
+				if (differ(src + off, cmp + off, n)) {
+					if (run == len)
+						run = off;
+				} else if (run != len) {
+					CopyMem(src + run, dst + run, off - run);
+					if (sh)
+						CopyMem(src + run, sh + run, off - run);
+					copied += off - run;
+					run = len;
+				}
+			}
+			if (run != len) {
+				CopyMem(src + run, dst + run, len - run);
+				if (sh)
+					CopyMem(src + run, sh + run, len - run);
+				copied += len - run;
+			}
+		}
+		src += hs->src_bpr;
+		dst += h->bpr;
+		if (sh)
+			sh += hd->srow;
+	}
+	hd->full = FALSE;
+	h->frames++;
+	if (copied) {
+		h->changed++;
+		copied += hd->copied;
+		h->copied_kb += copied >> 10;
+		hd->copied = copied & 1023;
 	}
 }
 
@@ -255,23 +399,13 @@ static void heads_pass(struct Heads *hs)
 
 	for (i = 0; i < m->nheads; i++) {
 		struct Head *hd = &hs->head[i];
-		struct WrapHead *h = hd->h;
-		UBYTE *src, *dst;
-		ULONG len, y;
 
-		if (!hd->ok || !h->display)
+		if (!hd->ok || !hd->h->display)
 			continue;
 		if (newpal && hs->fmt == RGBFB_CLUT)
 			set_palette(hs, hd);
-		src = hs->src_mem + h->y * hs->src_bpr + h->x * hs->bpp;
-		dst = h->mem;
-		len = h->width * hs->bpp;
-		for (y = 0; y < h->height; y++) {
-			CopyMem(src, dst, len);
-			src += hs->src_bpr;
-			dst += h->bpr;
-		}
-		h->frames++;
+		if (!hd->shared)
+			copy_changes(hs, hd);
 	}
 	m->passes++;
 }

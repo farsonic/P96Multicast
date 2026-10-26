@@ -135,6 +135,8 @@ struct WrapBoard {
  * MIRROR=card: one head, showing what the wrapped board shows.
  * SPAN=CxR, HEAD=card (HEAD1= ... HEAD4= for each one): C x R heads, left
  * to right and top to bottom, each showing its tile of one big screen.
+ * HEADSHARE=1: heads that can show any memory show the wrapped board's
+ * bitmap itself instead of a copy.
  */
 #define WRAP_MAXHEADS 4
 
@@ -151,10 +153,14 @@ struct WrapHead {
 	char  card[WRAP_NAMELEN];  /* its card driver */
 	UWORD error;           /* WRAP_MERR_*, for the last attempt */
 	UWORD display;         /* its display is on */
+	UWORD shared;          /* it shows the wrapped board's bitmap (HEADSHARE) */
+	UWORD pad;
 	struct Library *lib;   /* its card driver, open */
 	struct BoardInfo *bi;  /* its board, once set up */
 	ULONG setups;          /* modes set up on it */
-	ULONG frames;          /* passes that copied its tile */
+	ULONG frames;          /* passes that compared its tile */
+	ULONG changed;         /* ... and found something to copy */
+	ULONG copied_kb;       /* KB copied to it */
 	UWORD x, y;            /* its tile in the wrapped board's screen */
 	UWORD width, height;   /* and its mode */
 	ULONG format;
@@ -166,6 +172,7 @@ struct WrapMirror {
 	UWORD fps;             /* MIRRORFPS= */
 	UWORD cols, rows;      /* SPAN=, 1x1 for MIRROR= */
 	UWORD nheads;          /* cols * rows, 0 for none */
+	UWORD share;           /* HEADSHARE= */
 	struct Process *task;  /* the process copying the screen */
 	ULONG passes;
 	struct WrapHead head[WRAP_MAXHEADS];

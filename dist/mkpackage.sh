@@ -57,6 +57,8 @@ CARD=uaegfx.card
 # SPAN= one big screen on CxR heads, each HEAD= (or HEAD1= ... HEAD4=)
 #SPAN=2x2
 #HEAD=Multicast.card
+# HEADSHARE=1: heads that can show any memory (Multicast.card) need no copy
+#HEADSHARE=0
 #MIRRORFPS=25
 EOF
 

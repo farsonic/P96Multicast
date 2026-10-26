@@ -116,7 +116,7 @@ int main(void)
 			printf("heads: SPAN=%ux%u", mirror.cols, mirror.rows);
 		else
 			printf("heads: MIRROR=%s", mirror.head[0].card);
-		printf(" MIRRORFPS=%u, %s, %lu passes\n", mirror.fps,
+		printf(" MIRRORFPS=%u HEADSHARE=%u, %s, %lu passes\n", mirror.fps, mirror.share,
 		       mirror.task ? "running" : "not running", mirror.passes);
 	}
 	for (i = 0; i < mirror.nheads && i < WRAP_MAXHEADS; i++) {
@@ -131,12 +131,18 @@ int main(void)
 			printf(", %s", e);
 		}
 		printf("\n");
-		if (h->bi)
+		if (h->bi) {
 			printf("  board %s, display %s, tile at %u,%u, %ux%u, format %lu, at 0x%08lx,"
-			       " %lu bytes per row, %lu modes, %lu frames\n",
+			       " %lu bytes per row, %lu modes\n",
 			       h->bi->BoardName ? h->bi->BoardName : "(no name)",
 			       h->display ? "on" : "off", h->x, h->y, h->width, h->height,
-			       h->format, (ULONG)h->mem, h->bpr, h->setups, h->frames);
+			       h->format, (ULONG)h->mem, h->bpr, h->setups);
+			if (h->shared)
+				printf("  shows the wrapped board's bitmap itself (HEADSHARE)\n");
+			else
+				printf("  %lu passes, %lu with changes, %lu KB copied\n", h->frames,
+				       h->changed, h->copied_kb);
+		}
 	}
 	FreeArgs(rda);
 	return RETURN_OK;

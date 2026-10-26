@@ -73,6 +73,7 @@ WaitBlitter) unwrapped, for speed.
 | `HEAD` | (none) | with `SPAN`: the card driver of every head |
 | `HEAD1`...`HEAD4` | `HEAD` | with `SPAN`: the card driver of one head (left to right, top to bottom) |
 | `MIRRORFPS` | 25 | head updates per second (1-50) |
+| `HEADSHARE` | 0 | 1: heads that can show any memory (Multicast.card) show the big screen's bitmap itself, no copy |
 
 The settings are read when FindCard runs, so only from `ENV:`/`ENVARC:`.
 The monitor's ToolTypes are passed on to the real card's InitCard untouched.
@@ -93,8 +94,8 @@ MIRRORFPS times a second:
   head's video memory);
 * a palette change (SetColorArray): the wrapped board's CLUT on each head;
 * display on or off (SetDisplay, SetSwitch): the same on the heads;
-* and every pass, it copies each head's part of the screen into the head's
-  video memory, row by row.
+* and every pass, it copies what changed in each head's part of the screen
+  into the head's video memory (below).
 
 The pixels are copied as they are, so a head's card has to offer the
 wrapped board's pixel format (wrapstat says so if not).
@@ -163,15 +164,28 @@ so the wrapped board should be one without (like Multicast.card): rtg.library
 then draws the pointer into the screen, and it shows on whichever head it
 is over.
 
-### Cost
+### What it costs
 
-Every pass copies every head's whole tile: 4 x 600 KB for four 640x480
-heads in 16 bit. On top of that, Multicast.card's senders compare their
-whole screen each pass. In the emulated 68040 of the tests, five boards and
-four heads at 25 passes a second left too little CPU for the network, so
-`span_test.sh` runs both at 10. Copying only what changed is the next step.
-Heads that are Multicast boards could skip the copy altogether by showing
-the big bitmap directly (SetPanning with the big screen's width).
+Nothing tells a card which pixels changed: rtg.library and programs write
+into the bitmap directly. So every pass compares each head's tile with a
+shadow of it in Fast RAM, 64 bytes at a time, and writes only the chunks
+that differ, to the head and the shadow. The head's video memory (slow to
+read over Zorro) is only written, and only where something changed: in the
+span test each head took about 1 MB over a minute instead of 600 KB per
+pass. Without room for a shadow, a head compares with its own video memory.
+
+The comparing is not free either: it reads as much as a copy does. With
+`HEADSHARE=1`, heads that can show any memory (Multicast.card's boards)
+skip it: each one is panned onto its part of the big screen's bitmap
+(SetPanning with the bitmap's width and the tile's offset), and nothing is
+compared or copied. Real cards can only show their own video memory, so
+for them it stays off.
+
+In the emulated 68040 of the tests, what is left is Multicast.card's own
+senders, which compare their whole screen every pass: five boards at 25
+passes a second leave the network too little CPU, at 10 they keep up.
+Telling the change from the drawing calls instead of comparing is the next
+step (see docs/PROTOCOL2.md).
 
 ## Known limits
 

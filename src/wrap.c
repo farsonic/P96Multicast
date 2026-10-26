@@ -199,6 +199,8 @@ static void config_line(const char *line)
 				span_rows = r;
 			}
 		}
+	} else if ((v = match_key(line, "headshare")) != NULL) {
+		mirror.share = *v == '1';
 	} else if ((v = match_key(line, "head")) != NULL) {
 		copy_name(head_card, v);
 	} else {
