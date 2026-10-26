@@ -56,7 +56,12 @@ its icon from a P96 monitor already there, moves monitors that would set a
 card up twice to `SYS:Storage/Monitors`, and saves the settings. The card
 can offer its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
 setup either if you give it a mode list. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
-`INSTALL [DRY]`, `STATUS`.
+`INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY]`, `STATUS`. `INSTALL` sets up
+everything for the next boot: the cards, `mctest`/`wrapstat` in `C:`,
+MulticastPrefs in `SYS:Prefs`, the monitor, screen modes if Picasso96Mode
+has none for Multicast, `DEST=10.0.2.2` on UAE's NAT network, and with
+`SETUP=` one or two Multicast screens or the display card mirrored (it
+finds the card); switching setups puts back the monitors it moved aside.
 
 By hand:
 

@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "1.3"
+#define MP_VERSION "1.4"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
@@ -68,7 +68,7 @@ void prefs_show(void);
 int  mp_stricmp(const char *a, const char *b);
 
 /* install.c */
-BOOL install(void (*note)(const char *), BOOL dry, const char *from);
+BOOL install(void (*note)(const char *), BOOL dry, const char *from, const char *setup);
 
 /* status.c */
 int status_lines(char lines[][80], int max);

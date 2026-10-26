@@ -25,11 +25,13 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
+#include <proto/bsdsocket.h>
 #include <stdio.h>
 #include <string.h>
 #include "mcprefs.h"
 
 struct Library *IconBase;
+struct Library *SocketBase;
 
 static void (*say)(const char *);
 static BOOL dry;
@@ -115,21 +117,6 @@ static BOOL move_file(const char *from, const char *to)
 	return TRUE;
 }
 
-/* "uaegfx.card" or "LIBS:Picasso96/uaegfx.card" -> "uaegfx" */
-static void board_name(const char *card, char *out, int len)
-{
-	const char *p = card, *name = card;
-	int i;
-
-	for (; *p; p++)
-		if (*p == ':' || *p == '/')
-			name = p + 1;
-	for (i = 0; name[i] && i < len - 1; i++)
-		out[i] = name[i];
-	out[i] = 0;
-	if (i > 5 && !mp_stricmp(out + i - 5, ".card"))
-		out[i - 5] = 0;
-}
 
 /* the board a monitor's icon names, or "" */
 static void icon_board(const char *path, char *out, int len)
@@ -146,6 +133,133 @@ static void icon_board(const char *path, char *out, int len)
 		out[len - 1] = 0;
 	}
 	FreeDiskObject(dob);
+}
+
+/* "uaegfx.card" or "LIBS:Picasso96/uaegfx.card" -> "uaegfx" */
+static void board_name(const char *card, char *out, int len)
+{
+	const char *p = card, *name = card;
+	int i;
+
+	for (; *p; p++)
+		if (*p == ':' || *p == '/')
+			name = p + 1;
+	for (i = 0; name[i] && i < len - 1; i++)
+		out[i] = name[i];
+	out[i] = 0;
+	if (i > 5 && !mp_stricmp(out + i - 5, ".card"))
+		out[i - 5] = 0;
+}
+
+/*
+ * The monitors Install moved to SYS:Storage/Monitors, in
+ * ENVARC:P96Multicast.moved, so a later setup that doesn't need them out of
+ * the way (back from MIRROR to SINGLE, say) puts them back.
+ */
+#define MOVED_FILE "ENVARC:P96Multicast.moved"
+#define MAXMOVED 16
+static char moved[MAXMOVED][32];
+static int nmoved;
+
+static void remember_moved(const char *name)
+{
+	int i;
+
+	for (i = 0; i < nmoved; i++)
+		if (!mp_stricmp(moved[i], name))
+			return;
+	if (nmoved < MAXMOVED) {
+		strncpy(moved[nmoved], name, 31);
+		moved[nmoved++][31] = 0;
+	}
+}
+
+static void load_moved(void)
+{
+	BPTR fh;
+	char line[40];
+
+	nmoved = 0;
+	if (!(fh = Open((STRPTR)MOVED_FILE, MODE_OLDFILE)))
+		return;
+	while (FGets(fh, (STRPTR)line, sizeof(line))) {
+		int n = strlen(line);
+
+		while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+			line[--n] = 0;
+		if (n)
+			remember_moved(line);
+	}
+	Close(fh);
+}
+
+static void save_moved(void)
+{
+	BPTR fh;
+	int i;
+
+	if (dry)
+		return;
+	if (!nmoved) {
+		DeleteFile((STRPTR)MOVED_FILE);
+		return;
+	}
+	if (!(fh = Open((STRPTR)MOVED_FILE, MODE_NEWFILE)))
+		return;
+	for (i = 0; i < nmoved; i++) {
+		FPuts(fh, (STRPTR)moved[i]);
+		FPutC(fh, '\n');
+	}
+	Close(fh);
+}
+
+/* boards whose monitors must be out of the way for this setup */
+#define MAXRETIRE 8
+static char retire[MAXRETIRE][32];
+static int nretire;
+
+static void add_retire(const char *card)
+{
+	if (*card && nretire < MAXRETIRE)
+		board_name(card, retire[nretire++], 32);
+}
+
+static BOOL to_retire(const char *board)
+{
+	int i;
+
+	for (i = 0; i < nretire; i++)
+		if (!mp_stricmp(retire[i], board))
+			return TRUE;
+	return FALSE;
+}
+
+/* what Install moved and this setup doesn't need moved: back to DEVS:Monitors */
+static void restore_moved(void)
+{
+	int i, j;
+
+	for (i = 0; i < nmoved; i++) {
+		char from[80], to[80], b[32];
+
+		snprintf(from, sizeof(from), "SYS:Storage/Monitors/%s", moved[i]);
+		snprintf(to, sizeof(to), "DEVS:Monitors/%s", moved[i]);
+		icon_board(from, b, sizeof(b));
+		if (to_retire(moved[i]) || (b[0] && to_retire(b)))
+			continue;
+		if (exists(from) && !exists(to)) {
+			if (!move_file(from, to)) {
+				notef("Could not move %s back to %s", from, to);
+				failed = TRUE;
+				continue;
+			}
+			notef("Moved %s back to %s", from, to);
+		}
+		for (j = i; j < nmoved - 1; j++)
+			strcpy(moved[j], moved[j + 1]);
+		nmoved--;
+		i--;
+	}
 }
 
 /*
@@ -170,8 +284,10 @@ static void retire_monitors(const char *board, const char *keep)
 			snprintf(path, sizeof(path), "DEVS:Monitors/%s", fib->fib_FileName);
 			icon_board(path, b, sizeof(b));
 			if ((!mp_stricmp((char *)fib->fib_FileName, board) || !mp_stricmp(b, board)) &&
-			    mp_stricmp((char *)fib->fib_FileName, keep))
-				strncpy(names[n++], (char *)fib->fib_FileName, 31);
+			    mp_stricmp((char *)fib->fib_FileName, keep)) {
+				strncpy(names[n], (char *)fib->fib_FileName, 31);
+				names[n++][31] = 0;
+			}
 		}
 	}
 	if (lock)
@@ -185,9 +301,11 @@ static void retire_monitors(const char *board, const char *keep)
 		snprintf(to, sizeof(to), "SYS:Storage/Monitors/%s", names[i]);
 		make_dir("SYS:Storage");
 		make_dir("SYS:Storage/Monitors");
-		if (move_file(from, to))
+		if (move_file(from, to)) {
 			notef("Moved %s to SYS:Storage/Monitors (%s)", from,
 			      "would set the same card up twice");
+			remember_moved(names[i]);
+		}
 		else {
 			notef("Could not move %s%s", from, "");
 			failed = TRUE;
@@ -357,11 +475,220 @@ static void install_tool(const char *file)
 	}
 }
 
-BOOL install(void (*note)(const char *), BOOL dry_run, const char *from)
+/* MulticastPrefs itself to SYS:Prefs, with its icon, so it is at hand */
+static void install_program(void)
+{
+	static const char *from[] = { "PROGDIR:MulticastPrefs", "MulticastPrefs" };
+	char ic[60], dic[60];
+	int i;
+
+	if (!exists("SYS:Prefs"))
+		return;
+	for (i = 0; i < 2; i++)
+		if (exists(from[i]) && !same_file(from[i], "SYS:Prefs/MulticastPrefs"))
+			break;
+	if (i == 2)
+		return;
+	if (!copy_file(from[i], "SYS:Prefs/MulticastPrefs")) {
+		notef("Could not copy %s to %s", from[i], "SYS:Prefs/MulticastPrefs");
+		return;
+	}
+	notef("Copied %s to %s", from[i], "SYS:Prefs/MulticastPrefs");
+	snprintf(ic, sizeof(ic), "%s.info", from[i]);
+	snprintf(dic, sizeof(dic), "SYS:Prefs/MulticastPrefs.info");
+	if (exists(ic))
+		copy_file(ic, dic);
+}
+
+/*
+ * The display card to mirror: a monitor in DEVS:Monitors (or one Install
+ * moved to SYS:Storage/Monitors) whose card, other than Multicast.card and
+ * Wrap.card, is in LIBS:Picasso96. Its board is the icon's BOARDTYPE, or
+ * the monitor's name (AROS).
+ */
+static BOOL find_display_card(char *card, int len)
+{
+	static const char *dirs[] = { "DEVS:Monitors", "SYS:Storage/Monitors" };
+	int d;
+
+	for (d = 0; d < 2; d++) {
+		struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, NULL);
+		BPTR lock = Lock((STRPTR)dirs[d], ACCESS_READ);
+		BOOL found = FALSE;
+
+		if (fib && lock && Examine(lock, fib)) {
+			while (!found && ExNext(lock, fib)) {
+				char path[80], b[32], lib[80];
+				int l = strlen((char *)fib->fib_FileName);
+
+				if (fib->fib_DirEntryType > 0 ||
+				    (l > 5 && !mp_stricmp((char *)fib->fib_FileName + l - 5, ".info")))
+					continue;
+				snprintf(path, sizeof(path), "%s/%s", dirs[d], fib->fib_FileName);
+				icon_board(path, b, sizeof(b));
+				if (!b[0])
+					board_name((char *)fib->fib_FileName, b, sizeof(b));
+				if (!mp_stricmp(b, "Multicast") || !mp_stricmp(b, "Wrap"))
+					continue;
+				snprintf(lib, sizeof(lib), "LIBS:Picasso96/%s.card", b);
+				if (exists(lib)) {
+					snprintf(card, len, "%s.card", b);
+					found = TRUE;
+				}
+			}
+		}
+		if (lock)
+			UnLock(lock);
+		if (fib)
+			FreeDosObject(DOS_FIB, fib);
+		if (found)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+static void set(const char *key, const char *value)
+{
+	prefs_set(find_setting(key), value);
+}
+
+/* SETUP=SINGLE, TWO or MIRROR: the settings for it */
+static BOOL apply_setup(const char *setup)
+{
+	char card[40];
+
+	if (!mp_stricmp(setup, "single") || !mp_stricmp(setup, "two")) {
+		set("CARD", "");
+		set("MIRROR", "");
+		set("SPAN", "");
+		set("BOARDS", mp_stricmp(setup, "two") ? "1" : "2");
+		say(mp_stricmp(setup, "two") ? "Setup: one Multicast screen" :
+		    "Setup: two Multicast screens (ports 9696 and 9697)");
+		return TRUE;
+	}
+	if (!mp_stricmp(setup, "mirror")) {
+		const char *c = prefs_value(find_setting("CARD"));
+
+		if (*c && mp_stricmp(c, "Multicast.card"))
+			snprintf(card, sizeof(card), "%s", c);
+		else if (!find_display_card(card, sizeof(card))) {
+			say("Setup MIRROR: no display card found (a monitor in DEVS:Monitors whose"
+			    " card is in LIBS:Picasso96); give CARD= yourself.");
+			return FALSE;
+		}
+		set("CARD", card);
+		set("MIRROR", "Multicast.card");
+		set("SPAN", "");
+		set("HEADSHARE", "1");
+		set("MIRRORFPS", "10");
+		set("BOARDS", "1");
+		notef("Setup: the %s screen mirrored to a Multicast board%s", card,
+		      " (port 9696)");
+		return TRUE;
+	}
+	say("SETUP must be SINGLE, TWO or MIRROR");
+	return FALSE;
+}
+
+/*
+ * Screen modes: P96's own, if its settings (Picasso96Mode) have any for
+ * Multicast, else the card's (MODES=): a board without modes can't be used.
+ */
+static void auto_modes(void)
+{
+	static const char *standard = "640x480,800x600,1024x768,1280x720,1280x960,1280x1024,1920x1080";
+	const char *m = prefs_get(find_setting("MODES"));
+	BOOL p96 = FALSE;
+	BPTR fh;
+
+	if (m && *m)
+		return;
+	if ((fh = Open((STRPTR)"DEVS:Picasso96Settings", MODE_OLDFILE)) != 0) {
+		UBYTE *buf = AllocMem(4096, MEMF_ANY);
+		LONG n, keep = 0;
+
+		/* the board's name in the settings, across 4 KB blocks */
+		while (buf && !p96 && (n = Read(fh, buf + keep, 4096 - keep)) > 0) {
+			LONG i, len = keep + n;
+
+			for (i = 0; i + 9 <= len && !p96; i++)
+				p96 = !memcmp(buf + i, "Multicast", 9);
+			keep = len < 8 ? len : 8;
+			memmove(buf, buf + len - keep, keep);
+		}
+		if (buf)
+			FreeMem(buf, 4096);
+		Close(fh);
+	}
+	if (p96) {
+		say("Screen modes: Picasso96Mode has some for Multicast, so those (MODES= would "
+		    "add the card's own).");
+		return;
+	}
+	set("MODES", standard);
+	notef("Screen modes: the card's own, MODES=%s%s", standard, "");
+}
+
+/* Where to send, if not set: UAE's NAT network passes no multicast */
+static void auto_dest(void)
+{
+	const char *d = prefs_get(find_setting("DEST"));
+	ULONG id = 0;
+
+	if (d && *d)
+		return;
+	Forbid();
+	if (FindName(&SysBase->LibList, "bsdsocket.library"))
+		SocketBase = OpenLibrary("bsdsocket.library", 3);
+	Permit();
+	if (SocketBase) {
+		id = gethostid();
+		CloseLibrary(SocketBase);
+		SocketBase = NULL;
+	}
+	if ((id & 0xffffff00UL) == 0x0a000200UL) {
+		set("DEST", "10.0.2.2");
+		say("Network: UAE's NAT (10.0.2.x): sending to the host, DEST=10.0.2.2");
+	}
+}
+
+static void summary(void)
 {
 	const char *card = prefs_value(find_setting("CARD"));
-	BOOL wrap = card[0] != 0;
-	const char *monitor_name = wrap ? "Wrap" : "Multicast";
+	const char *mirror = prefs_value(find_setting("MIRROR"));
+	const char *span = prefs_value(find_setting("SPAN"));
+	const char *dest = prefs_value(find_setting("DEST"));
+	const char *boards = prefs_value(find_setting("BOARDS"));
+	BOOL multicast = (dest[0] == '2' && dest[1] == '2') || (dest[0] == '2' && dest[1] == '3');
+	char line[160];
+	struct Library *mc;
+
+	say("After the reboot:");
+	if (*card && *span)
+		notef("  %s's screen spans %s heads", card, span);
+	else if (*card && *mirror)
+		notef("  %s's screen also goes out through %s", card, mirror);
+	else
+		notef("  %s Multicast board(s), each its own screen%s", boards, "");
+	snprintf(line, sizeof(line), "  on your computer: python3 p96view.py%s",
+	         multicast ? "" : " --group 127.0.0.1");
+	say(line);
+	if (!*card && boards[0] > '1')
+		say("  (the second board: add --port 9697)");
+	Forbid();
+	mc = (struct Library *)FindName(&SysBase->LibList, "Multicast.card");
+	if (mc)
+		snprintf(line, sizeof(line), "  Multicast.card %u.%u is running now; the installed one starts then",
+		         mc->lib_Version, mc->lib_Revision);
+	Permit();
+	if (mc)
+		say(line);
+}
+
+BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const char *setup)
+{
+	const char *card, *monitor_name;
+	BOOL wrap;
 	char monitor[80], template[80], icon[90], board[32];
 	int i;
 
@@ -373,10 +700,41 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from)
 	if (dry)
 		say("Would do:");
 
+	if (setup && !apply_setup(setup)) {
+		failed = TRUE;
+		goto out;
+	}
+	auto_modes();
+	auto_dest();
+	prefs_fix(note);
+	card = prefs_value(find_setting("CARD"));
+	wrap = card[0] != 0;
+	monitor_name = wrap ? "Wrap" : "Multicast";
+
 	install_card("Multicast.card");
 	install_card("Wrap.card");
 	install_tool("mctest");
 	install_tool("wrapstat");
+	install_program();
+
+	/*
+	 * Nothing else may set up what this monitor's card sets up: with
+	 * Wrap.card, the card it wraps and the heads; without, Wrap.card. What
+	 * an earlier setup moved away and this one doesn't need moved comes back
+	 * first (this setup's own monitor among them, perhaps).
+	 */
+	load_moved();
+	nretire = 0;
+	if (wrap) {
+		static const char *keys[] = { "MIRROR", "HEAD", "HEAD1", "HEAD2", "HEAD3", "HEAD4" };
+
+		add_retire(card);
+		for (i = 0; i < 6; i++)
+			add_retire(prefs_value(find_setting(keys[i])));
+	} else {
+		add_retire("Wrap");
+	}
+	restore_moved();
 
 	snprintf(monitor, sizeof(monitor), "DEVS:Monitors/%s", monitor_name);
 	snprintf(icon, sizeof(icon), "%s.info", monitor);
@@ -404,23 +762,13 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from)
 		}
 	}
 
-	/* nothing else may set up what this monitor's card sets up */
-	if (wrap) {
-		board_name(card, board, sizeof(board));
-		retire_monitors(board, monitor_name);
-		for (i = 0; i < 6; i++) {
-			static const char *keys[] = { "MIRROR", "HEAD", "HEAD1", "HEAD2", "HEAD3", "HEAD4" };
-			const char *h = prefs_value(find_setting(keys[i]));
-
-			if (*h) {
-				board_name(h, board, sizeof(board));
-				retire_monitors(board, monitor_name);
-			}
-		}
-	} else {
-		retire_monitors("Wrap", monitor_name);
-	}
-	say(failed ? "Not everything could be done." : "Reboot to start the card.");
+	for (i = 0; i < nretire; i++)
+		retire_monitors(retire[i], monitor_name);
+	save_moved();
+	if (!failed)
+		summary();
+out:
+	say(failed ? "Not everything could be done." : "Reboot to start.");
 	if (IconBase)
 		CloseLibrary(IconBase);
 	IconBase = NULL;

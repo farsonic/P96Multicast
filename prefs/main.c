@@ -15,10 +15,15 @@
  *                                       works too, and "SPAN=" unsets
  *   MulticastPrefs SET CARD=Multicast.card SPAN=2x2 HEAD=Multicast.card
  *                                       (sets BOARDS=5 to match)
- *   MulticastPrefs INSTALL [DRY] [FROM=dir]
- *                                       copy the cards (from FROM, or next to
- *                                       this program), make the monitor; DRY
- *                                       says what it would do
+ *   MulticastPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY] [FROM=dir]
+ *                                       everything for the next boot: the
+ *                                       cards (from FROM, or the package),
+ *                                       mctest, wrapstat and MulticastPrefs,
+ *                                       the monitor, screen modes if P96 has
+ *                                       none, DEST=10.0.2.2 on UAE's NAT; with
+ *                                       SETUP, one or two Multicast screens or
+ *                                       your display card mirrored. DRY says
+ *                                       what it would do
  *   MulticastPrefs STATUS               what the running cards say
  */
 #include <exec/types.h>
@@ -30,8 +35,8 @@
 
 static const char version[] = "$VER: MulticastPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K";
-enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K";
+enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
        A_COUNT };
 
 static void print_note(const char *s)
@@ -90,7 +95,8 @@ int main(int argc, char **argv)
 	}
 	if (args[A_INSTALL] && rc == RETURN_OK) {
 		prefs_fix(print_note);
-		if (!install(print_note, args[A_DRY] != 0, (const char *)args[A_FROM]))
+		if (!install(print_note, args[A_DRY] != 0, (const char *)args[A_FROM],
+		             (const char *)args[A_SETUP]))
 			rc = RETURN_WARN;
 		if (!args[A_DRY] && !prefs_write(TRUE))
 			rc = RETURN_FAIL;

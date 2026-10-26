@@ -153,6 +153,63 @@ def main():
           os.path.getsize(os.path.join(libs, "Multicast.card")) == size,
           "FROM= the installed cards: left alone, not copied onto themselves")
 
+    # SETUP=: a fresh system with P96's uaegfx, installing from the package
+    setup()
+    os.makedirs(os.path.join(DIR, "libs", "Picasso96"))
+    os.makedirs(os.path.join(DIR, "sys", "Prefs"))
+    write("libs/Picasso96", "uaegfx.card", "uaegfx")
+    write("devs/Monitors", "uaegfx", "monitor program")
+    write("devs/Monitors", "P96", "monitor program")
+    pkgdir = os.path.join(DIR, "pkg")
+    os.makedirs(os.path.join(pkgdir, "Libs", "Picasso96"))
+    os.makedirs(os.path.join(pkgdir, "C"))
+    for c in ("Multicast.card", "Wrap.card"):
+        shutil.copy(os.path.join(ROOT, "build", c), os.path.join(pkgdir, "Libs", "Picasso96"))
+    for t in ("mctest", "wrapstat"):
+        shutil.copy(os.path.join(ROOT, "build", t), os.path.join(pkgdir, "C"))
+    shutil.copy(os.path.join(ROOT, "build", "MulticastPrefs"), pkgdir)
+    mon = os.path.join(DIR, "devs", "Monitors")
+    store = os.path.join(DIR, "sys", "Storage", "Monitors")
+
+    rc, out = run("INSTALL", "SETUP=MIRROR", cwd="p96:build/prefstest.d/pkg")
+    print("    " + out.replace("\n", "\n    "))
+    wrap = read("envarc", "Wrap.prefs") or []
+    check(rc == 0 and "CARD=uaegfx.card" in wrap and "MIRROR=Multicast.card" in wrap and
+          "HEADSHARE=1" in wrap, "SETUP=MIRROR: uaegfx.card found and mirrored: %r" % wrap)
+    check(os.path.exists(os.path.join(mon, "Wrap")) and
+          not os.path.exists(os.path.join(mon, "uaegfx")) and
+          os.path.exists(os.path.join(store, "uaegfx")),
+          "... DEVS:Monitors/Wrap made, uaegfx's monitor moved aside")
+    check(read("envarc", "P96Multicast.moved") == ["uaegfx"], "... and remembered")
+    check(any(l.startswith("MODES=640x480") for l in read("envarc", "Multicast.prefs") or []),
+          "no Picasso96Settings: the card's own MODES= set")
+    check(os.path.exists(os.path.join(DIR, "sys", "Prefs", "MulticastPrefs")),
+          "MulticastPrefs copied to SYS:Prefs")
+    check("uaegfx.card's screen also goes out through Multicast.card" in out and
+          "p96view.py" in out, "the summary says what happens after the reboot")
+
+    rc, out = run("INSTALL", "SETUP=SINGLE", cwd="p96:build/prefstest.d/pkg")
+    print("    " + out.replace("\n", "\n    "))
+    check(rc == 0 and os.path.exists(os.path.join(mon, "uaegfx")) and
+          os.path.exists(os.path.join(mon, "Multicast")) and
+          not os.path.exists(os.path.join(mon, "Wrap")),
+          "SETUP=SINGLE: uaegfx's monitor back, Multicast's made, Wrap's moved aside")
+    check(not any(l.startswith("CARD=") for l in read("envarc", "Wrap.prefs") or []),
+          "... Wrap.card off")
+    rc, out = run("INSTALL", "SETUP=MIRROR", cwd="p96:build/prefstest.d/pkg")
+    check(rc == 0 and os.path.exists(os.path.join(mon, "Wrap")) and
+          not os.path.exists(os.path.join(mon, "uaegfx")) and
+          not os.path.exists(os.path.join(mon, "Multicast")),
+          "SETUP=MIRROR again: Wrap's monitor back, uaegfx's and Multicast's aside")
+
+    # Picasso96Mode has Multicast modes: the card adds none
+    setup()
+    write("devs", "Picasso96Settings", "\x00\x01junk Multicast\x00more")
+    rc, out = run("INSTALL", "DRY", "FROM=p96:build")
+    check("Picasso96Mode has some for Multicast" in out, "Picasso96Settings with Multicast: no MODES=")
+    rc, out = run("INSTALL", "SETUP=NONSENSE", "FROM=p96:build")
+    check(rc != 0 and "SETUP must be" in out, "SETUP=NONSENSE refused")
+
     print("prefstest: %s" % ("FAILED" if fails else "passed"))
     return 1 if fails else 0
 

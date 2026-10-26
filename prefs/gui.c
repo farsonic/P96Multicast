@@ -662,11 +662,11 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						break;
 					report[0] = 0;
 					prefs_fix(note);
-					install(note, TRUE, NULL);
+					install(note, TRUE, NULL, NULL);
 					if (!ask("MulticastPrefs: Install", report, "Install|Cancel"))
 						break;
 					report[0] = 0;
-					install(note, FALSE, NULL);
+					install(note, FALSE, NULL, NULL);
 					if (!prefs_write(TRUE))
 						note("Could not write the settings to ENV: or ENVARC:");
 					else

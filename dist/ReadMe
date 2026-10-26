@@ -26,6 +26,22 @@ Contents
                                    WRAP (Wrap.card)
   Source/                          the full source
 
+Quick start
+-----------
+Unpack, then in a Shell, inside this drawer:
+  MulticastPrefs INSTALL SETUP=SINGLE      one Multicast screen
+  MulticastPrefs INSTALL SETUP=TWO         two Multicast screens
+  MulticastPrefs INSTALL SETUP=MIRROR      your display card's screen (e.g.
+                                           uaegfx: the Workbench) also on
+                                           the network
+and reboot. Add DRY to see first what it would do. INSTALL sets up
+everything for the next boot: the cards in LIBS:Picasso96, mctest and
+wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,
+screen modes if Picasso96Mode has none for Multicast, and DEST=10.0.2.2 if
+the Amiga is on UAE's NAT network (start the TCP/IP stack before, so it
+can tell). It ends with what to run on your computer. Switching setups
+later puts back the monitors an earlier one moved aside.
+
 The easy way: MulticastPrefs
 ----------------------------
 Double-click MulticastPrefs (in this package's top drawer, or run it from
@@ -45,7 +61,7 @@ From a Shell, for scripts:
   MulticastPrefs SET FPS=10 MODES=640x480,1280x960
   MulticastPrefs SET CARD=Multicast.card SPAN=2x2 HEAD=Multicast.card
                                           (also sets BOARDS=5 to match)
-  MulticastPrefs INSTALL [DRY]            DRY: only say what it would do
+  MulticastPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY]
   MulticastPrefs STATUS
 
 Installing by hand on P96 (AmigaOS 3.x)
