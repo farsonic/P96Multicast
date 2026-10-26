@@ -11,6 +11,7 @@ with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
 
 Contents
 --------
+  MulticastPrefs                   settings and installation (see below)
   Libs/Picasso96/Multicast.card    the driver
   Libs/Picasso96/Wrap.card         experimental: wraps another card driver
   Devs/Monitors/Multicast.info     monitor icon, ToolType BOARDTYPE=Multicast
@@ -25,8 +26,30 @@ Contents
                                    WRAP (Wrap.card)
   Source/                          the full source
 
-Installing on P96 (AmigaOS 3.x)
--------------------------------
+The easy way: MulticastPrefs
+----------------------------
+Double-click MulticastPrefs (in this package's top drawer, or run it from
+a Shell). It sets everything up without P96's own tools:
+  Network    where to send, port, rate, updates per second, log file
+  Display    boards, video memory, and the screen modes the card offers
+             (a list of sizes; P96 shows them without Picasso96Mode)
+  Wrap.card  wrap another card, mirror it, or one screen over 2-4 monitors
+  Status     what the running cards say, and what is installed
+Install copies the cards to LIBS:Picasso96, makes DEVS:Monitors/Multicast
+(or Wrap) from a P96 monitor you have, with its icon, moves monitors that
+would set a card up twice to SYS:Storage/Monitors, and saves the
+settings. Then reboot. Save and Use work as in the system prefs editors.
+
+From a Shell, for scripts:
+  MulticastPrefs SHOW                     the settings and their defaults
+  MulticastPrefs SET FPS=10 MODES=640x480,1280x960
+  MulticastPrefs SET CARD=Multicast.card SPAN=2x2 HEAD=Multicast.card
+                                          (also sets BOARDS=5 to match)
+  MulticastPrefs INSTALL [DRY]            DRY: only say what it would do
+  MulticastPrefs STATUS
+
+Installing by hand on P96 (AmigaOS 3.x)
+---------------------------------------
 1. Copy Libs/Picasso96/Multicast.card to LIBS:Picasso96/
 2. Every P96 monitor in DEVS:Monitors is a copy of the same small program
    with an icon that names the board. Copy one you already have, e.g.
@@ -66,6 +89,10 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
                       modes are called Multicast2:..., and it logs to LOG.2
                       (P96; AROS takes one board per card, see Wrap.card).
                       VRAM= is for each board
+  MODES=...           the screen modes the card offers P96, e.g.
+                      MODES=640x480,800x600,1280x960 (without it: a built-in
+                      list up to MAXWIDTH x MAXHEIGHT; MODES=NONE: P96's
+                      own settings from Picasso96Mode; AROS uses its own)
   BLITTER=0           1: the card records the drawing rtg.library hands it
                       (mctest STATUS shows how much); for measuring
 

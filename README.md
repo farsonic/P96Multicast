@@ -49,6 +49,17 @@ a tile on each, so windows are dragged from monitor to monitor. See
 
 ## Installing
 
+The easy way is **MulticastPrefs** (`prefs/`), in the package's top
+drawer: a prefs editor for everything below, without P96's own tools. Its
+Install button copies the cards to `LIBS:Picasso96`, makes the monitor and
+its icon from a P96 monitor already there, moves monitors that would set a
+card up twice to `SYS:Storage/Monitors`, and saves the settings. The card
+offers its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
+setup either. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
+`INSTALL [DRY]`, `STATUS`.
+
+By hand:
+
 1. Copy `Multicast.card` to `LIBS:Picasso96/`.
 2. P96: copy a monitor file in `DEVS:Monitors` and set its `BOARDTYPE`
    ToolType to `Multicast`. AROS: copy `DEVS:Monitors/P96` to
@@ -78,6 +89,7 @@ P96. `ENV:` wins over ToolTypes.
 | `PRI` | -1 | sender task priority |
 | `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
 | `QUIET` | 0 | set BIF_QUIET |
+| `MODES` | (built-in) | screen modes offered to P96: `640x480,800x600,...`; without it a built-in list up to MAXWIDTH x MAXHEIGHT; `NONE`: P96's own settings (Picasso96Mode). AROS uses its own fixed list |
 | `BLITTER` | 0 | 1: offer rtg.library drawing functions that record what they change and leave the drawing to rtg.library; for measuring (mctest STATUS, WORKLOAD), the start of protocol 2 |
 | `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 
@@ -104,6 +116,7 @@ make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
 make emu-mirror # ... mirroring it to a second Multicast board, over the network
 make emu-span   # ... one 1280x960 screen on four Multicast boards, a window moved between them
 make emu-measure  # BLITTER=1: how much of the drawing reaches the card (docs/PROTOCOL2.md)
+make emu-prefs  # MulticastPrefs: install on a clean AROS, its window, a second boot
 ```
 
 ## Layout
@@ -114,6 +127,9 @@ make emu-measure  # BLITTER=1: how much of the drawing reaches the card (docs/PR
 | `src/card.c` | library init, FindCard, InitCard, the BoardInfo functions |
 | `src/sender.c` | the sender process |
 | `src/config.c` | settings |
+| `src/modes.c` | the screen modes the card offers P96 |
+| `src/blit.c` | BLITTER=1: drawing calls recorded |
+| `prefs/` | MulticastPrefs: settings and installation, GadTools window and Shell |
 | `src/wrapstart.s`, `src/wrap.c`, `src/mirror.c` | Wrap.card: library header and thunks, the wrapper, the mirror |
 | `include/wrap_status.h` | Wrap.card's slot table and status block |
 | `include/boardinfo.h` | the P96 BoardInfo structure |

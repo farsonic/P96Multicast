@@ -12,7 +12,7 @@ RIPTIDE_SRC=${RIPTIDE_SRC:-/home/user/Riptide}
 STAGE=build/package
 PKG=$STAGE/P96Multicast
 
-for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat; do
+for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat build/MulticastPrefs; do
 	[ -f "$f" ] || { echo "$f missing: run make first"; exit 1; }
 done
 rm -rf "$STAGE" build/P96Multicast.lha
@@ -22,6 +22,7 @@ mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Multicast.card build/Wrap.card "$PKG/Libs/Picasso96/"
 cp build/mctest build/wrapstat "$PKG/C/"
+cp build/MulticastPrefs "$PKG/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"
 cp docs/PROTOCOL.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
@@ -64,6 +65,7 @@ EOF
 
 # the monitor icon: a TOOL icon whose ToolTypes name the board, like P96's own
 if [ -f "$RIPTIDE_SRC/tools/mkicon.py" ]; then
+	python3 "$RIPTIDE_SRC/tools/mkicon.py" tool "$PKG/MulticastPrefs.info" >/dev/null
 	python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Devs/Monitors/Multicast.info" \
 		--tooltype "BOARDTYPE=Multicast" --tooltype "(DEST=239.255.96.1)" \
 		--tooltype "(PORT=9696)" --tooltype "(FPS=25)" --tooltype "(LOG=T:Multicast.log)" >/dev/null

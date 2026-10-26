@@ -8,6 +8,7 @@
 #   make emu-mirror      ... and mirroring it to a second board, over the network
 #   make emu-span        ... and spanning one screen over four boards, over the network
 #   make emu-measure     how much of the drawing reaches the card (BLITTER=1)
+#   make emu-prefs       MulticastPrefs installs on a clean AROS; its window
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -25,7 +26,10 @@ CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sende
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
-all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat
+PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c
+
+all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
+     $(BUILD)/MulticastPrefs
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -46,6 +50,10 @@ $(BUILD)/Wrap.card: $(WRAP_OBJ)
 
 $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
+
+# libraries opened by hand (no -lauto): the command line runs without intuition
+$(BUILD)/MulticastPrefs: $(PREFS_SRC) prefs/mcprefs.h $(HDRS) | $(BUILD)
+	$(VC) $(CFLAGS) -Iprefs -o $@ $(PREFS_SRC) -lamiga
 
 $(BUILD)/wrapstat: tests/wrapstat.c $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
@@ -73,12 +81,13 @@ $(BUILD)/offsets: tests/offsets.c include/boardinfo.h | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $<
 
 check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest \
-       $(BUILD)/modetest
+       $(BUILD)/modetest $(BUILD)/MulticastPrefs
 	$(VAMOS) $(BUILD)/offsets
 	python3 tests/check_card.py $(BUILD)/Multicast.card
 	python3 tests/check_card.py $(BUILD)/Wrap.card Wrap.card
 	tests/wraptest.sh "$(VAMOS)"
 	tests/modetest.sh "$(VAMOS)"
+	python3 tests/prefstest.py "$(VAMOS)"
 
 package: all
 	dist/mkpackage.sh
@@ -98,7 +107,10 @@ emu-span: all
 emu-measure: all
 	emu/measure_test.sh
 
+emu-prefs: all
+	emu/prefs_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-measure clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-measure emu-prefs clean
