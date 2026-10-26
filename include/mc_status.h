@@ -36,6 +36,12 @@
 /* not BoardInfo functions: Wrap.card's heads (McDamage) */
 #define MC_BLIT_DAMAGE    9
 
+/* McStatus.settings_read */
+#define MC_SET_NOTASKED  0  /* no MODES=: not needed */
+#define MC_SET_NOPROCESS 1  /* InitCard ran in a task, which can't read files */
+#define MC_SET_NOFILE    2  /* no DEVS:Picasso96Settings */
+#define MC_SET_READ      3
+
 struct McStatus {
 	ULONG magic;
 	UWORD findcard_calls;
@@ -48,6 +54,9 @@ struct McStatus {
 	ULONG panning_calls;   /* SetPanning: a bitmap was put on display */
 	UWORD modes_before;    /* resolutions P96 had for the board at InitCard */
 	UWORD modes_added;     /* ... and the card's own it added (modes.c) */
+	UWORD settings_read;   /* MC_SET_*: could InitCard read DEVS:Picasso96Settings */
+	UWORD settings_ids;    /* ... and the 0x50xx1000 DisplayIDs it found there */
+	ULONG first_id;        /* the first DisplayID the card gave a mode */
 
 	/* the first board: what it hears about and what it sends (Copper) */
 	UWORD blitter;         /* drawing calls are sent as orders */

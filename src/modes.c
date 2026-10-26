@@ -55,20 +55,28 @@ static void ids_in_settings(UBYTE used[256])
 	UBYTE *buf;
 	LONG n, keep = 0, i;
 
-	if (me->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+	if (me->pr_Task.tc_Node.ln_Type != NT_PROCESS) {
+		mc_status->settings_read = MC_SET_NOPROCESS;
 		return;
+	}
 	oldwin = me->pr_WindowPtr;
 	me->pr_WindowPtr = (APTR)-1;
 	fh = Open((STRPTR)"DEVS:Picasso96Settings", MODE_OLDFILE);
 	me->pr_WindowPtr = oldwin;
-	if (!fh)
+	if (!fh) {
+		mc_status->settings_read = MC_SET_NOFILE;
 		return;
+	}
+	mc_status->settings_read = MC_SET_READ;
 	buf = AllocMem(4096, MEMF_ANY);
 	while (buf && (n = Read(fh, buf + keep, 4096 - keep)) > 0) {
 		n += keep;
 		for (i = 0; i + 4 <= n; i++)
-			if (buf[i] == 0x50 && buf[i + 2] == 0x10 && buf[i + 3] == 0x00)
+			if (buf[i] == 0x50 && buf[i + 2] == 0x10 && buf[i + 3] == 0x00 &&
+			    !used[buf[i + 1]]) {
 				used[buf[i + 1]] = 1;
+				mc_status->settings_ids++;
+			}
 		keep = n < 3 ? n : 3;
 		CopyMem(buf + n - keep, buf, keep);
 	}
@@ -205,6 +213,8 @@ void mc_modes_build(struct McCard *mc)
 		res->Flags = P96F_PUBLIC;
 		res->BoardInfo = bi;
 		AddTail((struct List *)&bi->ResolutionsList, &res->Node);
+		if (!added && mc->boardnum == 0)
+			mc_status->first_id = res->DisplayID;
 		added++;
 		if (mc->boardnum == 0)
 			mc_status->modes_added = added;

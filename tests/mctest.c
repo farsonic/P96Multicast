@@ -284,6 +284,12 @@ static void status(void)
 		       st.panning_calls, st.setgc_calls ? "" : " (no screen shown on the card yet)");
 		printf("  screen modes: %u from P96's settings when InitCard ran, %u added by the card\n",
 		       st.modes_before, st.modes_added);
+		if (card->lib.lib_Version >= 2 && st.modes_added)
+			printf("  the card's DisplayIDs from %08lx; DEVS:Picasso96Settings %s, %u of its IDs avoided\n",
+			       st.first_id, st.settings_read == MC_SET_READ ? "read" :
+			       st.settings_read == MC_SET_NOFILE ? "not there" :
+			       st.settings_read == MC_SET_NOPROCESS ? "not readable (InitCard ran in a task)" : "-",
+			       st.settings_ids);
 		if (card->lib.lib_Version >= 2) {
 			int k;
 
