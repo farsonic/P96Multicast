@@ -41,6 +41,11 @@ Unpack, then in a Shell, inside this drawer:
   MulticastPrefs INSTALL SETUP=MIRROR      your display card's screen (e.g.
                                            uaegfx: the Workbench) also on
                                            the network
+  MulticastPrefs INSTALL SETUP=SPAN        your display card's screen split
+                                           over two Multicast boards, left
+                                           and right half: one desktop on two
+                                           monitors, drag windows across
+                                           (SETUP=SPAN2x2: four)
 and reboot. Add DRY to see first what it would do. INSTALL sets up
 everything for the next boot: the cards in LIBS:Picasso96, mctest and
 wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,
@@ -158,6 +163,8 @@ On the receiving machine:
                                            (no tkinter, as with Homebrew's
                                            Python: opens a web browser view)
   python3 p96view.py --web                 web browser view, http://127.0.0.1:8096/
+  python3 p96view.py --span 2x1            SETUP=SPAN: both boards side by side
+                                           in one window (ports 9696, 9697)
   python3 p96view.py --iface 192.168.1.10  join on a particular interface
   python3 p96view.py --snapshot amiga.png --duration 30
   python3 fake_sender.py --dest 127.0.0.1 --seconds 0

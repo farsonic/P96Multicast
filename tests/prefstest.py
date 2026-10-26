@@ -201,6 +201,20 @@ def main():
           not os.path.exists(os.path.join(mon, "uaegfx")) and
           not os.path.exists(os.path.join(mon, "Multicast")),
           "SETUP=MIRROR again: Wrap's monitor back, uaegfx's and Multicast's aside")
+    rc, out = run("INSTALL", "SETUP=SPAN", cwd="p96:build/prefstest.d/pkg")
+    print("    " + out.replace("\n", "\n    "))
+    wrap = read("envarc", "Wrap.prefs") or []
+    mc = read("envarc", "Multicast.prefs") or []
+    check(rc == 0 and "CARD=uaegfx.card" in wrap and "SPAN=2x1" in wrap and
+          "HEAD=Multicast.card" in wrap and "HEADSHARE=1" in wrap and
+          not any(l.startswith("MIRROR=") and l != "MIRROR=" for l in wrap) and
+          "BOARDS=2" in mc and os.path.exists(os.path.join(mon, "Wrap")),
+          "SETUP=SPAN: uaegfx's screen over two Multicast boards: %r %r" % (wrap, mc))
+    check("--span 2x1" in out, "... and the viewer told to show both")
+    rc, out = run("INSTALL", "SETUP=SPAN2x2", "DRY", cwd="p96:build/prefstest.d/pkg")
+    check(rc == 0 and "2x2" in out, "SETUP=SPAN2x2: %r" % out)
+    rc, out = run("INSTALL", "SETUP=SPAN3x3", "DRY", cwd="p96:build/prefstest.d/pkg")
+    check(rc != 0, "SETUP=SPAN3x3 refused (at most 4 heads)")
 
     # Picasso96Mode has Multicast modes: the card adds none
     setup()

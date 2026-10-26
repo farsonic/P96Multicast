@@ -4,6 +4,7 @@
     p96view.py                              join 239.255.96.1:9696, show a window
     p96view.py --group 127.0.0.1            UAE's NAT (slirp): the card sends to 10.0.2.2
     p96view.py --group 239.255.96.2 --port 9700
+    p96view.py --span 2x1                   two boards side by side (Wrap.card's SPAN=2x1)
     p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
     p96view.py --web                        show it in a web browser instead
 
@@ -686,6 +687,43 @@ def print_stats(viewer, out=sys.stderr):
           file=out)
 
 
+class Head:
+    """One stream: a socket and its viewer, at a place on the wall."""
+
+    def __init__(self, sock, viewer, col=0, row=0):
+        self.sock, self.viewer, self.screen = sock, viewer, viewer.screen
+        self.col, self.row = col, row
+
+
+def wall(heads):
+    """Where each head goes, and the size of all of them: (offsets, width, height).
+
+    Heads are laid out in their columns and rows (Wrap.card's SPAN=), each
+    column as wide as its widest head and each row as high as its highest.
+    """
+    cols = max(h.col for h in heads) + 1
+    rows = max(h.row for h in heads) + 1
+    cw = [max([h.screen.width for h in heads if h.col == c] + [0]) for c in range(cols)]
+    rh = [max([h.screen.height for h in heads if h.row == r] + [0]) for r in range(rows)]
+    offsets = [(sum(cw[:h.col]), sum(rh[:h.row])) for h in heads]
+    return offsets, sum(cw), sum(rh)
+
+
+def composite(heads):
+    """All heads as one picture: (width, height, packed RGB)."""
+    offsets, w, h = wall(heads)
+    out = bytearray(w * h * 3)
+    for hd, (ox, oy) in zip(heads, offsets):
+        scr = hd.screen
+        if not scr.width:
+            continue
+        rgb, row = scr.rgb(), scr.width * 3
+        for y in range(scr.height):
+            o = ((oy + y) * w + ox) * 3
+            out[o:o + row] = rgb[y * row:(y + 1) * row]
+    return w, h, bytes(out)
+
+
 def receive_some(sock, viewer, limit=4000):
     """Whatever has arrived, without waiting. Returns the record types applied."""
     types = []
@@ -699,93 +737,111 @@ def receive_some(sock, viewer, limit=4000):
     return types
 
 
-def run_headless(sock, viewer, args):
-    """Save the latest complete frame to args.snapshot, at most once a second."""
-    screen = viewer.screen
+def run_headless(heads, args):
+    """Save the latest complete picture to args.snapshot, at most once a second."""
+    import select
     end = time.time() + args.duration if args.duration else None
     last_save = 0
-    sock.settimeout(0.05)
+    for h in heads:
+        h.sock.setblocking(False)
+
+    def save():
+        if len(heads) == 1:
+            scr = heads[0].screen
+            write_png(args.snapshot, scr.width, scr.height, scr.rgb())
+            if args.raw:
+                write_raw(args.raw, scr)
+        else:
+            write_png(args.snapshot, *composite(heads))
+
     while end is None or time.time() < end:
-        try:
-            data, addr = sock.recvfrom(65536)
-            types = viewer.feed(data, addr)
-        except socket.timeout:
-            types = []
-        types += receive_some(sock, viewer)
-        if FRAME in types and screen.complete():
+        select.select([h.sock for h in heads], [], [], 0.05)
+        framed = False
+        for h in heads:
+            if FRAME in receive_some(h.sock, h.viewer):
+                framed = True
+        if framed and all(h.screen.complete() for h in heads):
             now = time.time()
             if now - last_save >= 1:
-                write_png(args.snapshot, screen.width, screen.height, screen.rgb())
-                if args.raw:
-                    write_raw(args.raw, screen)
+                save()
                 last_save = now
-        sock.settimeout(0.05)
-    if screen.complete():
-        write_png(args.snapshot, screen.width, screen.height, screen.rgb())
-        if args.raw:
-            write_raw(args.raw, screen)
-    print_stats(viewer)
+    if all(h.screen.complete() for h in heads):
+        save()
+    for h in heads:
+        print_stats(h.viewer)
 
 
-def run_window(sock, viewer, args):  # pragma: no cover - interactive
+def run_window(heads, args):  # pragma: no cover - interactive
     import tkinter as tk
 
-    screen = viewer.screen
     root = tk.Tk()
     root.title("P96Multicast")
     canvas = tk.Canvas(root, bg="black", highlightthickness=0, width=640, height=480)
     canvas.pack(fill="both", expand=True)
-    state = {"img": None, "item": None, "size": None, "ptr": None, "ptr_item": None,
-             "ptr_serial": -1}
-    sock.setblocking(False)
+    state = {"wall": None}
+    per = [{"img": None, "item": None, "size": None, "ptr": None, "ptr_item": None,
+            "ptr_serial": -1, "at": (0, 0)} for _ in heads]
+    for h in heads:
+        h.sock.setblocking(False)
 
     def present():
-        size = (screen.width, screen.height)
-        if not screen.width:
-            return
-        if size != state["size"]:
-            state["img"] = tk.PhotoImage(width=size[0], height=size[1])
-            if state["item"] is None:
-                state["item"] = canvas.create_image(0, 0, anchor="nw", image=state["img"])
-            else:
-                canvas.itemconfigure(state["item"], image=state["img"])
-            canvas.configure(width=size[0], height=size[1])
-            root.title("P96Multicast %dx%d %s" % (size[0], size[1],
-                       FORMAT_NAMES.get(screen.fmt, "?")))
-            state["size"] = size
-            screen.all_dirty = True
-        d = screen.take_dirty()
-        if d:
-            x, y, w, h = d
-            part = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, h) + screen.rgb_rect(x, y, w, h),
-                                 format="PPM")
-            state["img"].tk.call(state["img"], "copy", part, "-to", x, y)
-        if screen.pointer_serial != state["ptr_serial"]:
-            state["ptr_serial"] = screen.pointer_serial
-            x, y, vis = screen.pointer_pos
-            if screen.pointer and vis:
-                w, h, _hx, _hy, rgba = screen.pointer
-                if state["ptr"] is None or state["ptr"][0] is not screen.pointer:
-                    img = tk.PhotoImage(data=png_bytes(w, h, rgba, alpha=True), format="PNG")
-                    state["ptr"] = (screen.pointer, img)
-                    if state["ptr_item"] is None:
-                        state["ptr_item"] = canvas.create_image(x, y, anchor="nw", image=img)
-                    else:
-                        canvas.itemconfigure(state["ptr_item"], image=img)
-                canvas.coords(state["ptr_item"], x, y)
-                canvas.itemconfigure(state["ptr_item"], state="normal")
-                canvas.tag_raise(state["ptr_item"])
-            elif state["ptr_item"] is not None:
-                canvas.itemconfigure(state["ptr_item"], state="hidden")
+        offsets, ww, wh = wall(heads)
+        if (ww, wh) != state["wall"] and ww:
+            state["wall"] = (ww, wh)
+            canvas.configure(width=ww, height=wh)
+            scr = heads[0].screen
+            root.title("P96Multicast %dx%d %s%s" % (ww, wh, FORMAT_NAMES.get(scr.fmt, "?"),
+                       ", %d screens" % len(heads) if len(heads) > 1 else ""))
+        for h, st, at in zip(heads, per, offsets):
+            screen = h.screen
+            size = (screen.width, screen.height)
+            if not screen.width:
+                continue
+            if size != st["size"] or at != st["at"]:
+                if size != st["size"]:
+                    st["img"] = tk.PhotoImage(width=size[0], height=size[1])
+                    screen.all_dirty = True
+                if st["item"] is None:
+                    st["item"] = canvas.create_image(at[0], at[1], anchor="nw", image=st["img"])
+                else:
+                    canvas.itemconfigure(st["item"], image=st["img"])
+                    canvas.coords(st["item"], at[0], at[1])
+                st["size"], st["at"] = size, at
+                st["ptr_serial"] = -1
+            d = screen.take_dirty()
+            if d:
+                x, y, w, hh = d
+                part = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, hh) +
+                                     screen.rgb_rect(x, y, w, hh), format="PPM")
+                st["img"].tk.call(st["img"], "copy", part, "-to", x, y)
+            if screen.pointer_serial != st["ptr_serial"]:
+                st["ptr_serial"] = screen.pointer_serial
+                x, y, vis = screen.pointer_pos
+                if screen.pointer and vis:
+                    w, hh, _hx, _hy, rgba = screen.pointer
+                    if st["ptr"] is None or st["ptr"][0] is not screen.pointer:
+                        img = tk.PhotoImage(data=png_bytes(w, hh, rgba, alpha=True), format="PNG")
+                        st["ptr"] = (screen.pointer, img)
+                        if st["ptr_item"] is None:
+                            st["ptr_item"] = canvas.create_image(0, 0, anchor="nw", image=img)
+                        else:
+                            canvas.itemconfigure(st["ptr_item"], image=img)
+                    canvas.coords(st["ptr_item"], at[0] + x, at[1] + y)
+                    canvas.itemconfigure(st["ptr_item"], state="normal")
+                    canvas.tag_raise(st["ptr_item"])
+                elif st["ptr_item"] is not None:
+                    canvas.itemconfigure(st["ptr_item"], state="hidden")
 
     def poll():
-        receive_some(sock, viewer)
+        for h in heads:
+            receive_some(h.sock, h.viewer)
         present()
         root.after(10, poll)
 
     poll()
     root.mainloop()
-    print_stats(viewer)
+    for h in heads:
+        print_stats(h.viewer)
 
 
 WEB_PAGE = b"""<!doctype html>
@@ -818,33 +874,30 @@ tick();
 """
 
 
-def run_web(sock, viewer, args):  # pragma: no cover - interactive
-    """Receive in a thread; serve the screen to a browser on localhost."""
+def run_web(heads, args):  # pragma: no cover - interactive
+    """Receive in a thread; serve the screen(s) to a browser on localhost."""
     import http.server
     import json
+    import select
     import threading
     import webbrowser
 
-    screen = viewer.screen
     lock = threading.Lock()
     state = {"version": 0, "png": None, "png_version": -1}
+    for h in heads:
+        h.sock.setblocking(False)
 
     def receive():
-        sock.settimeout(0.05)
         while True:
             try:
-                data, addr = sock.recvfrom(65536)
-            except socket.timeout:
-                with lock:
-                    viewer.tick()
-                continue
+                select.select([h.sock for h in heads], [], [], 0.05)
             except OSError:
                 return
             with lock:
-                types = viewer.feed(data, addr)
-                viewer.tick()
-                if FRAME in types or SURFACE in types or PALETTE in types:
-                    state["version"] += 1
+                for h in heads:
+                    types = receive_some(h.sock, h.viewer)
+                    if FRAME in types or SURFACE in types or PALETTE in types:
+                        state["version"] += 1
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -864,20 +917,24 @@ def run_web(sock, viewer, args):  # pragma: no cover - interactive
                 self.send("text/html; charset=utf-8", WEB_PAGE)
             elif path == "/status":
                 with lock:
-                    st = viewer.stats
-                    text = ("%dx%d %s, %d frames, %d KB received" % (
-                        screen.width, screen.height, FORMAT_NAMES.get(screen.fmt, "?"),
-                        screen.frames, st["bytes"] >> 10)
-                        if screen.width else "waiting for the Amiga (%d datagrams so far)"
-                        % st["datagrams"])
-                    body = {"frame": state["version"], "width": screen.width, "text": text}
+                    scr = heads[0].screen
+                    _, ww, wh = wall(heads)
+                    kb = sum(h.viewer.stats["bytes"] for h in heads) >> 10
+                    text = ("%dx%d %s%s, %d frames, %d KB received" % (
+                        ww, wh, FORMAT_NAMES.get(scr.fmt, "?"),
+                        " (%d screens)" % len(heads) if len(heads) > 1 else "",
+                        scr.frames, kb)
+                        if ww else "waiting for the Amiga (%d datagrams so far)"
+                        % sum(h.viewer.stats["datagrams"] for h in heads))
+                    body = {"frame": state["version"], "width": ww, "text": text}
                 self.send("application/json", json.dumps(body).encode())
             elif path == "/frame.png":
                 with lock:
-                    if state["png_version"] != state["version"] and screen.width:
-                        state["png"] = png_bytes(screen.width, screen.height,
-                                                 screen.rgb(), level=1)
-                        state["png_version"] = state["version"]
+                    if state["png_version"] != state["version"]:
+                        w, h, rgb = composite(heads)
+                        if w:
+                            state["png"] = png_bytes(w, h, rgb, level=1)
+                            state["png_version"] = state["version"]
                     png = state["png"]
                 if png:
                     self.send("image/png", png)
@@ -895,11 +952,25 @@ def run_web(sock, viewer, args):  # pragma: no cover - interactive
     server.serve_forever()
 
 
+def parse_span(text):
+    """'2x1' -> (2, 1)"""
+    try:
+        c, r = (int(v) for v in text.lower().split("x"))
+    except ValueError:
+        raise argparse.ArgumentTypeError("--span wants CxR, e.g. 2x1")
+    if c < 1 or r < 1 or c * r > 8:
+        raise argparse.ArgumentTypeError("--span: 1 to 8 screens")
+    return c, r
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--group", default="239.255.96.1",
                     help="multicast group to join (a unicast address just binds)")
     ap.add_argument("--port", type=int, default=9696)
+    ap.add_argument("--span", type=parse_span, metavar="CxR",
+                    help="several boards side by side in one window, e.g. 2x1 for Wrap.card's "
+                         "SPAN=2x1: ports PORT, PORT+1, ... left to right, top to bottom")
     ap.add_argument("--iface", help="local address of the interface to join on")
     ap.add_argument("--snapshot", help="no window: write the screen to this PNG")
     ap.add_argument("--raw", help="with --snapshot: also the card's own pixels to this file")
@@ -915,13 +986,16 @@ def main(argv=None):
     # SIGTERM stops a headless run cleanly (background jobs ignore SIGINT)
     import signal
     signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
-    sock = open_socket(args.group, args.port, args.iface)
-    viewer = make_viewer(sock, Screen())
+    cols, rows = args.span or (1, 1)
+    heads = []
+    for i in range(cols * rows):
+        sock = open_socket(args.group, args.port + i, args.iface)
+        heads.append(Head(sock, make_viewer(sock, Screen()), i % cols, i // cols))
     try:
         if args.snapshot:
-            run_headless(sock, viewer, args)
+            run_headless(heads, args)
         elif args.web is not None:
-            run_web(sock, viewer, args)
+            run_web(heads, args)
         else:
             try:
                 import tkinter  # noqa: F401
@@ -929,11 +1003,12 @@ def main(argv=None):
                 print("p96view: no tkinter in this Python (on macOS with Homebrew: "
                       "brew install python-tk), using the web view", file=sys.stderr)
                 args.web = 8096
-                run_web(sock, viewer, args)
+                run_web(heads, args)
             else:
-                run_window(sock, viewer, args)
+                run_window(heads, args)
     except KeyboardInterrupt:
-        print_stats(viewer)
+        for h in heads:
+            print_stats(h.viewer)
     return 0
 
 

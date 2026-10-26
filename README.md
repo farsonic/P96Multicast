@@ -64,12 +64,13 @@ its icon from a P96 monitor already there, moves monitors that would set a
 card up twice to `SYS:Storage/Monitors`, and saves the settings. The card
 can offer its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
 setup either if you give it a mode list. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
-`INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY]`, `STATUS`. `INSTALL` sets up
+`INSTALL [SETUP=SINGLE|TWO|MIRROR|SPAN] [DRY]`, `STATUS`. `INSTALL` sets up
 everything for the next boot: the cards, `mctest`/`wrapstat` in `C:`,
 MulticastPrefs in `SYS:Prefs`, the monitor, screen modes if Picasso96Mode
 has none for Multicast, `DEST=10.0.2.2` on UAE's NAT network, and with
-`SETUP=` one or two Multicast screens or the display card mirrored (it
-finds the card); switching setups puts back the monitors it moved aside.
+`SETUP=` one or two Multicast screens, the display card mirrored, or its
+screen split over two (SPAN) or four (SPAN2x2) Multicast boards as one
+desktop (it finds the card); switching setups puts back the monitors it moved aside.
 
 By hand:
 
@@ -116,6 +117,7 @@ P96. `ENV:` wins over ToolTypes.
 python3 client/p96view.py                       # a window (tkinter)
 python3 client/p96view.py --group 127.0.0.1     # UAE's NAT (slirp): the card sends to 10.0.2.2
 python3 client/p96view.py --iface 192.168.1.10  # join on this interface
+python3 client/p96view.py --span 2x1            # Wrap.card's SPAN=2x1: both boards in one window
 python3 client/p96view.py --snapshot amiga.png --duration 30
 ```
 

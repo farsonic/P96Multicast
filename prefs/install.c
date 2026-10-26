@@ -552,10 +552,10 @@ static void set(const char *key, const char *value)
 	prefs_set(find_setting(key), value);
 }
 
-/* SETUP=SINGLE, TWO or MIRROR: the settings for it */
+/* SETUP=SINGLE, TWO, MIRROR or SPAN: the settings for it */
 static BOOL apply_setup(const char *setup)
 {
-	char card[40];
+	char card[40], nb[8];
 
 	if (!mp_stricmp(setup, "single") || !mp_stricmp(setup, "two")) {
 		set("CARD", "");
@@ -586,7 +586,43 @@ static BOOL apply_setup(const char *setup)
 		      " (port 9696)");
 		return TRUE;
 	}
-	say("SETUP must be SINGLE, TWO or MIRROR");
+	if ((setup[0] | 32) == 's' && (setup[1] | 32) == 'p' && (setup[2] | 32) == 'a' &&
+	    (setup[3] | 32) == 'n') {
+		/* SPAN, or SPAN2x1, SPAN2x2 ...: the display card's screen over Multicast boards */
+		const char *c = prefs_value(find_setting("CARD"));
+		const char *size = setup[4] ? setup + 4 : "2x1";
+		const char *why = prefs_check(find_setting("SPAN"), size);
+		LONG cols = size[0] - '0', rows = size[2] - '0';
+
+		if (why) {
+			notef("Setup SPAN%s: %s", setup + 4, why);
+			return FALSE;
+		}
+		if (*c && mp_stricmp(c, "Multicast.card"))
+			snprintf(card, sizeof(card), "%s", c);
+		else if (!find_display_card(card, sizeof(card))) {
+			say("Setup SPAN: no display card found (a monitor in DEVS:Monitors whose"
+			    " card is in LIBS:Picasso96); give CARD= yourself.");
+			return FALSE;
+		}
+		set("CARD", card);
+		set("MIRROR", "");
+		set("SPAN", size);
+		set("HEAD", "Multicast.card");
+		set("HEAD1", "");
+		set("HEAD2", "");
+		set("HEAD3", "");
+		set("HEAD4", "");
+		set("HEADSHARE", "1");
+		set("MIRRORFPS", "10");
+		snprintf(nb, sizeof(nb), "%ld", cols * rows);
+		set("BOARDS", nb);
+		notef("Setup: the %s screen over %s Multicast boards, a part on each,", card, size);
+		say(cols * rows == 2 ? "       one desktop (ports 9696 and 9697)" :
+		    "       one desktop (ports from 9696 on)");
+		return TRUE;
+	}
+	say("SETUP must be SINGLE, TWO, MIRROR or SPAN (SPAN2x1, SPAN2x2, ...)");
 	return FALSE;
 }
 
@@ -670,9 +706,15 @@ static void summary(void)
 		notef("  %s's screen also goes out through %s", card, mirror);
 	else
 		notef("  %s Multicast board(s), each its own screen%s", boards, "");
-	snprintf(line, sizeof(line), "  on your computer: python3 p96view.py%s",
-	         multicast ? "" : " --group 127.0.0.1");
+	if (*card && *span)
+		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s", span,
+		         multicast ? "" : " --group 127.0.0.1");
+	else
+		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py%s",
+		         multicast ? "" : " --group 127.0.0.1");
 	say(line);
+	if (*card && *span)
+		say("  drag windows from one part to the other: it is one screen");
 	if (!*card && boards[0] > '1')
 		say("  (the second board: add --port 9697)");
 	Forbid();

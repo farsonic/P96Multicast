@@ -15,14 +15,16 @@
  *                                       works too, and "SPAN=" unsets
  *   MulticastPrefs SET CARD=Multicast.card SPAN=2x2 HEAD=Multicast.card
  *                                       (sets BOARDS=5 to match)
- *   MulticastPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY] [FROM=dir]
+ *   MulticastPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR|SPAN] [DRY] [FROM=dir]
  *                                       everything for the next boot: the
  *                                       cards (from FROM, or the package),
  *                                       mctest, wrapstat and MulticastPrefs,
  *                                       the monitor, screen modes if P96 has
  *                                       none, DEST=10.0.2.2 on UAE's NAT; with
- *                                       SETUP, one or two Multicast screens or
- *                                       your display card mirrored. DRY says
+ *                                       SETUP, one or two Multicast screens,
+ *                                       your display card mirrored, or its
+ *                                       screen over two Multicast boards (SPAN,
+ *                                       SPAN2x2: four), one desktop. DRY says
  *                                       what it would do
  *   MulticastPrefs STATUS               what the running cards say
  */

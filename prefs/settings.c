@@ -370,16 +370,19 @@ static BOOL is_multicast(const char *card)
 void prefs_fix(void (*note)(const char *))
 {
 	const struct Setting *bs = find_setting("BOARDS");
+	const char *card = prefs_value(find_setting("CARD"));
 	const char *span = prefs_get(find_setting("SPAN"));
 	const char *mirror = prefs_get(find_setting("MIRROR"));
 	const char *head = prefs_value(find_setting("HEAD"));
-	LONG need = 1, have, c, r;
+	LONG need, have, c, r;
 	const char *p;
 	char buf[80];
 	int i;
 
-	if (!is_multicast(prefs_value(find_setting("CARD"))))
+	if (!*card)
 		return;
+	/* the wrapped board, if it is a Multicast board, and each Multicast head */
+	need = is_multicast(card) ? 1 : 0;
 	if (span && *span) {
 		p = span;
 		parse_long(&p, &c);
@@ -395,14 +398,15 @@ void prefs_fix(void (*note)(const char *))
 				need++;
 		}
 	} else if (mirror && is_multicast(mirror)) {
-		need = 2;
+		need++;
 	}
 	p = prefs_value(bs);
 	parse_long(&p, &have);
 	if (have < need) {
 		snprintf(buf, sizeof(buf), "%ld", need);
 		prefs_set(bs, buf);
-		snprintf(buf, sizeof(buf), "BOARDS=%ld: the wrapped board and its Multicast heads", need);
+		snprintf(buf, sizeof(buf), "BOARDS=%ld: %s Multicast heads", need,
+		         is_multicast(card) ? "the wrapped board and its" : "the");
 		note(buf);
 	}
 }
