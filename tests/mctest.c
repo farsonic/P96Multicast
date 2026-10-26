@@ -15,6 +15,10 @@
  *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
  *                                       card streams it while e.g. the Workbench
  *                                       stays in front on another board
+ *   mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=16 SPAN=2x1 DEFAULT
+ *                                       ... twice as wide as the mode, for
+ *                                       Wrap.card's SPAN=2x1: one public screen
+ *                                       over two Multicast windows
  *   mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=8 [DUMP=Work:screen.raw]
  *                                       a Workbench-like screen on the card and
  *                                       everyday work on it (a console listing
@@ -690,13 +694,16 @@ static int workload(ULONG id, UWORD w, UWORD h, UWORD depth, const char *dumpfil
  * A public screen on the card, like the Workbench screen, until Ctrl-C and
  * no visitor windows are left.
  */
-static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL def, BOOL back)
+static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, int cols, int rows,
+                     BOOL def, BOOL back)
 {
 	struct Screen *scr;
 	ULONG err = 0;
 	char olddefault[MAXPUBSCREENNAME + 1];
 
-	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h,
+	/* SPAN=: cols x rows times the mode, Wrap.card's heads a part each */
+	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w * cols, SA_Height, h * rows,
+	                     SA_AutoScroll, TRUE,
 	                     SA_Depth, depth, SA_PubName, (ULONG)name,
 	                     SA_Title, (ULONG)"Multicast screen", SA_LikeWorkbench, TRUE,
 	                     SA_SharePens, TRUE, SA_Type, PUBLICSCREEN,
@@ -713,6 +720,9 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, BOOL d
 		GetDefaultPubScreen(olddefault);
 		SetDefaultPubScreen(name);
 	}
+	if (cols * rows > 1)
+		printf("mctest: %dx%d, over %dx%d heads of %dx%d (Wrap.card SPAN=%dx%d)\n",
+		       (int)w * cols, (int)h * rows, cols, rows, (int)w, (int)h, cols, rows);
 	printf("mctest: public screen %s open on mode %08lx, %ux%ux%u%s\n"
 	       "        open windows on it, e.g. NewShell \"CON:20/20/600/200/Shell/CLOSE/SCREEN%s\"\n"
 	       "        Ctrl-C (or Break) closes it once its windows are closed\n",
@@ -807,7 +817,7 @@ int main(void)
 		return rc;
 	}
 
-	if (args[A_SPAN]) {
+	if (args[A_SPAN] && !args[A_PUBSCREEN]) {
 		const char *sp = (const char *)args[A_SPAN];
 		int cols = 0, rows = 0, rc;
 
@@ -831,8 +841,26 @@ int main(void)
 	}
 
 	if (args[A_PUBSCREEN]) {
-		int rc = pubscreen((char *)args[A_PUBSCREEN], id, w, h, depth,
-		                   args[A_DEFAULT] != 0, args[A_BACK] != 0);
+		int cols = 1, rows = 1, rc;
+
+		if (args[A_SPAN]) {
+			const char *sp = (const char *)args[A_SPAN];
+
+			cols = rows = 0;
+			while (*sp >= '0' && *sp <= '9')
+				cols = cols * 10 + *sp++ - '0';
+			if (*sp == 'x' || *sp == 'X')
+				sp++;
+			while (*sp >= '0' && *sp <= '9')
+				rows = rows * 10 + *sp++ - '0';
+			if (cols < 1 || rows < 1) {
+				printf("mctest: SPAN=CxR, e.g. 2x1\n");
+				FreeArgs(rda);
+				return RETURN_ERROR;
+			}
+		}
+		rc = pubscreen((char *)args[A_PUBSCREEN], id, w, h, depth, cols, rows,
+		               args[A_DEFAULT] != 0, args[A_BACK] != 0);
 
 		if (CyberGfxBase)
 			CloseLibrary(CyberGfxBase);

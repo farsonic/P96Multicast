@@ -46,6 +46,14 @@ Unpack, then in a Shell, inside this drawer:
                                            and right half: one desktop on two
                                            monitors, drag windows across
                                            (SETUP=SPAN2x2: four)
+  MulticastPrefs INSTALL SETUP=DESKTOP     a screen of its own over two
+                                           Multicast windows, one desktop:
+                                           drag windows from one to the
+                                           other; the Workbench stays put.
+                                           After the reboot:
+    Run >NIL: mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=16 SPAN=2x1 DEFAULT
+    python3 p96view.py --span 2x1 --port 9697    (on your computer)
+                                           (DESKTOP2x2: four windows)
 and reboot. Add DRY to see first what it would do. INSTALL sets up
 everything for the next boot: the cards in LIBS:Picasso96, mctest and
 wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,

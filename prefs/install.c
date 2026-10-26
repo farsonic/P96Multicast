@@ -552,7 +552,12 @@ static void set(const char *key, const char *value)
 	prefs_set(find_setting(key), value);
 }
 
-/* SETUP=SINGLE, TWO, MIRROR or SPAN: the settings for it */
+static BOOL is_multicast_card(const char *card)
+{
+	return !mp_stricmp(card, "Multicast.card");
+}
+
+/* SETUP=SINGLE, TWO, MIRROR, SPAN or DESKTOP: the settings for it */
 static BOOL apply_setup(const char *setup)
 {
 	char card[40], nb[8];
@@ -622,7 +627,35 @@ static BOOL apply_setup(const char *setup)
 		    "       one desktop (ports from 9696 on)");
 		return TRUE;
 	}
-	say("SETUP must be SINGLE, TWO, MIRROR or SPAN (SPAN2x1, SPAN2x2, ...)");
+	if ((setup[0] | 32) == 'd' && (setup[1] | 32) == 'e' && (setup[2] | 32) == 's' &&
+	    (setup[3] | 32) == 'k' && (setup[4] | 32) == 't' && (setup[5] | 32) == 'o' &&
+	    (setup[6] | 32) == 'p') {
+		/* DESKTOP, DESKTOP2x2: a screen of its own over Multicast boards, a part on each */
+		const char *size = setup[7] ? setup + 7 : "2x1";
+		const char *why = prefs_check(find_setting("SPAN"), size);
+		LONG cols = size[0] - '0', rows = size[2] - '0';
+
+		if (why) {
+			notef("Setup DESKTOP%s: %s", setup + 7, why);
+			return FALSE;
+		}
+		set("CARD", "Multicast.card");
+		set("MIRROR", "");
+		set("SPAN", size);
+		set("HEAD", "Multicast.card");
+		set("HEAD1", "");
+		set("HEAD2", "");
+		set("HEAD3", "");
+		set("HEAD4", "");
+		set("HEADSHARE", "1");
+		set("MIRRORFPS", "10");
+		snprintf(nb, sizeof(nb), "%ld", cols * rows + 1);
+		set("BOARDS", nb);
+		notef("Setup: a Multicast screen of its own over %s Multicast windows%s", size,
+		      ", one desktop; the Workbench stays where it is");
+		return TRUE;
+	}
+	say("SETUP must be SINGLE, TWO, MIRROR, SPAN (SPAN2x2) or DESKTOP (DESKTOP2x2)");
 	return FALSE;
 }
 
@@ -700,6 +733,17 @@ static void summary(void)
 	struct Library *mc;
 
 	say("After the reboot:");
+	if (is_multicast_card(card) && *span) {
+		notef("  open the screen: mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=16 "
+		      "SPAN=%s DEFAULT%s", span, "");
+		say("  (Run >NIL: in front keeps the Shell; programs then open on it, e.g.");
+		say("   NewShell \"CON:20/20/600/200/Shell/CLOSE/SCREENMULTICAST\")");
+		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s --port 9697%s",
+		         span, multicast ? "" : " --group 127.0.0.1");
+		say(line);
+		say("  a window for each part; drag windows from one to the other");
+		goto running;
+	}
 	if (*card && *span)
 		notef("  %s's screen spans %s heads", card, span);
 	else if (*card && *mirror)
@@ -717,6 +761,7 @@ static void summary(void)
 		say("  drag windows from one part to the other: it is one screen");
 	if (!*card && boards[0] > '1')
 		say("  (the second board: add --port 9697)");
+running:
 	Forbid();
 	mc = (struct Library *)FindName(&SysBase->LibList, "Multicast.card");
 	if (mc)

@@ -526,6 +526,13 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 		status->error = WRAP_ERR_BOARDS;
 		return FALSE;
 	}
+	/*
+	 * With heads, one board: rtg.library asks until FindCard says no, and
+	 * further boards of the card may be meant for the heads (CARD= and
+	 * MIRROR= or HEAD= both Multicast.card).
+	 */
+	if (status->nboards && mirror.nheads)
+		return FALSE;
 
 	bi->CardBase = inner;
 	if (!InnerFindCard(bi, inner)) {

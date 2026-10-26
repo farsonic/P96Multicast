@@ -211,6 +211,18 @@ def main():
           "BOARDS=2" in mc and os.path.exists(os.path.join(mon, "Wrap")),
           "SETUP=SPAN: uaegfx's screen over two Multicast boards: %r %r" % (wrap, mc))
     check("--span 2x1" in out, "... and the viewer told to show both")
+    rc, out = run("INSTALL", "SETUP=DESKTOP", cwd="p96:build/prefstest.d/pkg")
+    print("    " + out.replace("\n", "\n    "))
+    wrap = read("envarc", "Wrap.prefs") or []
+    mc = read("envarc", "Multicast.prefs") or []
+    check(rc == 0 and "CARD=Multicast.card" in wrap and "SPAN=2x1" in wrap and
+          "HEAD=Multicast.card" in wrap and "BOARDS=3" in mc and
+          os.path.exists(os.path.join(mon, "Wrap")) and os.path.exists(os.path.join(mon, "uaegfx"))
+          and not os.path.exists(os.path.join(mon, "Multicast")),
+          "SETUP=DESKTOP: a Multicast screen over two Multicast boards, uaegfx kept: %r %r"
+          % (wrap, mc))
+    check("SPAN=2x1 DEFAULT" in out and "--span 2x1 --port 9697" in out,
+          "... and how to open the screen and watch it")
     rc, out = run("INSTALL", "SETUP=SPAN2x2", "DRY", cwd="p96:build/prefstest.d/pkg")
     check(rc == 0 and "2x2" in out, "SETUP=SPAN2x2: %r" % out)
     rc, out = run("INSTALL", "SETUP=SPAN3x3", "DRY", cwd="p96:build/prefstest.d/pkg")
