@@ -13,7 +13,8 @@ RIPTIDE_SRC=${RIPTIDE_SRC:-/home/user/Riptide}
 STAGE=build/package
 PKG=$STAGE/P96Multicast
 
-for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat build/MulticastPrefs; do
+for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat build/MulticastPrefs \
+         build/MulticastDesktop build/Boing; do
 	[ -f "$f" ] || { echo "$f missing: run make first"; exit 1; }
 done
 rm -rf "$STAGE" build/P96Multicast.lha
@@ -22,7 +23,7 @@ mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
 
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Multicast.card build/Wrap.card "$PKG/Libs/Picasso96/"
-cp build/mctest build/wrapstat "$PKG/C/"
+cp build/mctest build/wrapstat build/MulticastDesktop build/Boing "$PKG/C/"
 cp build/MulticastPrefs "$PKG/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"

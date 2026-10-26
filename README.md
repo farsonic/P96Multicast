@@ -112,6 +112,18 @@ P96. `ENV:` wins over ToolTypes.
 | `BLITTER` | 1 | send the drawing as orders (0: compare the screen and send pixels only) |
 | `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 
+## The shared desktop
+
+`SPLIT=2x1` sends the screen in two halves, each to a port of its own, and
+`p96view.py --span 2x1` shows each in its own window: one desktop over two
+"monitors", windows dragged from one to the other. MulticastPrefs' Desktop
+page sets it up with a picture of the monitors (layout, size, colours,
+open at boot). `MulticastDesktop` (prefs/desktop.c) opens the desktop as a
+public screen and is a commodity with hotkeys: ctrl alt + cursor keys
+moves the active window to the next monitor, ctrl alt 1-4 centres it on
+one, ctrl alt m swaps the desktop and the Workbench. `Boing`
+(demos/boing.c) bounces the ball over all of it.
+
 ## Watching
 
 ```

@@ -158,7 +158,7 @@ boot boot1.done
 		echo 'Wait 3'
 		echo 'Run >Work:pubscreen.log Work:pkg/C/mctest PUBSCREEN=MCPREFS WIDTH=640 HEIGHT=480 DEPTH=8'
 		echo 'Wait 3'
-		for n in 0 1 2 3; do
+		for n in 0 1 2 3 4; do
 			echo "Run >Work:gui-$n.log Work:pkg/MulticastPrefs PUBSCREEN=MCPREFS PAGE=$n TIMEOUT=12"
 			echo 'Wait 3'
 			echo "Echo >Work:gui-$n x"
@@ -189,9 +189,9 @@ has "$work/install.txt" "Made DEVS:Monitors/Multicast from DEVS:Monitors/P96" "m
 grep -q "BOARDTYPE=Multicast" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null \
 	&& pass "monitor icon says BOARDTYPE=Multicast" || fail "monitor icon says BOARDTYPE=Multicast"
 has "$work/status2.txt" "boards set up: 1" "second boot: Multicast.card set up from the installed files"
-has "$work/prefsstatus2.txt" "Multicast.card 1\.[0-9]*: 1 board" "MulticastPrefs STATUS sees it"
+has "$work/prefsstatus2.txt" "Multicast.card [0-9]\.[0-9]*: 1 board" "MulticastPrefs STATUS sees it"
 if [ $NET = 1 ]; then
-	for n in 0 1 2 3; do
+	for n in 0 1 2 3 4; do
 		[ -s "$OUT/gui-$n.png" ] && pass "window, page $n, from the card: $OUT/gui-$n.png" ||
 			fail "window, page $n"
 	done

@@ -1,6 +1,7 @@
 # P96Multicast - build with vbcc, vasm and vlink and the NDK 3.2 headers.
 #
-#   make                 build/Multicast.card, build/Wrap.card, mctest, wrapstat
+#   make                 build/Multicast.card, build/Wrap.card, mctest, wrapstat,
+#                        MulticastPrefs, MulticastDesktop, Boing
 #   make check           offset test and Wrap.card test under vamos, hunk checks,
 #                        the viewer against the card's renderer (Copper)
 #   make package         build/P96Multicast.lha
@@ -30,6 +31,7 @@ HDRS := $(wildcard include/*.h src/*.h)
 PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c
 
 all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
+     $(BUILD)/MulticastDesktop $(BUILD)/Boing \
      $(BUILD)/MulticastPrefs
 
 $(BUILD):
@@ -55,6 +57,13 @@ $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 # libraries opened by hand (no -lauto): the command line runs without intuition
 $(BUILD)/MulticastPrefs: $(PREFS_SRC) prefs/mcprefs.h $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -Iprefs -o $@ $(PREFS_SRC) -lamiga
+
+# the desktop commodity: the settings code is MulticastPrefs'
+$(BUILD)/MulticastDesktop: prefs/desktop.c prefs/settings.c prefs/mcprefs.h | $(BUILD)
+	$(VC) $(CFLAGS) -Iprefs -o $@ prefs/desktop.c prefs/settings.c -lamiga
+
+$(BUILD)/Boing: demos/boing.c | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ $< -lamiga
 
 $(BUILD)/wrapstat: tests/wrapstat.c $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga

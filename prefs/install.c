@@ -369,8 +369,8 @@ static BOOL write_icon(const char *monitor, const char *template, const char *na
 		dob = GetDefDiskObject(WBTOOL);
 	if (!dob)
 		return FALSE;
-	snprintf(tt, sizeof(tt), "BOARDTYPE=%s", name);
-	types[0] = (STRPTR)tt;
+	snprintf(tt, sizeof(tt), "BOARDTYPE=%s", name ? name : "");
+	types[0] = name ? (STRPTR)tt : NULL;
 	types[1] = NULL;
 	old = dob->do_ToolTypes;
 	dob->do_ToolTypes = types;
@@ -473,6 +473,41 @@ static void install_tool(const char *file)
 		notef("Could not copy %s to %s", src, dst);
 		failed = TRUE;
 	}
+}
+
+/*
+ * ATBOOT=1: MulticastDesktop in SYS:WBStartup, with an icon, so the shared
+ * desktop opens at every boot; ATBOOT=0 takes it out again.
+ */
+static void boot_desktop(void)
+{
+	static const char *wb = "SYS:WBStartup/MulticastDesktop";
+	BOOL on = prefs_value(find_setting("ATBOOT"))[0] == '1';
+
+	if (!exists("SYS:WBStartup"))
+		return;
+	if (!on) {
+		if (exists(wb)) {
+			if (!dry) {
+				DeleteFile((STRPTR)wb);
+				DeleteFile((STRPTR)"SYS:WBStartup/MulticastDesktop.info");
+			}
+			notef("Took %s out: the desktop opens when you start it%s", wb, "");
+		}
+		return;
+	}
+	if (!exists("C:MulticastDesktop")) {
+		notef("C:MulticastDesktop is missing: %s not made%s", wb, "");
+		return;
+	}
+	if (!copy_file("C:MulticastDesktop", wb)) {
+		notef("Could not copy C:MulticastDesktop to %s%s", wb, "");
+		failed = TRUE;
+		return;
+	}
+	if (!write_icon(wb, NULL, NULL))
+		notef("Could not make %s.info%s", wb, "");
+	notef("Copied C:MulticastDesktop to %s: the desktop opens at every boot%s", wb, "");
 }
 
 /* MulticastPrefs itself to SYS:Prefs, with its icon, so it is at hand */
@@ -741,13 +776,13 @@ static void summary(void)
 
 	say("After the reboot:");
 	if (!*card && *split && strcmp(split, "1x1")) {
-		const char *wh = !strcmp(split, "2x1") ? "WIDTH=1600 HEIGHT=600" :
-		                 !strcmp(split, "2x2") ? "WIDTH=1600 HEIGHT=1200" : "WIDTH=800 HEIGHT=600";
-
-		notef("  open the screen: Run >NIL: mctest PUBSCREEN=MULTICAST %s DEPTH=16 DEFAULT%s",
-		      wh, "");
-		say("  (programs then open on it, e.g.");
-		say("   NewShell \"CON:20/20/600/200/Shell/CLOSE/SCREENMULTICAST\")");
+		if (prefs_value(find_setting("ATBOOT"))[0] != '1')
+			say("  open the desktop: Run >NIL: MulticastDesktop");
+		else
+			say("  the desktop opens by itself (SYS:WBStartup/MulticastDesktop)");
+		say("  hotkeys: ctrl alt + cursor keys: the active window to the next monitor;");
+		say("  ctrl alt 1-4: to the middle of that monitor; ctrl alt m: desktop or Workbench");
+		say("  Boing bounces a ball over all of it");
 		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s",
 		         split, multicast ? "" : " --group 127.0.0.1");
 		say(line);
@@ -812,6 +847,9 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	install_card("Wrap.card");
 	install_tool("mctest");
 	install_tool("wrapstat");
+	install_tool("MulticastDesktop");
+	install_tool("Boing");
+	boot_desktop();
 	install_program();
 
 	/*

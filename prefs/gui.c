@@ -1,9 +1,11 @@
 /*
  * P96Multicast - MulticastPrefs: the window.
  *
- * GadTools, so it runs on AmigaOS 3.x and AROS alike. Four pages, chosen
+ * GadTools, so it runs on AmigaOS 3.x and AROS alike. Five pages, chosen
  * with the cycle gadget at the top, each its own gadget list swapped in
- * and out: Network, Display (with the screen modes), Wrap.card and Status.
+ * and out: Desktop (the shared screen over several Multicast windows, with
+ * a picture of the monitors), Network, Display (with the screen modes),
+ * Wrap.card and Status.
  * Save writes ENVARC: and ENV:, Use only ENV:, Install also copies the
  * cards and makes the monitor (install.c). Values are read from the
  * gadgets when they are used, so a field needs no Return.
@@ -17,6 +19,7 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/gadtools.h>
+#include <dos/dostags.h>
 #include <clib/alib_protos.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,8 +29,10 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
 
-#define NPAGES 4
-static const char *page_names[] = { "Network", "Display", "Wrap.card", "Status", NULL };
+#define NPAGES 5
+#define PAGE_DESKTOP 0
+#define PAGE_STATUS  4
+static const char *page_names[] = { "Desktop", "Network", "Display", "Wrap.card", "Status", NULL };
 
 /* the fields: a gadget for a setting, or for something on the page itself */
 #define F_SETTING 0     /* key: a setting */
@@ -38,6 +43,12 @@ static const char *page_names[] = { "Network", "Display", "Wrap.card", "Status",
 #define F_REMOVE  5
 #define F_WRAP    6     /* how Wrap.card is used */
 #define F_STATUS  7     /* the status lines */
+#define F_MAP     8     /* the picture of the monitors (drawn, no gadget) */
+#define F_LAYOUT  9     /* how many monitors, how arranged: SPLIT */
+#define F_MONSIZE 10    /* each one's size: MONITOR */
+#define F_COLOURS 11    /* COLOURS */
+#define F_OPEN    12    /* open the desktop now */
+#define F_CLOSE   13
 
 struct Field {
 	UBYTE page;
@@ -50,39 +61,49 @@ struct Field {
 };
 
 static const struct Field fields[] = {
-	{ 0, F_SETTING, STRING_KIND,   "Send to",          "DEST" },
-	{ 0, F_SETTING, INTEGER_KIND,  "UDP port",         "PORT" },
-	{ 0, F_SETTING, INTEGER_KIND,  "Multicast TTL",    "TTL" },
-	{ 0, F_SETTING, INTEGER_KIND,  "Updates/second",   "FPS" },
-	{ 0, F_SETTING, INTEGER_KIND,  "Most KB/second",   "RATE" },
-	{ 0, F_SETTING, INTEGER_KIND,  "Check all (s)",    "SCAN" },
-	{ 0, F_SETTING, STRING_KIND,   "Log file",         "LOG" },
-	{ 0, F_SETTING, CHECKBOX_KIND, "Send drawing",     "BLITTER" },
-	{ 0, F_SETTING, CHECKBOX_KIND, "Viewer pointer",   "POINTER" },
+	{ 0, F_MAP,     0,             "",                 NULL, 8 },
+	{ 0, F_LAYOUT,  CYCLE_KIND,    "Monitors",         NULL },
+	{ 0, F_MONSIZE, CYCLE_KIND,    "Each monitor",     NULL },
+	{ 0, F_COLOURS, CYCLE_KIND,    "Colours",          NULL },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Programs open on it", "DEFAULTSCREEN" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Open at boot",     "ATBOOT" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Behind Workbench", "BEHIND" },
+	{ 0, F_OPEN,    BUTTON_KIND,   "Open now",         NULL, 1, 1 },
+	{ 0, F_CLOSE,   BUTTON_KIND,   "Close",            NULL, 1, 2 },
 
-	{ 1, F_SETTING, INTEGER_KIND,  "Boards",           "BOARDS" },
-	{ 1, F_SETTING, INTEGER_KIND,  "Video MB/board",   "VRAM" },
-	{ 1, F_SETTING, INTEGER_KIND,  "Largest width",    "MAXWIDTH" },
-	{ 1, F_SETTING, INTEGER_KIND,  "Largest height",   "MAXHEIGHT" },
-	{ 1, F_MODESRC, CYCLE_KIND,    "Screen modes",     NULL },
-	{ 1, F_MODES,   LISTVIEW_KIND, "",                 NULL, 5 },
-	{ 1, F_MODEADD, STRING_KIND,   "Size (WxH)",       NULL },
-	{ 1, F_ADD,     BUTTON_KIND,   "Add",              NULL, 1, 1 },
-	{ 1, F_REMOVE,  BUTTON_KIND,   "Remove",           NULL, 1, 2 },
+	{ 1, F_SETTING, STRING_KIND,   "Send to",          "DEST" },
+	{ 1, F_SETTING, INTEGER_KIND,  "UDP port",         "PORT" },
+	{ 1, F_SETTING, INTEGER_KIND,  "Multicast TTL",    "TTL" },
+	{ 1, F_SETTING, INTEGER_KIND,  "Updates/second",   "FPS" },
+	{ 1, F_SETTING, INTEGER_KIND,  "Most KB/second",   "RATE" },
+	{ 1, F_SETTING, INTEGER_KIND,  "Check all (s)",    "SCAN" },
+	{ 1, F_SETTING, STRING_KIND,   "Log file",         "LOG" },
+	{ 1, F_SETTING, CHECKBOX_KIND, "Send drawing",     "BLITTER" },
+	{ 1, F_SETTING, CHECKBOX_KIND, "Viewer pointer",   "POINTER" },
 
-	{ 2, F_WRAP,    CYCLE_KIND,    "Use Wrap.card",    NULL },
-	{ 2, F_SETTING, STRING_KIND,   "Wrap card",        "CARD" },
-	{ 2, F_SETTING, STRING_KIND,   "Mirror on",        "MIRROR" },
-	{ 2, F_SETTING, STRING_KIND,   "Span (CxR)",       "SPAN" },
-	{ 2, F_SETTING, STRING_KIND,   "Every head",       "HEAD" },
-	{ 2, F_SETTING, STRING_KIND,   "Head 1",           "HEAD1" },
-	{ 2, F_SETTING, STRING_KIND,   "Head 2",           "HEAD2" },
-	{ 2, F_SETTING, STRING_KIND,   "Head 3",           "HEAD3" },
-	{ 2, F_SETTING, STRING_KIND,   "Head 4",           "HEAD4" },
-	{ 2, F_SETTING, CHECKBOX_KIND, "Share memory",     "HEADSHARE" },
-	{ 2, F_SETTING, INTEGER_KIND,  "Head updates/s",   "MIRRORFPS" },
+	{ 2, F_SETTING, INTEGER_KIND,  "Boards",           "BOARDS" },
+	{ 2, F_SETTING, INTEGER_KIND,  "Video MB/board",   "VRAM" },
+	{ 2, F_SETTING, INTEGER_KIND,  "Largest width",    "MAXWIDTH" },
+	{ 2, F_SETTING, INTEGER_KIND,  "Largest height",   "MAXHEIGHT" },
+	{ 2, F_MODESRC, CYCLE_KIND,    "Screen modes",     NULL },
+	{ 2, F_MODES,   LISTVIEW_KIND, "",                 NULL, 5 },
+	{ 2, F_MODEADD, STRING_KIND,   "Size (WxH)",       NULL },
+	{ 2, F_ADD,     BUTTON_KIND,   "Add",              NULL, 1, 1 },
+	{ 2, F_REMOVE,  BUTTON_KIND,   "Remove",           NULL, 1, 2 },
 
-	{ 3, F_STATUS,  LISTVIEW_KIND, "",                 NULL, 14 },
+	{ 3, F_WRAP,    CYCLE_KIND,    "Use Wrap.card",    NULL },
+	{ 3, F_SETTING, STRING_KIND,   "Wrap card",        "CARD" },
+	{ 3, F_SETTING, STRING_KIND,   "Mirror on",        "MIRROR" },
+	{ 3, F_SETTING, STRING_KIND,   "Span (CxR)",       "SPAN" },
+	{ 3, F_SETTING, STRING_KIND,   "Every head",       "HEAD" },
+	{ 3, F_SETTING, STRING_KIND,   "Head 1",           "HEAD1" },
+	{ 3, F_SETTING, STRING_KIND,   "Head 2",           "HEAD2" },
+	{ 3, F_SETTING, STRING_KIND,   "Head 3",           "HEAD3" },
+	{ 3, F_SETTING, STRING_KIND,   "Head 4",           "HEAD4" },
+	{ 3, F_SETTING, CHECKBOX_KIND, "Share memory",     "HEADSHARE" },
+	{ 3, F_SETTING, INTEGER_KIND,  "Head updates/s",   "MIRRORFPS" },
+
+	{ 4, F_STATUS,  LISTVIEW_KIND, "",                 NULL, 14 },
 };
 #define NFIELDS (sizeof(fields) / sizeof(fields[0]))
 
@@ -91,6 +112,22 @@ static const char *modesrc_names[] = { "P96's settings", "This list", NULL };
 /* "This list" with nothing in it starts with these */
 static const char *standard_modes = "640x480,800x600,1024x768,1280x720,1280x960,1280x1024,1920x1080";
 static const char *wrap_names[] = { "No", "Wrap only", "Mirror", "Span", NULL };
+
+/* the Desktop page's choices, and the settings they stand for */
+static const char *layout_names[] = { "One", "Two, side by side", "Two, one above the other",
+                                      "Three, side by side", "Four, side by side",
+                                      "Four, two by two", NULL };
+static const char *layout_split[] = { "1x1", "2x1", "1x2", "3x1", "4x1", "2x2" };
+static const char *size_names[] = { "640 x 480", "800 x 600", "1024 x 768", "1280 x 720",
+                                    "1280 x 1024", "1920 x 1080", NULL };
+static const char *size_value[] = { "640x480", "800x600", "1024x768", "1280x720",
+                                    "1280x1024", "1920x1080" };
+static const char *colour_names[] = { "256 (8 bit)", "65536 (16 bit)", "16 million (32 bit)",
+                                      NULL };
+static const char *colour_value[] = { "8", "16", "32" };
+static int layout_sel, size_sel, colour_sel;
+static WORD map_x, map_y, map_w, map_h;
+static struct DrawInfo *dri;
 
 #define ID_PAGE    1
 #define ID_SAVE    2
@@ -239,6 +276,102 @@ static int wrap_mode(void)
 	return 1;
 }
 
+static int pick(const char **values, int n, const char *v)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (!mp_stricmp(values[i], v))
+			return i;
+	return -1;
+}
+
+static void desktop_from_settings(void)
+{
+	layout_sel = pick(layout_split, 6, prefs_value(find_setting("SPLIT")));
+	size_sel = pick(size_value, 6, prefs_value(find_setting("MONITOR")));
+	colour_sel = pick(colour_value, 3, prefs_value(find_setting("COLOURS")));
+	if (layout_sel < 0)
+		layout_sel = 0;
+	if (size_sel < 0)
+		size_sel = 1;
+	if (colour_sel < 0)
+		colour_sel = 1;
+}
+
+/*
+ * The Desktop page's picture: the monitors as the layout puts them, each
+ * with its number, size and port, and the whole desktop's size under them.
+ */
+static void draw_map(void)
+{
+	struct RastPort *rp = win->RPort;
+	UWORD c = layout_split[layout_sel][0] - '0', r = layout_split[layout_sel][2] - '0';
+	UWORD mw = 640, mh = 480, i;
+	WORD fh = rp->TxHeight, cw, ch, ox, oy, avail_h = map_h - fh - 6;
+	UWORD fill = dri ? dri->dri_Pens[FILLPEN] : 3, text = dri ? dri->dri_Pens[FILLTEXTPEN] : 2;
+	UWORD back = dri ? dri->dri_Pens[BACKGROUNDPEN] : 0, plain = dri ? dri->dri_Pens[TEXTPEN] : 1;
+	const char *sz = size_value[size_sel], *pv = prefs_value(find_setting("PORT"));
+	int port = 0;
+	char buf[80];
+
+	while (*pv >= '0' && *pv <= '9')
+		port = port * 10 + *pv++ - '0';
+
+	if (page != PAGE_DESKTOP)
+		return;
+	mw = 0;
+	while (*sz >= '0' && *sz <= '9')
+		mw = mw * 10 + *sz++ - '0';
+	sz++;
+	mh = 0;
+	while (*sz >= '0' && *sz <= '9')
+		mh = mh * 10 + *sz++ - '0';
+
+	SetAPen(rp, back);
+	RectFill(rp, map_x, map_y, map_x + map_w - 1, map_y + map_h - 1);
+	/* each monitor as big as fits, keeping its shape, all of them centred */
+	cw = (map_w - 8) / c;
+	ch = (LONG)cw * mh / mw;
+	if (ch * r > avail_h) {
+		ch = avail_h / r;
+		cw = (LONG)ch * mw / mh;
+	}
+	ox = map_x + (map_w - cw * c) / 2;
+	oy = map_y + 2;
+	SetDrMd(rp, JAM1);
+	for (i = 0; i < c * r; i++) {
+		WORD x = ox + (i % c) * cw, y = oy + (i / c) * ch;
+		WORD l;
+
+		SetAPen(rp, fill);
+		RectFill(rp, x + 3, y + 3, x + cw - 4, y + ch - 4);
+		DrawBevelBox(rp, x + 1, y + 1, cw - 2, ch - 2, GT_VisualInfo, (ULONG)vi, TAG_END);
+		SetAPen(rp, text);
+		snprintf(buf, sizeof(buf), "%d", (int)i + 1);
+		l = TextLength(rp, (STRPTR)buf, strlen(buf));
+		Move(rp, x + (cw - l) / 2, y + ch / 2 - 2);
+		Text(rp, (STRPTR)buf, strlen(buf));
+		if (ch > 3 * fh + 8) {
+			snprintf(buf, sizeof(buf), "port %d", port + (int)i);
+			l = TextLength(rp, (STRPTR)buf, strlen(buf));
+			if (l < cw - 8) {
+				Move(rp, x + (cw - l) / 2, y + ch / 2 - 2 + fh + 2);
+				Text(rp, (STRPTR)buf, strlen(buf));
+			}
+		}
+	}
+	SetAPen(rp, plain);
+	snprintf(buf, sizeof(buf), "Desktop %d x %d%s", (int)c * mw, (int)r * mh,
+	         c * r > 1 ? ": windows move across" : ": one Multicast screen");
+	{
+		WORD l = TextLength(rp, (STRPTR)buf, strlen(buf));
+
+		Move(rp, map_x + (map_w - l) / 2, map_y + map_h - 4 - rp->TxHeight + rp->TxBaseline);
+		Text(rp, (STRPTR)buf, strlen(buf));
+	}
+}
+
 static int modesrc(void)
 {
 	const char *v = prefs_get(find_setting("MODES"));
@@ -317,7 +450,7 @@ static BOOL make_gadgets(struct Screen *scr)
 			ng.ng_GadgetText = (UBYTE *)f->label;
 			ng.ng_GadgetID = ID_FIELD + i;
 			ng.ng_Flags = f->kind == BUTTON_KIND ? PLACETEXT_IN : PLACETEXT_LEFT;
-			if (f->page == 3) {
+			if (f->page == PAGE_STATUS) {
 				ng.ng_LeftEdge = scr->WBorLeft + 10;
 				ng.ng_Width = width - scr->WBorLeft - scr->WBorRight - 20;
 			}
@@ -366,6 +499,31 @@ static BOOL make_gadgets(struct Screen *scr)
 			case F_WRAP:
 				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
 				                 (ULONG)wrap_names, GTCY_Active, wrap_mode(), TAG_END);
+				break;
+			case F_MAP:
+				/* drawn, not a gadget: the whole width, this many rows */
+				map_x = scr->WBorLeft + 10;
+				map_w = width - scr->WBorLeft - scr->WBorRight - 20;
+				map_y = ng.ng_TopEdge;
+				map_h = rows * (fh + 1) + 4;
+				y[f->page] += map_h + 6 - row;
+				gad[i] = NULL;
+				continue;
+			case F_LAYOUT:
+				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
+				                 (ULONG)layout_names, GTCY_Active, layout_sel, TAG_END);
+				break;
+			case F_MONSIZE:
+				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
+				                 (ULONG)size_names, GTCY_Active, size_sel, TAG_END);
+				break;
+			case F_COLOURS:
+				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
+				                 (ULONG)colour_names, GTCY_Active, colour_sel, TAG_END);
+				break;
+			case F_OPEN:
+			case F_CLOSE:
+				g = CreateGadget(BUTTON_KIND, last[f->page], &ng, TAG_END);
 				break;
 			case F_STATUS:
 				ng.ng_GadgetText = NULL;
@@ -418,8 +576,9 @@ static void show_page(int n)
 	AddGList(win, glist[page], -1, -1, NULL);
 	RefreshGList(glist[page], win, NULL, -1);
 	GT_RefreshWindow(win, NULL);
-	if (page == 3)
+	if (page == PAGE_STATUS)
 		status_show(TRUE);
+	draw_map();
 }
 
 /* ---------------------------------------------------------------- reading the gadgets */
@@ -453,6 +612,8 @@ static BOOL collect(void)
 		ULONG v = 0;
 		STRPTR str = NULL;
 
+		if (!gad[i])
+			continue;
 		if (f->what == F_WRAP) {
 			GT_GetGadgetAttrs(gad[i], win, NULL, GTCY_Active, (ULONG)&v, TAG_END);
 			wrap = v;
@@ -475,6 +636,16 @@ static BOOL collect(void)
 		}
 		if (!set_or_say(s, buf))
 			return FALSE;
+	}
+
+	/* the Desktop page */
+	prefs_set(find_setting("SPLIT"), layout_sel ? layout_split[layout_sel] : "");
+	prefs_set(find_setting("MONITOR"), size_value[size_sel]);
+	prefs_set(find_setting("COLOURS"), colour_value[colour_sel]);
+	if (layout_sel && wrap) {
+		/* a desktop over several windows is one plain Multicast board */
+		wrap = 0;
+		note("Wrap.card off: the desktop is one Multicast board, split in parts.");
 	}
 
 	/* the cycles say which of the fields count */
@@ -550,6 +721,42 @@ static void remove_mode(void)
 	modes_show();
 }
 
+/* ---------------------------------------------------------------- the desktop */
+
+static struct Screen *dscr;   /* where dri came from */
+
+/* a command, in the background, or waited for */
+static void run_desktop(const char *cmd, BOOL async)
+{
+	BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+
+	if (SystemTags((STRPTR)cmd, SYS_Input, in, SYS_Output, out, SYS_Asynch, async,
+	               TAG_END) == -1 || !async) {
+		if (in)
+			Close(in);
+		if (out)
+			Close(out);
+	}
+}
+
+/* the settings as they are in the window (Use), and MulticastDesktop started */
+static void open_desktop(void)
+{
+	if (!collect())
+		return;
+	report[0] = 0;
+	prefs_fix(note);
+	if (!prefs_write(FALSE)) {
+		tell("MulticastPrefs", "Could not write the settings to ENV:");
+		return;
+	}
+	if (report[0]) {
+		tell("MulticastPrefs: Desktop", report);
+		report[0] = 0;
+	}
+	run_desktop("C:MulticastDesktop", TRUE);
+}
+
 /* ---------------------------------------------------------------- the loop */
 
 int gui(int start_page, int timeout, const char *pubscreen)
@@ -576,8 +783,11 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	}
 	status_lines(stat_text, 0);
 	NewList(&stat);
+	desktop_from_settings();
 
 	scr = LockPubScreen((STRPTR)pubscreen);
+	if (scr)
+		dri = GetScreenDrawInfo(scr);
 	if (!scr || !(vi = GetVisualInfo(scr, TAG_END)) || !make_gadgets(scr)) {
 		printf("MulticastPrefs: cannot make the window's gadgets\n");
 		rc = RETURN_FAIL;
@@ -604,6 +814,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 		                               LISTVIEWIDCMP | CYCLEIDCMP,
 		                     TAG_END);
 	}
+	dscr = scr;   /* dri is freed with the window */
 	UnlockPubScreen(NULL, scr);
 	if (!win) {
 		printf("MulticastPrefs: cannot open the window\n");
@@ -613,8 +824,9 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	AddGList(win, glist[page], -1, -1, NULL);
 	RefreshGList(glist[page], win, NULL, -1);
 	GT_RefreshWindow(win, NULL);
-	if (page == 3)
+	if (page == PAGE_STATUS)
 		status_show(TRUE);
+	draw_map();
 
 	while (!done) {
 		WaitPort(win->UserPort);
@@ -631,10 +843,11 @@ int gui(int start_page, int timeout, const char *pubscreen)
 			case IDCMP_REFRESHWINDOW:
 				GT_BeginRefresh(win);
 				GT_EndRefresh(win, TRUE);
+				draw_map();
 				break;
 			case IDCMP_INTUITICKS:
 				ticks++;
-				if (page == 3 && ticks % 20 == 0)
+				if (page == PAGE_STATUS && ticks % 20 == 0)
 					status_show(TRUE);
 				if (timeout && ticks >= timeout * 10)
 					done = TRUE;
@@ -673,7 +886,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					else
 						note("Settings saved.");
 					tell("MulticastPrefs: Install", report);
-					if (page == 3)
+					if (page == PAGE_STATUS)
 						status_show(TRUE);
 					break;
 				case ID_CANCEL:
@@ -682,7 +895,19 @@ int gui(int start_page, int timeout, const char *pubscreen)
 				default:
 					i = g->GadgetID - ID_FIELD;
 					if (i >= 0 && i < NFIELDS) {
-						if (fields[i].what == F_MODESRC && code == 1 && !nmodes) {
+						if (fields[i].what == F_LAYOUT) {
+							layout_sel = code;
+							draw_map();
+						} else if (fields[i].what == F_MONSIZE) {
+							size_sel = code;
+							draw_map();
+						} else if (fields[i].what == F_COLOURS) {
+							colour_sel = code;
+						} else if (fields[i].what == F_OPEN) {
+							open_desktop();
+						} else if (fields[i].what == F_CLOSE) {
+							run_desktop("C:MulticastDesktop CLOSE", FALSE);
+						} else if (fields[i].what == F_MODESRC && code == 1 && !nmodes) {
 							modes_from(standard_modes);
 							modes_show();
 						} else if (fields[i].what == F_ADD)
@@ -701,6 +926,9 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	RemoveGList(win, glist[page], -1);
 	CloseWindow(win);
 	win = NULL;
+	if (dri)
+		FreeScreenDrawInfo(dscr, dri);
+	dri = NULL;
 out:
 	for (i = 0; i < NPAGES; i++)
 		if (glist[i])

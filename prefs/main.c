@@ -3,8 +3,8 @@
  * and their installation, without P96's own tools.
  *
  *   MulticastPrefs                      the window (also from Workbench)
- *   MulticastPrefs PAGE=1               ... on a page: 0 Network, 1 Display,
- *                                       2 Wrap.card, 3 Status
+ *   MulticastPrefs PAGE=1               ... on a page: 0 Desktop, 1 Network,
+ *                                       2 Display, 3 Wrap.card, 4 Status
  *   MulticastPrefs PUBSCREEN=name       ... on that public screen (e.g. one
  *                                       on the card itself, mctest PUBSCREEN)
  *   MulticastPrefs TIMEOUT=10           ... closing after 10 seconds (tests)

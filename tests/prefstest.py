@@ -221,8 +221,9 @@ def main():
           and not os.path.exists(os.path.join(mon, "Wrap")),
           "SETUP=DESKTOP: one Multicast screen split in two, uaegfx kept, no Wrap: %r %r"
           % (wrap, mc))
-    check("WIDTH=1600 HEIGHT=600 DEPTH=16 DEFAULT" in out and "--span 2x1" in out,
-          "... and how to open the screen and watch it")
+    check("Run >NIL: MulticastDesktop" in out and "--span 2x1" in out and
+          any(l.startswith("MODES=1600x600") or ",1600x600" in l for l in mc),
+          "... the desktop's mode, and how to open the desktop and watch it: %r" % out)
     rc, out = run("INSTALL", "SETUP=SINGLE", "DRY", cwd="p96:build/prefstest.d/pkg")
     rc, out = run("INSTALL", "SETUP=SPAN2x2", "DRY", cwd="p96:build/prefstest.d/pkg")
     check(rc == 0 and "2x2" in out, "SETUP=SPAN2x2: %r" % out)

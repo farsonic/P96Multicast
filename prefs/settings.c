@@ -28,6 +28,14 @@ const struct Setting settings[] = {
 	{ "HISTORY",   FILE_MC, T_NUM,  16, 4096,   "512",   "KB of sent data kept to repair losses" },
 	{ "POINTER",   FILE_MC, T_BOOL, 0, 1,       "1",     "The viewers draw the mouse pointer" },
 	{ "SPLIT",     FILE_MC, T_SPAN, 0, 0,       "1x1",   "The screen in CxR parts, a stream (and a window) each, ports PORT, PORT+1, ..." },
+	/* the shared screen MulticastDesktop opens (the card itself ignores these) */
+	{ "MONITOR",   FILE_MC, T_MODES, 0, 0,      "800x600", "Size of each part (monitor) of the shared screen" },
+	{ "COLOURS",   FILE_MC, T_NUM,  8, 32,      "16",    "Bits per pixel of the shared screen: 8, 16 or 32" },
+	{ "PUBSCREEN", FILE_MC, T_TEXT, 0, 31,      "MULTICAST", "Name of the shared public screen" },
+	{ "DEFAULTSCREEN", FILE_MC, T_BOOL, 0, 1,   "1",     "Programs open on the shared screen" },
+	{ "BEHIND",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen behind the Workbench" },
+	{ "ATBOOT",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen at every boot (WBStartup)" },
+	{ "HOTKEYS",   FILE_MC, T_TEXT, 0, 31,      "ctrl+alt", "Qualifiers of MulticastDesktop's hotkeys, + between them" },
 	{ "VRAM",      FILE_MC, T_NUM,  1, 256,     "8",     "Video memory per board, MB (at boot)" },
 	{ "MAXWIDTH",  FILE_MC, T_NUM,  320, 4096,  "1920",  "Widest built-in mode" },
 	{ "MAXHEIGHT", FILE_MC, T_NUM,  200, 4096,  "1200",  "Highest built-in mode" },
@@ -368,6 +376,70 @@ static BOOL is_multicast(const char *card)
  * Settings that must agree: with Wrap.card wrapping Multicast.card and heads
  * that are Multicast boards too, BOARDS has to cover them all.
  */
+/*
+ * SPLIT= with the shared desktop of MONITOR= parts: the card must offer a
+ * mode of the whole desktop's size (MODES=), and have the video memory for
+ * it in COLOURS= bits.
+ */
+static void desktop_fix(void (*note)(const char *))
+{
+	const char *split = prefs_value(find_setting("SPLIT"));
+	const char *mon = prefs_value(find_setting("MONITOR"));
+	const char *modes = prefs_get(find_setting("MODES"));
+	const char *p;
+	LONG c, r, w, h, bits, mb, vram;
+	char size[16], buf[200];
+
+	p = split;
+	if (!parse_long(&p, &c) || (*p != 'x' && *p != 'X'))
+		return;
+	p++;
+	if (!parse_long(&p, &r) || c * r < 2)
+		return;
+	p = mon;
+	if (!parse_long(&p, &w) || (*p != 'x' && *p != 'X'))
+		return;
+	p++;
+	if (!parse_long(&p, &h))
+		return;
+	snprintf(size, sizeof(size), "%ldx%ld", c * w, r * h);
+	/* the size in the list already? */
+	if (!modes || !*modes || !mp_stricmp(modes, "none")) {
+		prefs_set(find_setting("MODES"), size);
+		snprintf(buf, sizeof(buf), "MODES=%s: the desktop's size (it needs a reboot)", size);
+		note(buf);
+	} else {
+		int l = strlen(size), found = 0;
+
+		for (p = modes; *p; ) {
+			if (!strncmp(p, size, l) && (p[l] == ',' || !p[l]))
+				found = 1;
+			while (*p && *p != ',')
+				p++;
+			if (*p)
+				p++;
+		}
+		if (!found && strlen(modes) + l + 2 < sizeof(buf)) {
+			snprintf(buf, sizeof(buf), "%s,%s", size, modes);
+			prefs_set(find_setting("MODES"), buf);
+			snprintf(buf, sizeof(buf), "MODES= now has %s, the desktop's size (it needs a reboot)",
+			         size);
+			note(buf);
+		}
+	}
+	p = prefs_value(find_setting("COLOURS"));
+	parse_long(&p, &bits);
+	mb = (c * w * r * h * ((bits + 7) / 8) + 1048575) / 1048576 + 1;
+	p = prefs_value(find_setting("VRAM"));
+	parse_long(&p, &vram);
+	if (vram < mb) {
+		snprintf(buf, sizeof(buf), "%ld", mb);
+		prefs_set(find_setting("VRAM"), buf);
+		snprintf(buf, sizeof(buf), "VRAM=%ld: enough for the desktop (it needs a reboot)", mb);
+		note(buf);
+	}
+}
+
 void prefs_fix(void (*note)(const char *))
 {
 	const struct Setting *bs = find_setting("BOARDS");
@@ -380,8 +452,10 @@ void prefs_fix(void (*note)(const char *))
 	char buf[80];
 	int i;
 
-	if (!*card)
+	if (!*card) {
+		desktop_fix(note);
 		return;
+	}
 	/* the wrapped board, if it is a Multicast board, and each Multicast head */
 	need = is_multicast(card) ? 1 : 0;
 	if (span && *span) {

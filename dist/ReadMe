@@ -26,6 +26,8 @@ Contents
   Prefs/Wrap.prefs                 example settings for Wrap.card
   C/mctest                         test tool (see below)
   C/wrapstat                       shows what Wrap.card wraps
+  C/MulticastDesktop               the shared desktop, with hotkeys (below)
+  C/Boing                          the ball, bouncing over the desktop
   Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
   Client/fake_sender.py            sends a test picture, to try a viewer
                                    without the Amiga
@@ -51,9 +53,10 @@ Unpack, then in a Shell, inside this drawer:
                                            for each half: one desktop, drag
                                            windows from one to the other; the
                                            Workbench stays put. After the reboot:
-    Run >NIL: mctest PUBSCREEN=MULTICAST WIDTH=1600 HEIGHT=600 DEPTH=16 DEFAULT
+    Run >NIL: MulticastDesktop                   (opens the desktop)
     python3 p96view.py --span 2x1                (on your computer)
                                            (DESKTOP2x2: four windows)
+  Or do it all in MulticastPrefs' Desktop page (below).
 and reboot. Add DRY to see first what it would do. INSTALL sets up
 everything for the next boot: the cards in LIBS:Picasso96, mctest and
 wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,
@@ -61,6 +64,40 @@ screen modes if Picasso96Mode has none for Multicast, and DEST=10.0.2.2 if
 the Amiga is on UAE's NAT network (start the TCP/IP stack before, so it
 can tell). It ends with what to run on your computer. Switching setups
 later puts back the monitors an earlier one moved aside.
+
+The shared desktop: MulticastPrefs' Desktop page, MulticastDesktop, Boing
+-------------------------------------------------------------------------
+One Multicast screen shown in parts, a viewer window for each part, like
+monitors side by side: windows are dragged from one to the other.
+
+MulticastPrefs, Desktop page (the first): a picture of your monitors.
+  Monitors       one, two side by side or one above the other, three or
+                 four side by side, four 2 x 2
+  Each monitor   its size: 640 x 480 ... 1920 x 1080
+  Colours        8, 16 or 32 bit
+  Programs open on it   the desktop is the default public screen
+  Open at boot   MulticastDesktop in SYS:WBStartup
+  Behind Workbench      opens it behind, not in front
+  Open now / Close      start or stop it now
+Install (or Save, then reboot) sets the card up: the desktop's size as a
+mode, enough video memory. On your computer:
+  python3 p96view.py --span 2x1 --group 127.0.0.1   (for two side by side)
+
+MulticastDesktop (C:) opens the desktop and keeps it open; a commodity
+(Exchange shows it). Hotkeys, for the active window on the desktop:
+  ctrl alt cursor keys   to the next monitor left/right/up/down, at the same
+                         place on it
+  ctrl alt 1 ... 4       to the middle of monitor 1 ... 4
+  ctrl alt m             the desktop in front, or the Workbench again
+HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers. From a Shell:
+  MulticastDesktop MOVE=RIGHT       (LEFT, UP, DOWN)
+  MulticastDesktop CENTRE=2
+  MulticastDesktop SWAP
+  MulticastDesktop CLOSE            quits it (once no windows are left)
+
+Boing (C:) bounces the ball over the whole desktop, from monitor to
+monitor: Boing [SIZE=100] [SPEED=5] [SECS=n] [PUBSCREEN=name].
+Click the ball or Ctrl-C to stop it.
 
 The easy way: MulticastPrefs
 ----------------------------
