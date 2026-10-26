@@ -160,8 +160,13 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   POINTER=1           the viewers draw the mouse pointer (0: P96 draws it
                       into the screen)
   SPLIT=1x1           the screen in CxR parts (at most 4), each sent to a
-                      port of its own, PORT, PORT+1, ...: a window each
-                      with p96view.py --span CxR
+                      port of its own, PORT, PORT+1, ..., and with a
+                      multicast DEST to a group of its own, DEST, DEST+1,
+                      ... (239.255.96.1, .2, ...): a window each with
+                      p96view.py --span CxR, or each part on another
+                      device: p96view.py --part 2
+  DEST2= DEST3= DEST4=  where part 2, 3, 4 go instead (e.g. another
+                      machine's address)
   VRAM=8              video memory in MB (read at boot)
   MAXWIDTH=1920       largest mode offered
   MAXHEIGHT=1200

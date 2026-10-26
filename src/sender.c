@@ -1171,6 +1171,22 @@ static void pass(struct Sender *s)
 
 /* ---------------------------------------------------------------- the process */
 
+/*
+ * Where this part of the screen goes: DEST2= ... if set; else a multicast
+ * group of its own, DEST's plus the part's number (239.255.96.1, .2, ...),
+ * so a device that joins one gets only that part; or DEST itself, unicast.
+ */
+static ULONG part_dest(struct Sender *s)
+{
+	struct McConfig *cfg = &s->mc->cfg;
+
+	if (s->view && cfg->part_dest[s->view])
+		return cfg->part_dest[s->view];
+	if ((cfg->dest >> 28) == 0xe)
+		return cfg->dest + s->view;
+	return cfg->dest;
+}
+
 static BOOL open_socket(struct Sender *s)
 {
 	struct Library *SocketBase = s->sockbase;
@@ -1187,7 +1203,7 @@ static BOOL open_socket(struct Sender *s)
 	s->to.sin_len = sizeof(s->to);
 	s->to.sin_family = AF_INET;
 	s->to.sin_port = s->mc->cfg.port + s->mc->boardnum + s->view;
-	s->to.sin_addr.s_addr = s->mc->cfg.dest;
+	s->to.sin_addr.s_addr = part_dest(s);
 	return TRUE;
 }
 
@@ -1256,11 +1272,11 @@ static void SenderMain(void)
 			/* the network settings may have changed since boot */
 			mc_config_env(&mc->cfg);
 			if (open_socket(s)) {
-				ULONG d = mc->cfg.dest;
+				ULONG d = s->to.sin_addr.s_addr;
 
 				mc_log(s, "Copper to %ld.%ld.%ld.%ld", d >> 24, (d >> 16) & 255,
 				       (d >> 8) & 255, d & 255);
-				mc_log(s, ":%ld, %ld fps, %ld KB/s\n", mc->cfg.port + mc->boardnum, mc->cfg.fps,
+				mc_log(s, ":%ld, %ld fps, %ld KB/s\n", s->to.sin_port, mc->cfg.fps,
 				       mc->cfg.rate >> 10, 0);
 				break;
 			}

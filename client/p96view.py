@@ -4,7 +4,9 @@
     p96view.py                              join 239.255.96.1:9696, show a window
     p96view.py --group 127.0.0.1            UAE's NAT (slirp): the card sends to 10.0.2.2
     p96view.py --group 239.255.96.2 --port 9700
-    p96view.py --span 2x1                   two boards, a window each (Wrap.card's SPAN=2x1)
+    p96view.py --span 2x1                   two parts of a SPLIT=2x1 screen, a window each
+                                            (groups 239.255.96.1 and .2, ports 9696, 9697)
+    p96view.py --part 2                     only part 2 (group 239.255.96.2, port 9697)
     p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
     p96view.py --web                        show it in a web browser instead
 
@@ -1007,6 +1009,18 @@ def run_web(heads, args):  # pragma: no cover - interactive
     server.serve_forever()
 
 
+def part_group(group, n):
+    """Part n's group (from 0): a multicast group counts up, like the card's DEST."""
+    try:
+        a = socket.inet_aton(group)
+    except OSError:
+        return group
+    if a[0] & 0xf0 != 0xe0 or not n:
+        return group
+    v = struct.unpack(">I", a)[0] + n
+    return socket.inet_ntoa(struct.pack(">I", v))
+
+
 def parse_span(text):
     """'2x1' -> (2, 1)"""
     try:
@@ -1026,6 +1040,9 @@ def main(argv=None):
     ap.add_argument("--span", type=parse_span, metavar="CxR",
                     help="several boards, a window each (like monitors), e.g. 2x1 for Wrap.card's "
                          "SPAN=2x1: ports PORT, PORT+1, ... left to right, top to bottom")
+    ap.add_argument("--part", type=int, metavar="N",
+                    help="one part of a SPLIT= screen: part N's group and port (the card's "
+                         "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
     ap.add_argument("--iface", help="local address of the interface to join on")
@@ -1044,10 +1061,13 @@ def main(argv=None):
     import signal
     signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
     cols, rows = args.span or (1, 1)
+    first = args.part - 1 if args.part else 0
     heads = []
     for i in range(cols * rows):
-        sock = open_socket(args.group, args.port + i, args.iface)
+        n = first + i
+        sock = open_socket(part_group(args.group, n), args.port + n, args.iface)
         heads.append(Head(sock, make_viewer(sock, Screen()), i % cols, i // cols))
+    args.port += first
     try:
         if args.snapshot:
             run_headless(heads, args)

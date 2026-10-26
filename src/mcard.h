@@ -32,10 +32,14 @@ extern struct GfxBase *GfxBase;
 /* MODES=: at most this many sizes */
 #define MC_MAXMODES 24
 
+/* SPLIT=CxR: at most this many parts, each sent to a port of its own */
+#define MC_MAXVIEWS 4
+
 /* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs
    (ENVARC: if ENV: has none yet) */
 struct McConfig {
 	ULONG dest;        /* IPv4 destination, host byte order (=network on 68k) */
+	ULONG part_dest[MC_MAXVIEWS];  /* SPLIT=: DEST2= ... for the further parts, 0: from DEST */
 	UWORD port;
 	UBYTE ttl;
 	BYTE  pri;         /* sender task priority */
@@ -66,8 +70,6 @@ struct McConfig {
  */
 #define MC_MAXBOARDS 8
 
-/* SPLIT=CxR: at most this many parts, each sent to a port of its own */
-#define MC_MAXVIEWS 4
 
 /*
  * The order ring: the drawing functions (orders.c) put what they draw on

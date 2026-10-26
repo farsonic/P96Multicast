@@ -107,7 +107,13 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 
 	while (*line == ' ' || *line == '\t')
 		line++;
-	if ((v = match_key(line, "dest")) != NULL) {
+	if ((v = match_key(line, "dest2")) != NULL) {
+		parse_ip(v, &cfg->part_dest[1]);
+	} else if ((v = match_key(line, "dest3")) != NULL) {
+		parse_ip(v, &cfg->part_dest[2]);
+	} else if ((v = match_key(line, "dest4")) != NULL) {
+		parse_ip(v, &cfg->part_dest[3]);
+	} else if ((v = match_key(line, "dest")) != NULL) {
 		parse_ip(v, &cfg->dest);
 	} else if ((v = match_key(line, "port")) != NULL) {
 		if (parse_num(v, &n) && n > 0 && n < 65536)

@@ -19,6 +19,9 @@ const struct Setting settings[] = {
 	/* Multicast.prefs: see README.md */
 	{ "DEST",      FILE_MC, T_IP,   0, 0,       "239.255.96.1", "Where to send: a multicast group, or one machine" },
 	{ "PORT",      FILE_MC, T_NUM,  1, 65535,   "9696",  "UDP port; board n sends to PORT+n" },
+	{ "DEST2",     FILE_MC, T_IP,   0, 0,       "",      "SPLIT=: where part 2 goes (default: DEST's next group, or DEST)" },
+	{ "DEST3",     FILE_MC, T_IP,   0, 0,       "",      "SPLIT=: where part 3 goes" },
+	{ "DEST4",     FILE_MC, T_IP,   0, 0,       "",      "SPLIT=: where part 4 goes" },
 	{ "TTL",       FILE_MC, T_NUM,  0, 255,     "1",     "Multicast hops (1: this LAN only)" },
 	{ "FPS",       FILE_MC, T_NUM,  1, 50,      "50",    "Update passes per second" },
 	{ "RATE",      FILE_MC, T_NUM,  16, 1000000, "1500", "Most KB per second to send" },

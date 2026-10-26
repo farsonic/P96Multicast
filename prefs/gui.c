@@ -353,8 +353,20 @@ static void draw_map(void)
 		Move(rp, x + (cw - l) / 2, y + ch / 2 - 2);
 		Text(rp, (STRPTR)buf, strlen(buf));
 		if (ch > 3 * fh + 8) {
-			snprintf(buf, sizeof(buf), "port %d", port + (int)i);
+			/* where it goes: a group of its own if DEST is multicast */
+			const char *d = prefs_value(find_setting("DEST"));
+			int a = 0, b = 0, c2 = 0, e = 0;
+
+			if (sscanf(d, "%d.%d.%d.%d", &a, &b, &c2, &e) == 4 && a >= 224 && a <= 239)
+				snprintf(buf, sizeof(buf), "%d.%d.%d.%d:%d", a, b, c2, e + (int)i,
+				         port + (int)i);
+			else
+				snprintf(buf, sizeof(buf), "port %d", port + (int)i);
 			l = TextLength(rp, (STRPTR)buf, strlen(buf));
+			if (l >= cw - 8) {
+				snprintf(buf, sizeof(buf), "port %d", port + (int)i);
+				l = TextLength(rp, (STRPTR)buf, strlen(buf));
+			}
 			if (l < cw - 8) {
 				Move(rp, x + (cw - l) / 2, y + ch / 2 - 2 + fh + 2);
 				Text(rp, (STRPTR)buf, strlen(buf));
