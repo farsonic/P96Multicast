@@ -7,6 +7,7 @@
 #   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
 #   make emu-mirror      ... and mirroring it to a second board, over the network
 #   make emu-span        ... and spanning one screen over four boards, over the network
+#   make emu-measure     how much of the drawing reaches the card (BLITTER=1)
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -20,7 +21,7 @@ VAMOS ?= vamos -C 68020
 BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
-CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o
+CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/blit.o
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
@@ -89,7 +90,10 @@ emu-mirror: all
 emu-span: all
 	emu/span_test.sh
 
+emu-measure: all
+	emu/measure_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-measure clean

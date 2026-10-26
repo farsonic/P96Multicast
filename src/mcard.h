@@ -18,6 +18,7 @@
 #include <exec/libraries.h>
 #include <dos/dosextens.h>
 #include "boardinfo.h"
+#include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
 #define MC_VERSION_STR "1.2"
@@ -41,6 +42,7 @@ struct McConfig {
 	UWORD maxwidth, maxheight;
 	UWORD boardtype;
 	UWORD boards;      /* boards to offer, 1-MC_MAXBOARDS */
+	UWORD blitter;     /* record the drawing functions (BLITTER=1) */
 	UWORD quiet;
 	char  log[80];     /* sender log file, "" for none */
 };
@@ -51,6 +53,18 @@ struct McConfig {
  * second one on, so its modes can be told apart.
  */
 #define MC_MAXBOARDS 8
+
+/*
+ * BLITTER=1: the drawing functions put the rectangles they change on the
+ * visible screen here (screen coordinates), and the sender takes them off.
+ */
+#define MC_DAMAGE_RING 1024
+
+struct McRect {
+	WORD  x, y, w, h;
+	UWORD kind;            /* MC_BLIT_* */
+	UWORD pad;
+};
 
 struct McCard {
 	struct BoardInfo *bi;
@@ -80,6 +94,9 @@ struct McCard {
 
 	struct Process *sender;
 	volatile UWORD sender_quit;
+
+	struct McRect damage[MC_DAMAGE_RING];
+	volatile ULONG damage_head;  /* rectangles put in so far */
 };
 
 #define MC_CARD(bi) ((struct McCard *)(bi)->CardData[0])
@@ -87,6 +104,10 @@ struct McCard {
 /* card.c */
 ULONG mc_bytesperpixel(RGBFTYPE fmt);
 ULONG mc_bytesperrow(UWORD width, RGBFTYPE fmt);
+extern struct McStatus *mc_status;
+
+/* blit.c */
+void mc_blitter_install(struct McCard *mc);
 
 /* config.c */
 void mc_config_defaults(struct McConfig *cfg);

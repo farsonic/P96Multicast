@@ -12,6 +12,8 @@
 	xref	_LibExpunge
 	xref	_FindCard
 	xref	_InitCard
+	xref	_mc_damage
+	xdef	_DmgStubs
 	xdef	_SetMemoryMode
 	xdef	_LibNull
 	xdef	_LibName
@@ -19,7 +21,7 @@
 
 VERSION		equ	1
 REVISION	equ	2
-LIBSIZE		equ	80		; struct McBase, MC_LIBSIZE in mc_status.h
+LIBSIZE		equ	256		; struct McBase, MC_LIBSIZE in mc_status.h
 RTF_AUTOINIT	equ	$80
 NT_LIBRARY	equ	9
 
@@ -64,6 +66,30 @@ _LibNull:
 ; linear aperture, so there is nothing to switch. P96 requires that this
 ; function preserves all registers.
 _SetMemoryMode:
+	rts
+
+; BLITTER=1 (blit.c): one stub per drawing function, 8 bytes each, in the
+; order of MC_BLIT_* in mc_status.h. A stub saves every register, lets
+; _mc_damage(a0 bi, d0 kind, a1 saved registers) record the rectangle, and
+; goes on to the rtg.library function _mc_damage returns, with every
+; register as the caller passed it and the caller's return address.
+NBLIT		equ	9		; MC_BLIT_KINDS
+
+_DmgStubs:
+kind	set	0
+	rept	NBLIT
+	pea	(kind).w
+	bra.w	dmg_common
+kind	set	kind+1
+	endr
+
+dmg_common:
+	movem.l	d0-d7/a0-a6,-(sp)	; 60 bytes, above them the kind
+	move.l	sp,a1
+	move.l	60(sp),d0
+	jsr	_mc_damage
+	move.l	d0,60(sp)		; the kind becomes where to go
+	movem.l	(sp)+,d0-d7/a0-a6
 	rts
 
 _LibName:

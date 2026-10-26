@@ -15,6 +15,14 @@
  *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
  *                                       card streams it while e.g. the Workbench
  *                                       stays in front on another board
+ *   mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=8
+ *                                       with BLITTER=1: a Workbench-like screen
+ *                                       on the card and everyday work on it (a
+ *                                       console listing directories, windows
+ *                                       moved and resized, drawing, scrolling,
+ *                                       images), and for each step how many
+ *                                       changed tiles the card's recorded
+ *                                       drawing calls explain
  *   mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16 [MARK=Work:span] [STEP=10]
  *                                       for Wrap.card's SPAN=: a screen of 2x2
  *                                       times the mode's size, the test pattern
@@ -36,6 +44,8 @@
 #include <graphics/modeid.h>
 #include <intuition/screens.h>
 #include <dos/dos.h>
+#include <dos/dostags.h>
+#include <graphics/gfxmacros.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
@@ -51,9 +61,22 @@ ULONG __FillPixelArray(__reg("a6") void *, __reg("a1") struct RastPort *rp,
                        __reg("d3") UWORD h, __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #define FillPixelArray(rp, x, y, w, h, argb) __FillPixelArray(CyberGfxBase, rp, x, y, w, h, argb)
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N";
+/* cybergraphics.library WritePixelArray(), RECTFMT_RGB = 0 */
+ULONG __WritePixelArray(__reg("a6") void *, __reg("a0") APTR src, __reg("d0") UWORD sx,
+                        __reg("d1") UWORD sy, __reg("d2") UWORD mod, __reg("a1") struct RastPort *rp,
+                        __reg("d3") UWORD dx, __reg("d4") UWORD dy, __reg("d5") UWORD w,
+                        __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-126(a6)";
+#define WritePixelArray(src, sx, sy, mod, rp, dx, dy, w, h, fmt) \
+	__WritePixelArray(CyberGfxBase, src, sx, sy, mod, rp, dx, dy, w, h, fmt)
+
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S";
 enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_COUNT };
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_COUNT };
+
+static const char *blit_names[MC_BLIT_KINDS] = {
+	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
+	"BlitRectNoMaskComplete", "BlitPlanar2Chunky", "BlitPlanar2Direct"
+};
 
 /* SPAN's window: its colour, and where it sits in each head's tile */
 #define SPAN_WINDOW_RGB 0xff8000
@@ -244,6 +267,19 @@ static void status(void)
 		       st.fast_largest >> 10, st.vramsize >> 10);
 		printf("  SetGC called %lu times, SetPanning %lu times%s\n", st.setgc_calls,
 		       st.panning_calls, st.setgc_calls ? "" : " (no screen shown on the card yet)");
+		if (st.blitter) {
+			int k;
+
+			printf("  BLITTER=1: %lu of %lu changed tiles explained by drawing calls\n",
+			       st.tiles_explained, st.tiles_changed);
+			for (k = 0; k < MC_BLIT_KINDS; k++)
+				if (st.blit_calls[k])
+					printf("    %-24s %6lu calls, %6lu on screen, explained %lu tiles\n",
+					       blit_names[k], st.blit_calls[k], st.blit_screen[k], st.tiles_by[k]);
+			printf("    screen switches explained %lu tiles\n", st.tiles_switch);
+			printf("    copies within the screen: %lu, damage ring overruns: %lu\n",
+			       st.screen_copies, st.damage_lost);
+		}
 	} else if (card) {
 		printf("  (version 1.0: no status block)\n");
 	}
@@ -360,6 +396,241 @@ static int span(ULONG id, UWORD w, UWORD h, UWORD depth, UWORD cols, UWORD rows,
 	return RETURN_OK;
 }
 
+/* ---------------------------------------------------------------- WORKLOAD */
+
+static BOOL read_status(struct McStatus *st)
+{
+	struct McBase *card;
+	BOOL ok = FALSE;
+
+	Forbid();
+	card = (struct McBase *)FindName(&SysBase->LibList, "Multicast.card");
+	if (card && card->status.magic == MC_STATUS_MAGIC) {
+		*st = card->status;
+		ok = TRUE;
+	}
+	Permit();
+	return ok;
+}
+
+/* let the sender look at everything, then say what the step changed */
+static void report(const char *step, struct McStatus *before)
+{
+	struct McStatus now;
+	ULONG changed, explained;
+	int k, n = 0;
+
+	Delay(3 * TICKS_PER_SECOND);
+	if (!read_status(&now))
+		return;
+	changed = now.tiles_changed - before->tiles_changed;
+	explained = now.tiles_explained - before->tiles_explained;
+	printf("step %-13s %5lu tiles changed, %5lu explained (%3lu%%)\n", step, changed, explained,
+	       changed ? explained * 100 / changed : 100);
+	for (k = 0; k < MC_BLIT_KINDS; k++) {
+		ULONG calls = now.blit_calls[k] - before->blit_calls[k];
+		ULONG screen = now.blit_screen[k] - before->blit_screen[k];
+		ULONG tiles = now.tiles_by[k] - before->tiles_by[k];
+
+		if (!calls)
+			continue;
+		printf("%s%s %lu (%lu on screen, %lu tiles)", n++ % 3 ? ", " : "    ", blit_names[k],
+		       calls, screen, tiles);
+		if (n % 3 == 0)
+			printf("\n");
+	}
+	if (n % 3)
+		printf("\n");
+	if (now.tiles_switch != before->tiles_switch)
+		printf("    screen switch (another bitmap put on display): %lu tiles\n",
+		       now.tiles_switch - before->tiles_switch);
+	if (now.screen_copies != before->screen_copies)
+		printf("    copies within the screen: %lu\n", now.screen_copies - before->screen_copies);
+	if (now.damage_lost != before->damage_lost)
+		printf("    damage ring overruns: %lu\n", now.damage_lost - before->damage_lost);
+	fflush(stdout);
+	*before = now;
+}
+
+static void inner_box(struct Window *win, int *x, int *y, int *w, int *h)
+{
+	*x = win->BorderLeft;
+	*y = win->BorderTop;
+	*w = win->Width - win->BorderLeft - win->BorderRight;
+	*h = win->Height - win->BorderTop - win->BorderBottom;
+}
+
+/*
+ * Everyday work on a Workbench-like screen on the card, a step at a time,
+ * with BLITTER=1: after each step, how many of the tiles the sender found
+ * changed a drawing call the card heard about explains, and which calls.
+ */
+static int workload(ULONG id, UWORD w, UWORD h, UWORD depth)
+{
+	static UWORD pattern[2] = { 0xaaaa, 0x5555 };
+	static const char *line = "The quick brown fox jumps over the lazy dog";
+	struct McStatus st, start;
+	struct Screen *scr;
+	struct Window *win;
+	struct BitMap *friend, *planar;
+	struct RastPort trp;
+	BPTR con = 0, nil;
+	ULONG err = 0;
+	UBYTE *pix;
+	int i, ix, iy, iw, ih;
+
+	if (!read_status(&st) || !st.blitter) {
+		printf("mctest: WORKLOAD needs Multicast.card with BLITTER=1\n");
+		return RETURN_ERROR;
+	}
+	start = st;
+	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h, SA_Depth, depth,
+	                     SA_LikeWorkbench, TRUE, SA_PubName, (ULONG)"MCWORK",
+	                     SA_Title, (ULONG)"Workload", SA_Type, PUBLICSCREEN, SA_SharePens, TRUE,
+	                     SA_ErrorCode, (ULONG)&err, TAG_END);
+	if (!scr) {
+		printf("mctest: cannot open the screen: %s (error %lu)\n", screen_error(err), err);
+		return RETURN_ERROR;
+	}
+	PubScreenStatus(scr, 0);
+	printf("mctest: workload on a %ux%ux%u screen\n", w, h, depth);
+	report("screen", &st);
+
+	/* a console listing directories: text and scrolling */
+	{
+		char spec[80];
+
+		snprintf(spec, sizeof(spec), "CON:0/%d/%d/%d/Console/SCREENMCWORK",
+		         (int)scr->BarHeight + 1, (int)w, (int)h / 2);
+		con = Open((STRPTR)spec, MODE_NEWFILE);
+	}
+	if (con) {
+		nil = Open((STRPTR)"NIL:", MODE_OLDFILE);
+		SystemTags((STRPTR)"Dir SYS:C", SYS_Input, nil, SYS_Output, con, TAG_END);
+		SystemTags((STRPTR)"List SYS:Libs", SYS_Input, nil, SYS_Output, con, TAG_END);
+		if (nil)
+			Close(nil);
+		report("console", &st);
+	} else {
+		printf("mctest: no console on the screen, skipped\n");
+	}
+
+	win = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)scr, WA_Left, w / 3, WA_Top, h / 3,
+	                     WA_Width, w / 2, WA_Height, h / 2, WA_Title, (ULONG)"Work",
+	                     WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_SizeGadget, TRUE,
+	                     WA_CloseGadget, TRUE, WA_SmartRefresh, TRUE, WA_MinWidth, 100,
+	                     WA_MinHeight, 60, WA_MaxWidth, -1, WA_MaxHeight, -1,
+	                     WA_Activate, TRUE, TAG_END);
+	if (!win) {
+		printf("mctest: cannot open a window\n");
+		if (con)
+			Close(con);
+		CloseScreen(scr);
+		return RETURN_ERROR;
+	}
+	report("window", &st);
+
+	for (i = 0; i < 12; i++) {
+		MoveWindow(win, i < 6 ? -16 : 16, i < 6 ? -8 : 8);
+		Delay(5);
+	}
+	SizeWindow(win, -40, -30);
+	Delay(10);
+	SizeWindow(win, 40, 30);
+	Delay(10);
+	WindowToBack(win);
+	Delay(10);
+	WindowToFront(win);
+	report("move/size", &st);
+
+	inner_box(win, &ix, &iy, &iw, &ih);
+	for (i = 0; i < 20; i++) {
+		SetAPen(win->RPort, 1 + i % 7);
+		RectFill(win->RPort, ix + (i * 13) % (iw - 40), iy + (i * 7) % (ih - 30),
+		         ix + (i * 13) % (iw - 40) + 30, iy + (i * 7) % (ih - 30) + 20);
+	}
+	for (i = 0; i < 40; i++) {
+		SetAPen(win->RPort, 1 + i % 3);
+		Move(win->RPort, ix + i * (iw - 1) / 40, iy);
+		Draw(win->RPort, ix + iw - 1 - i * (iw - 1) / 40, iy + ih - 1);
+	}
+	SetAPen(win->RPort, 1);
+	for (i = 0; i < 12 && 10 + i * 9 < ih; i++) {
+		Move(win->RPort, ix + 4, iy + 10 + i * 9);
+		Text(win->RPort, (STRPTR)line, strlen(line) < iw / 8 ? strlen(line) : iw / 8);
+	}
+	SetDrMd(win->RPort, COMPLEMENT);
+	for (i = 0; i < 5; i++)
+		RectFill(win->RPort, ix + 10 + i * 20, iy + 10, ix + 40 + i * 20, iy + 40);
+	SetDrMd(win->RPort, JAM1);
+	SetAfPt(win->RPort, pattern, 1);
+	for (i = 0; i < 5; i++)
+		RectFill(win->RPort, ix + 10 + i * 20, iy + 50, ix + 40 + i * 20, iy + 80);
+	SetAfPt(win->RPort, NULL, 0);
+	report("drawing", &st);
+
+	for (i = 0; i < 30; i++) {
+		ScrollRaster(win->RPort, 0, 9, ix, iy, ix + iw - 1, iy + ih - 1);
+		Move(win->RPort, ix + 4, iy + ih - 3);
+		Text(win->RPort, (STRPTR)line, strlen(line) < iw / 8 ? strlen(line) : iw / 8);
+		Delay(2);
+	}
+	report("scrolling", &st);
+
+	/* images: from a bitmap like the screen's, from a planar one, from memory */
+	friend = AllocBitMap(64, 64, depth, BMF_CLEAR, scr->RastPort.BitMap);
+	planar = AllocBitMap(64, 64, 4, BMF_CLEAR, NULL);
+	pix = AllocMem(64 * 64 * 3, MEMF_ANY);
+	if (friend) {
+		InitRastPort(&trp);
+		trp.BitMap = friend;
+		SetAPen(&trp, 3);
+		RectFill(&trp, 8, 8, 55, 55);
+		for (i = 0; i < 6; i++)
+			BltBitMapRastPort(friend, 0, 0, win->RPort, ix + i * 20, iy + 20, 64, 64, 0xc0);
+	}
+	if (planar) {
+		InitRastPort(&trp);
+		trp.BitMap = planar;
+		SetAPen(&trp, 5);
+		RectFill(&trp, 4, 4, 59, 59);
+		for (i = 0; i < 6; i++)
+			BltBitMapRastPort(planar, 0, 0, win->RPort, ix + i * 20, iy + 60, 64, 64, 0xc0);
+	}
+	if (pix) {
+		for (i = 0; i < 64 * 64 * 3; i++)
+			pix[i] = i * 7;
+		for (i = 0; i < 6; i++) {
+			if (depth > 8 && CyberGfxBase)
+				WritePixelArray(pix, 0, 0, 64 * 3, win->RPort, ix + i * 20, iy + 100, 64, 64, 0);
+			else
+				WriteChunkyPixels(win->RPort, ix + i * 20, iy + 100, ix + i * 20 + 63,
+				                  iy + 163, pix, 64);
+		}
+	}
+	report("images", &st);
+
+	CloseWindow(win);
+	report("close window", &st);
+	if (con) {
+		Close(con);
+		report("close console", &st);
+	}
+	if (friend)
+		FreeBitMap(friend);
+	if (planar)
+		FreeBitMap(planar);
+	if (pix)
+		FreeMem(pix, 64 * 64 * 3);
+	report("idle", &st);
+	report("total", &start);
+	while (!(PubScreenStatus(scr, PSNF_PRIVATE) & 1))
+		Delay(TICKS_PER_SECOND);
+	CloseScreen(scr);
+	printf("mctest: done\n");
+	return RETURN_OK;
+}
+
 /*
  * A public screen on the card, like the Workbench screen, until Ctrl-C and
  * no visitor windows are left.
@@ -470,6 +741,15 @@ int main(void)
 		printf("mctest: needs cybergraphics.library for depth %u\n", depth);
 		FreeArgs(rda);
 		return RETURN_ERROR;
+	}
+
+	if (args[A_WORKLOAD]) {
+		int rc = workload(id, w, h, depth);
+
+		if (CyberGfxBase)
+			CloseLibrary(CyberGfxBase);
+		FreeArgs(rda);
+		return rc;
 	}
 
 	if (args[A_SPAN]) {

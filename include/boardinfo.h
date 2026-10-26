@@ -92,6 +92,7 @@ typedef ULONG RGBFTYPE;
 #define BIB_DACSWITCH          28
 #define BIB_OVERCLOCK          31
 
+#define BIF_BLITTER           (1UL << BIB_BLITTER)
 #define BIF_INDISPLAYCHAIN    (1UL << BIB_INDISPLAYCHAIN)
 #define BIF_QUIET             (1UL << BIB_QUIET)
 #define BIF_GRANTDIRECTACCESS (1UL << BIB_GRANTDIRECTACCESS)
@@ -142,6 +143,21 @@ struct RenderInfo {
 	WORD     BytesPerRow;
 	WORD     pad;
 	RGBFTYPE RGBFormat;
+};
+
+/* DrawLine's line: dX, dY are end minus start */
+struct Line {
+	WORD  X, Y;
+	UWORD Length;
+	WORD  dX, dY;
+	WORD  sDelta, lDelta, twoSDminusLD;
+	UWORD LinePtrn;
+	UWORD PatternShift;
+	ULONG FgPen, BgPen;
+	BOOL  Horizontal;
+	UBYTE DrawMode;
+	BYTE  pad;
+	UWORD Xorigin, Yorigin;
 };
 
 /* ---- BoardInfo ---- */

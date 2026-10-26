@@ -43,15 +43,15 @@ static UWORD cards_found;
 typedef char mc_libsize_check[sizeof(struct McBase) <= MC_LIBSIZE ? 1 : -1];
 
 /* the status block in the library base, filled in for "mctest STATUS" */
-static struct McStatus *status;
+struct McStatus *mc_status;
 
 struct Library *LibInit(__reg("d0") struct McBase *base, __reg("a0") BPTR seglist,
                         __reg("a6") struct ExecBase *sysbase)
 {
 	SysBase = sysbase;
 	base->seglist = seglist;
-	status = &base->status;
-	status->magic = MC_STATUS_MAGIC;
+	mc_status = &base->status;
+	mc_status->magic = MC_STATUS_MAGIC;
 	base->lib.lib_Node.ln_Type = NT_LIBRARY;
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
@@ -175,7 +175,7 @@ static void SetGC(__reg("a0") struct BoardInfo *bi, __reg("a1") struct ModeInfo 
 {
 	struct McCard *mc = MC_CARD(bi);
 
-	status->setgc_calls++;
+	mc_status->setgc_calls++;
 	bi->Border = border;
 	mc->width = mi->Width;
 	mc->height = mi->Height;
@@ -188,7 +188,7 @@ static void SetPanning(__reg("a0") struct BoardInfo *bi, __reg("a1") UBYTE *mem,
 {
 	struct McCard *mc = MC_CARD(bi);
 
-	status->panning_calls++;
+	mc_status->panning_calls++;
 	bi->XOffset = x;
 	bi->YOffset = y;
 	mc->bm_mem = mem;
@@ -300,7 +300,7 @@ static BOOL alloc_vram(struct McCard *mc)
 	ULONG size = mc->cfg.vramsize;
 	ULONG largest = AvailMem(MEMF_FAST | MEMF_LARGEST);
 
-	status->fast_largest = largest;
+	mc_status->fast_largest = largest;
 	for (; size >= 1024UL * 1024; size >>= 1) {
 		if (largest < size + 4096 + 512UL * 1024)
 			continue;
@@ -308,7 +308,7 @@ static BOOL alloc_vram(struct McCard *mc)
 		mc->vram_alloc = AllocMem(mc->vram_allocsize, MEMF_FAST | MEMF_PUBLIC);
 		if (mc->vram_alloc) {
 			mc->cfg.vramsize = size;
-			status->vramsize = size;
+			mc_status->vramsize = size;
 			return TRUE;
 		}
 	}
@@ -320,14 +320,14 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 	struct McCard *mc;
 	UBYTE *vram;
 
-	status->findcard_calls++;
+	mc_status->findcard_calls++;
 	/* rtg.library asks again until FindCard fails */
 	if (cards_found >= MC_MAXBOARDS)
 		return FALSE;
 
 	mc = AllocMem(sizeof(*mc), MEMF_PUBLIC | MEMF_CLEAR);
 	if (!mc) {
-		status->error = MC_ERR_NOCONTEXT;
+		mc_status->error = MC_ERR_NOCONTEXT;
 		return FALSE;
 	}
 	mc->bi = bi;
@@ -341,7 +341,7 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 	}
 
 	if (!alloc_vram(mc)) {
-		status->error = MC_ERR_NOVRAM;
+		mc_status->error = MC_ERR_NOVRAM;
 		FreeMem(mc, sizeof(*mc));
 		return FALSE;
 	}
@@ -356,7 +356,7 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 	bi->MemorySpaceBase = vram;
 	bi->MemorySpaceSize = mc->cfg.vramsize;
 	cards_found++;
-	status->cards = cards_found;
+	mc_status->cards = cards_found;
 	return TRUE;
 }
 
@@ -365,7 +365,7 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	struct McCard *mc = MC_CARD(bi);
 	int i;
 
-	status->initcard_calls++;
+	mc_status->initcard_calls++;
 	/* AROS's p96gfx.hidd passes no ToolTypes */
 	if (tooltypes) {
 		for (; *tooltypes; tooltypes++)
@@ -437,9 +437,11 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	mc->moniswitch = 1;
 	mc->display = 1;
 	mc->format = RGBFB_CLUT;
+	if (mc->cfg.blitter)
+		mc_blitter_install(mc);
 
 	if (!mc_sender_start(mc)) {
-		status->error = MC_ERR_NOSENDER;
+		mc_status->error = MC_ERR_NOSENDER;
 		return FALSE;
 	}
 	return TRUE;

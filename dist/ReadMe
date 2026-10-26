@@ -66,6 +66,8 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
                       modes are called Multicast2:..., and it logs to LOG.2
                       (P96; AROS takes one board per card, see Wrap.card).
                       VRAM= is for each board
+  BLITTER=0           1: the card records the drawing rtg.library hands it
+                      (mctest STATUS shows how much); for measuring
 
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.

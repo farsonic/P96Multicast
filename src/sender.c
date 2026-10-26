@@ -26,6 +26,16 @@
 #define TILE_ROWBYTES 64  /* tile width in bytes (before clipping) */
 #define TILE_H        16
 
+/*
+ * BLITTER=1 accounting: a tile a recorded drawing call touched counts as
+ * explained for this many passes (the call is recorded before it draws, and
+ * a slow pass or the byte budget can leave a tile unchecked for a while).
+ */
+#define DAMAGE_AGE    50
+#define KIND_MODE     0xff  /* a new mode: not counted */
+#define KIND_SWITCH   0xfd  /* another bitmap put on display */
+#define KIND_NONE     0xfe
+
 struct Sender {
 	struct McCard *mc;
 	struct Library *sockbase;
@@ -54,6 +64,12 @@ struct Sender {
 	UBYTE *shadow;   /* w * bpp bytes per row, what receivers were sent */
 	ULONG  shadowsize;
 	ULONG  srow;
+
+	/* BLITTER=1 accounting, per tile: passes left as explained, and by what */
+	UBYTE *touched;  /* 2 * ntiles bytes: ages, then kinds */
+	ULONG  touchedsize;
+	UBYTE *bm;       /* the bitmap on display */
+	ULONG  dtail;    /* damage rectangles taken off the ring so far */
 
 	/* statistics, for the log */
 	ULONG  packets, bytes, errors;
@@ -310,6 +326,16 @@ static BOOL snapshot(struct Sender *s, BOOL *geometry)
 	if (serial == s->serial)
 		return s->src != NULL && s->display;
 	s->serial = serial;
+	if (bm != s->bm && s->bm && s->touched) {
+		/* another screen in the same mode: all of it replaced at once */
+		ULONG t;
+
+		for (t = 0; t < s->ntiles; t++) {
+			s->touched[t] = DAMAGE_AGE;
+			s->touched[s->ntiles + t] = KIND_SWITCH;
+		}
+	}
+	s->bm = bm;
 
 	bpp = mc_bytesperpixel(fmt);
 	if (!bm || !bpp || !w || !h) {
@@ -349,6 +375,20 @@ static BOOL snapshot(struct Sender *s, BOOL *geometry)
 			s->src = NULL;
 			return FALSE;
 		}
+		/* a new mode explains all of its tiles */
+		if (s->touched)
+			FreeMem(s->touched, s->touchedsize);
+		s->touchedsize = 2 * s->ntiles;
+		s->touched = AllocMem(s->touchedsize, MEMF_PUBLIC);
+		if (s->touched) {
+			ULONG t;
+
+			for (t = 0; t < s->ntiles; t++) {
+				s->touched[t] = DAMAGE_AGE;
+				s->touched[s->ntiles + t] = KIND_MODE;
+			}
+		}
+		s->dtail = mc->damage_head;
 		/* make every tile differ, so the whole screen goes out */
 		{
 			ULONG t;
@@ -362,6 +402,51 @@ static BOOL snapshot(struct Sender *s, BOOL *geometry)
 		}
 	}
 	return display != 0;
+}
+
+/* BLITTER=1: the rectangles the drawing calls recorded mark their tiles */
+static void take_damage(struct Sender *s)
+{
+	struct McCard *mc = s->mc;
+	struct McRect r;
+	ULONG head;
+	LONG tx, ty, tx0, tx1, ty1;
+
+	if (!s->touched)
+		return;
+	head = mc->damage_head;
+	if (head - s->dtail > MC_DAMAGE_RING) {
+		/* fell behind: the oldest are overwritten, so all tiles count */
+		ULONG t;
+
+		for (t = 0; t < s->ntiles; t++)
+			s->touched[t] = DAMAGE_AGE;
+		if (mc->boardnum == 0)
+			mc_status->damage_lost++;
+		s->dtail = head;
+		return;
+	}
+	for (; s->dtail != head; s->dtail++) {
+		Forbid();
+		r = mc->damage[s->dtail % MC_DAMAGE_RING];
+		Permit();
+		if (r.x >= s->w || r.y >= s->h)
+			continue;
+		tx0 = r.x / s->tw;
+		tx1 = (r.x + r.w - 1) / s->tw;
+		ty1 = (r.y + r.h - 1) / s->th;
+		if (tx1 >= s->tcols)
+			tx1 = s->tcols - 1;
+		if (ty1 >= s->trows)
+			ty1 = s->trows - 1;
+		for (ty = r.y / s->th; ty <= ty1; ty++)
+			for (tx = tx0; tx <= tx1; tx++) {
+				ULONG t = ty * s->tcols + tx;
+
+				s->touched[t] = DAMAGE_AGE;
+				s->touched[s->ntiles + t] = r.kind;
+			}
+	}
 }
 
 static void update_pass(struct Sender *s)
@@ -393,6 +478,8 @@ static void update_pass(struct Sender *s)
 		if (s->fmt == RGBFB_CLUT)
 			send_palette(s);
 	}
+	if (s->mc->cfg.blitter)
+		take_damage(s);
 
 	/* changed tiles, starting where the last pass stopped */
 	for (checked = 0; checked < s->ntiles && budget > 0; checked++) {
@@ -402,6 +489,21 @@ static void update_pass(struct Sender *s)
 		tile_rect(s, t, &x, &y, &w, &h);
 		if (!tile_changed(s, x, y, w, h))
 			continue;
+		if (s->touched && s->mc->boardnum == 0 && s->touched[s->ntiles + t] != KIND_MODE) {
+			/* not one that a new mode sent out */
+			UBYTE kind = s->touched[s->ntiles + t];
+
+			mc_status->tiles_changed++;
+			if (s->touched[t]) {
+				mc_status->tiles_explained++;
+				if (kind < MC_BLIT_KINDS)
+					mc_status->tiles_by[kind]++;
+				else if (kind == KIND_SWITCH)
+					mc_status->tiles_switch++;
+			}
+		}
+		if (s->touched)
+			s->touched[s->ntiles + t] = KIND_NONE;
 		tile_capture(s, x, y, w, h);
 		{
 			ULONG n = tile_send(s, x, y, w, h, 0);
@@ -438,6 +540,10 @@ static void update_pass(struct Sender *s)
 		send_sync(s, sent);
 		s->frame++;
 	}
+	if (s->touched)
+		for (t = 0; t < s->ntiles; t++)
+			if (s->touched[t])
+				s->touched[t]--;
 }
 
 static BOOL open_socket(struct Sender *s)
@@ -542,6 +648,8 @@ static void SenderMain(void)
 	mc_log(s, "sender stopped\n", 0, 0, 0, 0);
 	if (s->shadow)
 		FreeMem(s->shadow, s->shadowsize);
+	if (s->touched)
+		FreeMem(s->touched, s->touchedsize);
 	FreeMem(s, sizeof(*s));
 	Forbid();
 	mc->sender = NULL;

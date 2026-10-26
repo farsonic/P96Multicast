@@ -78,6 +78,7 @@ P96. `ENV:` wins over ToolTypes.
 | `PRI` | -1 | sender task priority |
 | `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
 | `QUIET` | 0 | set BIF_QUIET |
+| `BLITTER` | 0 | 1: offer rtg.library drawing functions that record what they change and leave the drawing to rtg.library; for measuring (mctest STATUS, WORKLOAD), the start of protocol 2 |
 | `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 
 ## Watching
@@ -102,6 +103,7 @@ make emu-test   # AROS + Riptide in FS-UAE, end to end
 make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
 make emu-mirror # ... mirroring it to a second Multicast board, over the network
 make emu-span   # ... one 1280x960 screen on four Multicast boards, a window moved between them
+make emu-measure  # BLITTER=1: how much of the drawing reaches the card (docs/PROTOCOL2.md)
 ```
 
 ## Layout
