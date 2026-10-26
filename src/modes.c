@@ -24,6 +24,9 @@
 #include <exec/lists.h>
 #include <proto/exec.h>
 #include <clib/alib_protos.h>
+#include <dos/dos.h>
+#include <dos/dosextens.h>
+#include <proto/dos.h>
 #include "mcard.h"
 
 /*
@@ -35,6 +38,43 @@
 static ULONG display_id(UWORD board, UWORD i)
 {
 	return 0x50001000UL | ((ULONG)(0xff - board * MC_MAXMODES - i) << 16);
+}
+
+/*
+ * The DisplayIDs Picasso96Mode's settings already have (0x50xx1000, as the
+ * card's are): Picasso96Mode saves whatever modes it was shown, the card's
+ * own among them, and P96 refuses a board whose IDs clash with them. The
+ * file's layout isn't documented, so every place that looks like such an ID
+ * counts. Needs a process; without one, or without the file, none.
+ */
+static void ids_in_settings(UBYTE used[256])
+{
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR oldwin;
+	BPTR fh;
+	UBYTE *buf;
+	LONG n, keep = 0, i;
+
+	if (me->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+		return;
+	oldwin = me->pr_WindowPtr;
+	me->pr_WindowPtr = (APTR)-1;
+	fh = Open((STRPTR)"DEVS:Picasso96Settings", MODE_OLDFILE);
+	me->pr_WindowPtr = oldwin;
+	if (!fh)
+		return;
+	buf = AllocMem(4096, MEMF_ANY);
+	while (buf && (n = Read(fh, buf + keep, 4096 - keep)) > 0) {
+		n += keep;
+		for (i = 0; i + 4 <= n; i++)
+			if (buf[i] == 0x50 && buf[i + 2] == 0x10 && buf[i + 3] == 0x00)
+				used[buf[i + 1]] = 1;
+		keep = n < 3 ? n : 3;
+		CopyMem(buf + n - keep, buf, keep);
+	}
+	if (buf)
+		FreeMem(buf, 4096);
+	Close(fh);
 }
 
 #define HOR_BLANK 8
@@ -92,7 +132,8 @@ void mc_modes_build(struct McCard *mc)
 	struct McConfig *cfg = &mc->cfg;
 	static const UBYTE depths[MAXMODES] = { 0, 8, 16, 24, 32 };
 	UWORD sizes[MC_MAXMODES][2];
-	UWORD n = 0, i, before = 0, added = 0;
+	UWORD n = 0, i, before = 0, added = 0, next = 0;
+	UBYTE used[256];
 	struct Node *nd;
 	UBYTE *p;
 
@@ -113,6 +154,9 @@ void mc_modes_build(struct McCard *mc)
 	}
 	if (!n)
 		return;
+	for (i = 0; i < 256; i++)
+		used[i] = 0;
+	ids_in_settings(used);
 
 	mc->modessize = n * (sizeof(struct LibResolution) + (MAXMODES - 1) * sizeof(struct ModeInfo));
 	mc->modes = AllocMem(mc->modessize, MEMF_PUBLIC | MEMF_CLEAR);
@@ -139,8 +183,12 @@ void mc_modes_build(struct McCard *mc)
 		}
 		if (!any)
 			continue;
-		res->DisplayID = display_id(mc->boardnum, i);
-		if (taken(bi, w, h, res->DisplayID))
+		/* the board's next DisplayID that neither the list nor the settings have */
+		do
+			res->DisplayID = display_id(mc->boardnum, next++);
+		while (next < 0x80 && (used[(res->DisplayID >> 16) & 0xff] ||
+		                       taken(bi, 0, 0, res->DisplayID)));
+		if (taken(bi, w, h, 0xffffffffUL))
 			continue;
 		/* "Multicast:640x480" */
 		while (*b && name < res->Name + MAXRESOLUTIONNAMELENGTH - 11)
