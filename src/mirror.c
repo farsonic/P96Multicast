@@ -183,6 +183,21 @@ static void set_palette(struct Heads *hs, struct Head *hd)
 	((SetColorArrayFn)bi->SetColorArray)(bi, 0, 256, hd->h->lib);
 }
 
+/* Multicast.card 2 and up: it can hear what is drawn and what is copied */
+BOOL wrap_is_copper(struct Library *card)
+{
+	const char *n = card ? card->lib_Node.ln_Name : NULL;
+	const char *m = "Multicast.card";
+
+	if (!n || card->lib_Version < 2)
+		return FALSE;
+	while (*m && *n == *m) {
+		n++;
+		m++;
+	}
+	return !*m && !*n;
+}
+
 /* HEADSHARE: the head shows its part of the wrapped board's bitmap */
 static void pan(struct Heads *hs, struct Head *hd)
 {
@@ -205,6 +220,7 @@ static void set_mode(struct Heads *hs, struct Head *hd, UWORD x, UWORD y)
 	ULONG bpr;
 
 	hd->ok = FALSE;
+	h->orders = 0;
 	h->x = x;
 	h->y = y;
 	if (!(bi->RGBFormats & RGBFF(hs->fmt))) {
@@ -256,6 +272,8 @@ static void set_mode(struct Heads *hs, struct Head *hd, UWORD x, UWORD y)
 	h->setups++;
 	h->error = WRAP_MERR_NONE;
 	hd->ok = TRUE;
+	/* from now on the thunks pass the drawing on to it */
+	h->orders = hd->shared && wrap_is_copper(card);
 }
 
 /*
@@ -332,6 +350,9 @@ static void copy_changes(struct Heads *hs, struct Head *hd)
 	UBYTE *dst = h->mem;
 	UBYTE *sh = hd->shadow;
 	ULONG copied = 0, y, off, run, n;
+	/* Multicast.card 2: what changed, in bands of rows, so it compares only that */
+	McDamageFn damage = wrap_is_copper(h->lib) ? WRAP_LVO(h->lib, WRAP_LVO_MCDAMAGE) : NULL;
+	ULONG lo = len, hi = 0, band = 0;
 
 	for (y = 0; y < h->height; y++) {
 		if (hd->full) {
@@ -354,6 +375,10 @@ static void copy_changes(struct Heads *hs, struct Head *hd)
 					if (sh)
 						CopyMem(src + run, sh + run, off - run);
 					copied += off - run;
+					if (run < lo)
+						lo = run;
+					if (off > hi)
+						hi = off;
 					run = len;
 				}
 			}
@@ -362,12 +387,25 @@ static void copy_changes(struct Heads *hs, struct Head *hd)
 				if (sh)
 					CopyMem(src + run, sh + run, len - run);
 				copied += len - run;
+				if (run < lo)
+					lo = run;
+				hi = len;
 			}
 		}
 		src += hs->src_bpr;
 		dst += h->bpr;
 		if (sh)
 			sh += hd->srow;
+		if (damage && ((y + 1) % 16 == 0 || y + 1 == h->height)) {
+			if (hd->full)
+				damage(h->bi, 0, band, h->width, y + 1 - band, h->lib);
+			else if (lo < hi)
+				damage(h->bi, lo / hs->bpp, band, (hi - lo + hs->bpp - 1) / hs->bpp,
+				       y + 1 - band, h->lib);
+			lo = len;
+			hi = 0;
+			band = y + 1;
+		}
 	}
 	hd->full = FALSE;
 	h->frames++;

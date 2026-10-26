@@ -87,7 +87,7 @@ struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR segl
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 0;
-	base->lib.lib_Revision = 2;
+	base->lib.lib_Revision = 4;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -377,6 +377,53 @@ static struct WrapBoard *find_board(struct BoardInfo *bi)
 
 /* ---------------------------------------------------------------- thunks */
 
+/* MC_BLIT_* (mc_status.h) of a drawing slot, or -1 */
+static LONG blit_kind(ULONG slot)
+{
+	switch (slot) {
+	case SLOT_FillRect:               return 0;
+	case SLOT_InvertRect:             return 1;
+	case SLOT_BlitRect:               return 2;
+	case SLOT_BlitTemplate:           return 3;
+	case SLOT_BlitPattern:            return 4;
+	case SLOT_DrawLine:               return 5;
+	case SLOT_BlitRectNoMaskComplete: return 6;
+	case SLOT_BlitPlanar2Chunky:      return 7;
+	case SLOT_BlitPlanar2Direct:      return 8;
+	}
+	return -1;
+}
+
+/*
+ * A drawing call or a pointer change of the wrapped board, to each head
+ * that shows the board's bitmap itself and can send it as an order
+ * (WrapHead.orders): McRecord and McPointer of Multicast.card 2.
+ */
+static void pass_on(ULONG slot, ULONG *regs)
+{
+	LONG kind = blit_kind(slot), what = -1;
+	UWORD i;
+
+	switch (slot) {
+	case SLOT_SetSprite:         what = 0; break;
+	case SLOT_SetSpritePosition: what = 1; break;
+	case SLOT_SetSpriteImage:    what = 2; break;
+	case SLOT_SetSpriteColor:    what = 3; break;
+	}
+	if (kind < 0 && what < 0)
+		return;
+	for (i = 0; i < mirror.nheads; i++) {
+		struct WrapHead *h = &mirror.head[i];
+
+		if (!h->orders || !h->bi)
+			continue;
+		if (kind >= 0)
+			((McRecordFn)WRAP_LVO(h->lib, WRAP_LVO_MCRECORD))(h->bi, kind, regs, h->lib);
+		else
+			((McRecordFn)WRAP_LVO(h->lib, WRAP_LVO_MCPOINTER))(h->bi, what, regs, h->lib);
+	}
+}
+
 /*
  * Called by every thunk before the card's function, in the caller's context:
  * any task, or an interrupt. It must not call the OS. regs holds d0-d7 and
@@ -433,6 +480,10 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 		d->serial++;
 		break;
 	}
+
+	/* the first board's drawing, to heads that send it on (Multicast.card 2) */
+	if (b == &boards[0] && mirror.nheads)
+		pass_on(slot, regs);
 
 	regs[14] = (ULONG)inner;   /* a6 for the card's function */
 	return fn;

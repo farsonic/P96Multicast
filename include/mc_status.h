@@ -20,9 +20,8 @@
 
 /*
  * BLITTER=1: the drawing functions rtg.library may call on the card. Each
- * records the rectangle it changes and goes on to rtg.library's software
- * version, so the counts below say how much of what changes on screen the
- * card hears about.
+ * records what it draws, as an order for the viewers or as a rectangle to
+ * compare, and goes on to rtg.library's software version.
  */
 #define MC_BLIT_FILL      0  /* FillRect */
 #define MC_BLIT_INVERT    1  /* InvertRect */
@@ -34,6 +33,8 @@
 #define MC_BLIT_P2C       7  /* BlitPlanar2Chunky */
 #define MC_BLIT_P2D       8  /* BlitPlanar2Direct */
 #define MC_BLIT_KINDS     9
+/* not BoardInfo functions: Wrap.card's heads (McDamage) */
+#define MC_BLIT_DAMAGE    9
 
 struct McStatus {
 	ULONG magic;
@@ -48,17 +49,24 @@ struct McStatus {
 	UWORD modes_before;    /* resolutions P96 had for the board at InitCard */
 	UWORD modes_added;     /* ... and the card's own it added (modes.c) */
 
-	/* BLITTER=1, the first board */
-	UWORD blitter;         /* the drawing functions are recorded */
-	UWORD pad;
+	/* the first board: what it hears about and what it sends (Copper) */
+	UWORD blitter;         /* drawing calls are sent as orders */
+	UWORD pointer;         /* the hardware pointer is in use */
 	ULONG blit_calls[MC_BLIT_KINDS];   /* calls of each */
 	ULONG blit_screen[MC_BLIT_KINDS];  /* ... drawing on the visible screen */
-	ULONG screen_copies;   /* COMPLETE or RECT from the visible screen to itself */
-	ULONG damage_lost;     /* the sender fell behind the damage ring */
-	ULONG tiles_changed;   /* tiles the sender found changed (not a new mode) */
-	ULONG tiles_explained; /* ... that a recorded call had touched */
-	ULONG tiles_by[MC_BLIT_KINDS];     /* ... by the last kind that touched them */
-	ULONG tiles_switch;    /* ... or by another bitmap put on display */
+	ULONG orders[MC_BLIT_KINDS];       /* ... sent as orders, not compared */
+	ULONG ring_lost;       /* the order ring overflowed */
+	ULONG pixel_tiles;     /* tiles sent as pixels */
+	ULONG pixel_kb;        /* ... their size */
+	ULONG sent_kb;         /* everything sent */
+	ULONG datagrams;
+	ULONG repairs;         /* datagrams sent again for a viewer */
+	ULONG wanted;          /* tiles sent again for a viewer */
+	ULONG heard;           /* messages from viewers */
+	UWORD viewers;         /* viewers heard from in the last 10 s */
+	UWORD sweep_secs;      /* seconds the background comparing takes for the screen */
+	ULONG send_errors;
+	ULONG pointer_moves;
 };
 
 struct McBase {
@@ -68,6 +76,6 @@ struct McBase {
 };
 
 /* src/libstart.s allocates this many bytes for the base */
-#define MC_LIBSIZE 256
+#define MC_LIBSIZE 512
 
 #endif

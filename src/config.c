@@ -10,23 +10,27 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "mcard.h"
-#include "p96mc_proto.h"
+#include "copper.h"
 
 void mc_config_defaults(struct McConfig *cfg)
 {
-	cfg->dest = MC_DEFAULT_GROUP;
-	cfg->port = MC_DEFAULT_PORT;
+	cfg->dest = CU_DEFAULT_GROUP;
+	cfg->port = CU_DEFAULT_PORT;
 	cfg->ttl = 1;
 	cfg->pri = -1;
-	cfg->fps = 25;
+	cfg->fps = 50;
 	cfg->rate = 1500UL * 1024;
-	cfg->refresh = 5;
+	cfg->refresh = 10;
+	cfg->scan = 2;
+	cfg->cpu = 20;
+	cfg->history = 512UL * 1024;
+	cfg->pointer = 1;
 	cfg->vramsize = 8UL * 1024 * 1024;
 	cfg->maxwidth = 1920;
 	cfg->maxheight = 1200;
 	cfg->boardtype = BT_PicassoII;
 	cfg->boards = 1;
-	cfg->blitter = 0;
+	cfg->blitter = 1;
 	cfg->quiet = 0;
 	cfg->log[0] = 0;
 }
@@ -121,9 +125,22 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 		if (parse_num(v, &n) && n >= 16 && n <= 1000000)
 			cfg->rate = n * 1024;
 	} else if ((v = match_key(line, "refresh")) != NULL) {
-		/* 0 turns the background refresh off */
+		/* 0: never send the whole screen unasked */
 		if (parse_num(v, &n) && n >= 0 && n <= 3600)
 			cfg->refresh = n;
+	} else if ((v = match_key(line, "scan")) != NULL) {
+		if (parse_num(v, &n) && n >= 1 && n <= 60)
+			cfg->scan = n;
+	} else if ((v = match_key(line, "cpu")) != NULL) {
+		if (parse_num(v, &n) && n >= 1 && n <= 100)
+			cfg->cpu = n;
+	} else if ((v = match_key(line, "history")) != NULL) {
+		/* KB */
+		if (parse_num(v, &n) && n >= 16 && n <= 4096)
+			cfg->history = n * 1024;
+	} else if ((v = match_key(line, "pointer")) != NULL) {
+		if (parse_num(v, &n))
+			cfg->pointer = n != 0;
 	} else if ((v = match_key(line, "vram")) != NULL) {
 		/* megabytes */
 		if (parse_num(v, &n) && n >= 1 && n <= 256)

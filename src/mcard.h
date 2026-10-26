@@ -3,8 +3,9 @@
  *
  * The card has no hardware: its "video RAM" is a block of Fast RAM, and a
  * sender process (sender.c) streams what is visible on it to a UDP multicast
- * group. The BoardInfo functions (card.c) only record the display state the
- * sender needs.
+ * group, in the Copper protocol (include/copper.h). The BoardInfo functions
+ * (card.c) record the display state the sender needs, the drawing functions
+ * (orders.c) what is drawn on the screen.
  *
  * BoardInfo functions run in the context of whatever task called rtg.library,
  * with a6 undefined. Per-card state lives in struct McCard, reached through
@@ -21,7 +22,7 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "1.3"
+#define MC_VERSION_STR "2.0"
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -40,12 +41,16 @@ struct McConfig {
 	BYTE  pri;         /* sender task priority */
 	UWORD fps;         /* update passes per second */
 	ULONG rate;        /* byte budget per second */
-	UWORD refresh;     /* seconds to resend the whole screen for late joiners */
+	UWORD refresh;     /* seconds between whole screens while no viewer talks back */
 	ULONG vramsize;    /* bytes */
 	UWORD maxwidth, maxheight;
 	UWORD boardtype;
 	UWORD boards;      /* boards to offer, 1-MC_MAXBOARDS */
-	UWORD blitter;     /* record the drawing functions (BLITTER=1) */
+	UWORD blitter;     /* send the drawing functions as orders (BLITTER=1) */
+	UWORD pointer;     /* a hardware pointer, drawn by the viewers (POINTER=1) */
+	UWORD scan;        /* seconds to compare the whole screen at most once */
+	UWORD cpu;         /* percent of the CPU the background comparing may take */
+	ULONG history;     /* bytes of sent datagrams kept for repairs */
 	UWORD nmodes;      /* MODES=: sizes to offer, 0 for the built-in list */
 	UWORD nomodes;     /* MODES=NONE: offer none, P96's settings do */
 	UWORD mode_w[MC_MAXMODES], mode_h[MC_MAXMODES];
@@ -61,16 +66,36 @@ struct McConfig {
 #define MC_MAXBOARDS 8
 
 /*
- * BLITTER=1: the drawing functions put the rectangles they change on the
- * visible screen here (screen coordinates), and the sender takes them off.
+ * The order ring: the drawing functions (orders.c) put what they draw on
+ * the visible screen here, in screen coordinates, and the sender takes it
+ * off. Records are McRec headers with a body, a multiple of 4 bytes, and
+ * never wrap: a PAD record fills the end of the ring instead.
  */
-#define MC_DAMAGE_RING 1024
+#define MC_RING_SIZE 131072UL
 
-struct McRect {
+#define MC_R_PAD     0
+#define MC_R_FILL    1     /* pen */
+#define MC_R_INVERT  2
+#define MC_R_COPY    3     /* sx, sy */
+#define MC_R_TEXT    4     /* bitx, stride, fg, bg, bits */
+#define MC_R_PATTERN 5     /* rowmask, px, py, pad, fg, bg, rows */
+#define MC_R_DAMAGE  6     /* drawn, but not as an order: compare it */
+
+struct McRec {
+	UWORD len;             /* with the header */
+	UBYTE type;            /* MC_R_* */
+	UBYTE mode;            /* TEXT, PATTERN: draw mode */
 	WORD  x, y, w, h;
-	UWORD kind;            /* MC_BLIT_* */
-	UWORD pad;
 };
+
+struct McCopy { struct McRec r; WORD sx, sy; };
+struct McFill { struct McRec r; ULONG pen; };
+struct McText { struct McRec r; UWORD bitx, stride; ULONG fg, bg; };
+struct McPattern { struct McRec r; UBYTE rowmask, px, py, pad; ULONG fg, bg; };
+
+/* the largest pointer kept: 64 x 64, two planes */
+#define MC_PTR_MAXW 64
+#define MC_PTR_MAXH 64
 
 struct McCard {
 	struct BoardInfo *bi;
@@ -104,8 +129,20 @@ struct McCard {
 	APTR   modes;          /* the resolutions made for P96 (modes.c) */
 	ULONG  modessize;
 
-	struct McRect damage[MC_DAMAGE_RING];
-	volatile ULONG damage_head;  /* rectangles put in so far */
+	/* the order ring: bytes put in and taken off so far */
+	UBYTE *ring;
+	volatile ULONG ring_head, ring_tail;
+	volatile UWORD ring_lost;    /* it overflowed: compare everything */
+
+	/* POINTER=1: the hardware pointer */
+	volatile ULONG ptr_serial;   /* shape or colours changed */
+	volatile ULONG pos_serial;   /* moved, shown or hidden */
+	WORD   ptr_x, ptr_y;         /* top left, on the bitmap */
+	UWORD  ptr_on;
+	UBYTE  ptr_w, ptr_h;
+	BYTE   ptr_hx, ptr_hy;       /* the hot spot, from the top left */
+	UBYTE  ptr_rgb[9];           /* colours 1-3 */
+	UWORD  ptr_data[MC_PTR_MAXH * 2 * (MC_PTR_MAXW / 16)];  /* rows: plane 0, plane 1 */
 };
 
 #define MC_CARD(bi) ((struct McCard *)(bi)->CardData[0])
@@ -118,8 +155,15 @@ extern struct McStatus *mc_status;
 /* modes.c */
 void mc_modes_build(struct McCard *mc);
 
-/* blit.c */
+/* orders.c */
 void mc_blitter_install(struct McCard *mc);
+void mc_pointer_install(struct McCard *mc);
+void mc_record(struct McCard *mc, ULONG kind, ULONG *regs);
+void mc_damage_rect(struct McCard *mc, LONG x, LONG y, LONG w, LONG h);
+void mc_pointer_image(struct McCard *mc, struct BoardInfo *bi);
+void mc_pointer_pos(struct McCard *mc, struct BoardInfo *bi);
+void mc_pointer_colour(struct McCard *mc, ULONG index, ULONG r, ULONG g, ULONG b);
+void mc_pointer_show(struct McCard *mc, ULONG on);
 
 /* config.c */
 void mc_config_defaults(struct McConfig *cfg);

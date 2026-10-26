@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for client/p96view.py: packet handling and pixel formats.
+"""Unit tests for client/p96view.py: records and pixel formats.
 
     python3 tests/test_client.py
 """
@@ -12,23 +12,16 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "client"))
 import p96view as pv  # noqa: E402
 
-STREAM = 0x12345678
+def mode(s, w, h, fmt, bpp, display=1, tw=16, th=16):
+    s.apply(pv.SURFACE, struct.pack(">HHBBBBHH", w, h, fmt, bpp, display, 0, tw, th))
 
 
-def hdr(ptype, flags=0, frame=0):
-    return struct.pack(">IBBHII", pv.MAGIC, 1, ptype, flags, STREAM, frame)
+def tile(s, x, y, w, h, data, enc=pv.RAW):
+    return s.apply(pv.PIXELS, struct.pack(">HHHHBB", x, y, w, h, enc, 0) + data)
 
 
-def mode(w, h, fmt, bpp, display=1, tw=16, th=16):
-    return hdr(pv.MODE) + struct.pack(">HHBBBBHHHH", w, h, fmt, bpp, display, 0, tw, th, 25, 0)
-
-
-def tile(x, y, w, h, data, enc=pv.ENC_RAW, flags=0):
-    return hdr(pv.TILE, flags) + struct.pack(">HHHHBB", x, y, w, h, enc, 0) + data
-
-
-def palette(first, rgb):
-    return hdr(pv.PALETTE) + struct.pack(">HH", first, len(rgb) // 3) + rgb
+def palette(s, first, rgb):
+    s.apply(pv.PALETTE, struct.pack(">HH", first, len(rgb) // 3) + rgb)
 
 
 def encode(fmt, r, g, b):
@@ -71,9 +64,9 @@ class FormatTests(unittest.TestCase):
         for fmt, bpp in BPP.items():
             with self.subTest(fmt=pv.FORMAT_NAMES[fmt]):
                 s = pv.Screen()
-                s.handle(mode(len(COLOURS), 1, fmt, bpp))
+                mode(s, len(COLOURS), 1, fmt, bpp)
                 data = b"".join(encode(fmt, *c) for c in COLOURS)
-                self.assertEqual(s.handle(tile(0, 0, len(COLOURS), 1, data)), pv.TILE)
+                self.assertTrue(tile(s, 0, 0, len(COLOURS), 1, data))
                 self.assertTrue(s.complete())
                 self.assertEqual(s.rgb(), b"".join(bytes(c) for c in COLOURS))
 
@@ -90,57 +83,45 @@ class FormatTests(unittest.TestCase):
 
     def test_clut(self):
         s = pv.Screen()
-        s.handle(mode(4, 2, pv.CLUT, 1))
-        s.handle(palette(0, bytes((0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255))))
-        s.handle(tile(0, 0, 4, 2, bytes((0, 1, 2, 3, 3, 2, 1, 0))))
+        mode(s, 4, 2, pv.CLUT, 1)
+        palette(s, 0, bytes((0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255)))
+        tile(s, 0, 0, 4, 2, bytes((0, 1, 2, 3, 3, 2, 1, 0)))
         want = bytes((0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
                       0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0, 0))
         self.assertEqual(s.rgb(), want)
         # palette changes apply to pixels already received
-        s.handle(palette(1, bytes((9, 9, 9))))
+        palette(s, 1, bytes((9, 9, 9)))
         self.assertEqual(s.rgb()[3:6], bytes((9, 9, 9)))
 
 
-class PacketTests(unittest.TestCase):
+class RecordTests(unittest.TestCase):
     def test_solid_and_tiles(self):
         s = pv.Screen()
-        s.handle(mode(20, 20, pv.CLUT, 1, tw=16, th=16))
-        s.handle(palette(0, bytes((0, 0, 0, 10, 20, 30))))
-        s.handle(tile(0, 0, 16, 16, b"\x01", enc=pv.ENC_SOLID))
+        mode(s, 20, 20, pv.CLUT, 1, tw=16, th=16)
+        palette(s, 0, bytes((0, 0, 0, 10, 20, 30)))
+        tile(s, 0, 0, 16, 16, b"\x01", enc=pv.SOLID)
         self.assertFalse(s.complete())
-        s.handle(tile(16, 0, 4, 16, b"\x01" * 64))
-        s.handle(tile(0, 16, 16, 4, b"\x01" * 64, flags=pv.FLAG_REFRESH))
-        s.handle(tile(16, 16, 4, 4, b"\x01", enc=pv.ENC_SOLID))
+        tile(s, 16, 0, 4, 16, b"\x01" * 64)
+        tile(s, 0, 16, 16, 4, b"\x01" * 64)
+        tile(s, 16, 16, 4, 4, bytes((4, 1)) * 4, enc=pv.RLE)
         self.assertTrue(s.complete())
         self.assertEqual(s.rgb(), bytes((10, 20, 30)) * 400)
-        self.assertEqual(s.stats["solid"], 2)
-        self.assertEqual(s.stats["refresh"], 1)
 
     def test_ignored(self):
         s = pv.Screen()
-        self.assertIsNone(s.handle(b"junk"))
-        self.assertIsNone(s.handle(b"\0" * 40))
-        # tiles before the first MODE of a stream are dropped
-        self.assertIsNone(s.handle(tile(0, 0, 1, 1, b"\0")))
-        s.handle(mode(8, 8, pv.CLUT, 1))
-        # out of bounds
-        s.handle(tile(4, 4, 8, 8, b"\0" * 64))
+        # pixels before the first SURFACE are dropped
+        self.assertFalse(tile(s, 0, 0, 1, 1, b"\0"))
+        mode(s, 8, 8, pv.CLUT, 1)
+        # out of bounds, short data, a bad RLE
+        self.assertFalse(tile(s, 4, 4, 8, 8, b"\0" * 64))
+        self.assertFalse(tile(s, 0, 0, 8, 8, b"\0" * 63))
+        self.assertFalse(tile(s, 0, 0, 2, 1, bytes((3, 0)), enc=pv.RLE))
         self.assertEqual(s.stats["bad"], 3)
-
-    def test_new_stream_resets(self):
-        s = pv.Screen()
-        s.handle(mode(8, 8, pv.CLUT, 1))
-        s.handle(tile(0, 0, 8, 8, b"\x05" * 64))
-        other = bytearray(mode(8, 8, pv.CLUT, 1))
-        other[8:12] = struct.pack(">I", STREAM + 1)
-        s.handle(bytes(other))
-        self.assertEqual(s.stream, STREAM + 1)
-        self.assertFalse(s.complete())
 
     def test_display_off_is_black(self):
         s = pv.Screen()
-        s.handle(mode(2, 1, pv.R8G8B8, 3, display=0))
-        s.handle(tile(0, 0, 2, 1, b"\xff" * 6))
+        mode(s, 2, 1, pv.R8G8B8, 3, display=0)
+        tile(s, 0, 0, 2, 1, b"\xff" * 6)
         self.assertEqual(s.rgb(), b"\0" * 6)
 
     def test_png_roundtrip(self):

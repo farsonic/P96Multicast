@@ -92,6 +92,9 @@ typedef ULONG RGBFTYPE;
 #define BIB_DACSWITCH          28
 #define BIB_OVERCLOCK          31
 
+#define BIF_HARDWARESPRITE    (1UL << BIB_HARDWARESPRITE)
+#define BIF_HIRESSPRITE       (1UL << BIB_HIRESSPRITE)
+#define BIF_BIGSPRITE         (1UL << BIB_BIGSPRITE)
 #define BIF_BLITTER           (1UL << BIB_BLITTER)
 #define BIF_INDISPLAYCHAIN    (1UL << BIB_INDISPLAYCHAIN)
 #define BIF_QUIET             (1UL << BIB_QUIET)
@@ -167,6 +170,25 @@ struct RenderInfo {
 	WORD     BytesPerRow;
 	WORD     pad;
 	RGBFTYPE RGBFormat;
+};
+
+/* BlitTemplate's template: one bit per pixel, MSB first, from bit XOffset */
+struct Template {
+	APTR  Memory;
+	WORD  BytesPerRow;
+	UBYTE XOffset;
+	UBYTE DrawMode;
+	ULONG FgPen;
+	ULONG BgPen;
+};
+
+/* BlitPattern's pattern: 16 pixels wide, 1 << Size rows */
+struct Pattern {
+	APTR  Memory;
+	UWORD XOffset, YOffset;
+	ULONG FgPen, BgPen;
+	UBYTE Size;
+	UBYTE DrawMode;
 };
 
 /* DrawLine's line: dX, dY are end minus start */

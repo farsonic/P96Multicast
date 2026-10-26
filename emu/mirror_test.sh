@@ -10,7 +10,9 @@
 #
 #   emu/mirror_test.sh [TIMEOUT]
 #
-# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-mirror).
+# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-mirror),
+# WRAP_EXTRA (more lines for Wrap.prefs, e.g. HEADSHARE=1: the mirror then
+# shows the wrapped board's bitmap and hears its drawing as orders).
 set -u
 cd "$(dirname "$0")/.."
 TIMEOUT=${1:-300}
@@ -49,7 +51,7 @@ mkdir -p "$AROSFS/Libs/Picasso96" "$AROSFS/Prefs/Env-Archive"
 cp build/Multicast.card build/Wrap.card "$AROSFS/Libs/Picasso96/"
 rm -f "$AROSFS/Devs/Monitors/Multicast" "$AROSFS/Devs/Monitors/Wrap"
 cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Wrap"
-printf 'CARD=Multicast.card\nMIRROR=Multicast.card\nMIRRORFPS=25\n' \
+printf 'CARD=Multicast.card\nMIRROR=Multicast.card\nMIRRORFPS=25\n%b\n' "${WRAP_EXTRA:-}" \
 	> "$AROSFS/Prefs/Env-Archive/Wrap.prefs"
 cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
 # written by emu/mirror_test.sh

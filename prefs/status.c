@@ -77,8 +77,13 @@ int status_lines(char lines[][80], int max)
 			LINE("  video memory: %lu KB", ms.vramsize >> 10);
 			LINE("  modes: %u from P96, %u from the card", ms.modes_before, ms.modes_added);
 			LINE("  modes set %lu, screens shown %lu", ms.setgc_calls, ms.panning_calls);
-			if (ms.blitter)
-				LINE("  drawing calls: %lu of %lu tiles", ms.tiles_explained, ms.tiles_changed);
+			if (mcver >= 2) {
+				LINE("  sent %lu KB, %u viewer(s), %lu repairs", ms.sent_kb, ms.viewers,
+				     ms.repairs);
+				LINE("  orders: %s, pointer: %s, screen checked every %u s",
+				     ms.blitter ? "on" : "off", ms.pointer ? "drawn by viewers" : "on screen",
+				     ms.sweep_secs);
+			}
 		}
 		LINE("  sender: %s", sender ? "running" : "not running");
 		LINE("  TCP/IP stack: %s", stack ? "running" : "not found");

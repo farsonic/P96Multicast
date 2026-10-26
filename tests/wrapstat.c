@@ -139,6 +139,8 @@ int main(void)
 			       h->format, (ULONG)h->mem, h->bpr, h->setups);
 			if (h->shared)
 				printf("  shows the wrapped board's bitmap itself (HEADSHARE)\n");
+			if (h->orders)
+				printf("  hears the wrapped board's drawing, sends it as orders\n");
 			else
 				printf("  %lu passes, %lu with changes, %lu KB copied\n", h->frames,
 				       h->changed, h->copied_kb);

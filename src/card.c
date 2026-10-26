@@ -55,8 +55,8 @@ struct Library *LibInit(__reg("d0") struct McBase *base, __reg("a0") BPTR seglis
 	base->lib.lib_Node.ln_Type = NT_LIBRARY;
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
-	base->lib.lib_Version = 1;
-	base->lib.lib_Revision = 3;
+	base->lib.lib_Version = 2;
+	base->lib.lib_Revision = 0;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -437,8 +437,12 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	mc->moniswitch = 1;
 	mc->display = 1;
 	mc->format = RGBFB_CLUT;
-	if (mc->cfg.blitter)
+	/* the order ring; without it, the sender compares */
+	mc->ring = AllocMem(MC_RING_SIZE, MEMF_PUBLIC);
+	if (mc->cfg.blitter && mc->ring)
 		mc_blitter_install(mc);
+	if (mc->cfg.pointer)
+		mc_pointer_install(mc);
 	mc_modes_build(mc);
 
 	if (!mc_sender_start(mc)) {

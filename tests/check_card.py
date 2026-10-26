@@ -9,7 +9,9 @@
 * it has a RomTag (RTC_MATCHWORD, pointing at itself) for an auto-init
   NT_LIBRARY named "Multicast.card" (or the name given);
 * the function table has Open, Close, Expunge, Null, FindCard and InitCard
-  (6 entries, -1 terminated), so FindCard is at -30 and InitCard at -36.
+  (6 entries, -1 terminated), so FindCard is at -30 and InitCard at -36;
+  Multicast.card has McRecord, McDamage and McPointer after them, for
+  Wrap.card (9 entries).
 """
 import struct
 import sys
@@ -119,8 +121,9 @@ def main(argv):
                 fails.append("function table entry at %d is not relocated" % p)
             entries.append(v)
             p += 4
-        if len(entries) != 6:
-            fails.append("function table has %d entries, want 6" % len(entries))
+        nfuncs = 9 if name == "Multicast.card" else 6
+        if len(entries) != nfuncs:
+            fails.append("function table has %d entries, want %d" % (len(entries), nfuncs))
         print("check_card: %s: library %s version %d, %d functions, %d bytes"
               % (path, name, version, len(entries), len(data)))
     for f in fails:

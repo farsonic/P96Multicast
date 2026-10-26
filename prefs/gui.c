@@ -55,9 +55,10 @@ static const struct Field fields[] = {
 	{ 0, F_SETTING, INTEGER_KIND,  "Multicast TTL",    "TTL" },
 	{ 0, F_SETTING, INTEGER_KIND,  "Updates/second",   "FPS" },
 	{ 0, F_SETTING, INTEGER_KIND,  "Most KB/second",   "RATE" },
-	{ 0, F_SETTING, INTEGER_KIND,  "Resend all (s)",   "REFRESH" },
+	{ 0, F_SETTING, INTEGER_KIND,  "Check all (s)",    "SCAN" },
 	{ 0, F_SETTING, STRING_KIND,   "Log file",         "LOG" },
-	{ 0, F_SETTING, CHECKBOX_KIND, "Record drawing",   "BLITTER" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Send drawing",     "BLITTER" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Viewer pointer",   "POINTER" },
 
 	{ 1, F_SETTING, INTEGER_KIND,  "Boards",           "BOARDS" },
 	{ 1, F_SETTING, INTEGER_KIND,  "Video MB/board",   "VRAM" },

@@ -13,15 +13,18 @@
 	xref	_FindCard
 	xref	_InitCard
 	xref	_mc_damage
+	xref	_McRecord
+	xref	_McDamage
+	xref	_McPointer
 	xdef	_DmgStubs
 	xdef	_SetMemoryMode
 	xdef	_LibNull
 	xdef	_LibName
 	xdef	_LibId
 
-VERSION		equ	1
-REVISION	equ	3
-LIBSIZE		equ	256		; struct McBase, MC_LIBSIZE in mc_status.h
+VERSION		equ	2
+REVISION	equ	0
+LIBSIZE		equ	512		; struct McBase, MC_LIBSIZE in mc_status.h
 RTF_AUTOINIT	equ	$80
 NT_LIBRARY	equ	9
 
@@ -56,6 +59,9 @@ FuncTable:
 	dc.l	_LibNull
 	dc.l	_FindCard		; -30
 	dc.l	_InitCard		; -36
+	dc.l	_McRecord		; -42, for Wrap.card (orders.c)
+	dc.l	_McDamage		; -48
+	dc.l	_McPointer		; -54
 	dc.l	-1
 
 _LibNull:
@@ -95,5 +101,5 @@ dmg_common:
 _LibName:
 	dc.b	"Multicast.card",0
 _LibId:
-	dc.b	"Multicast.card 1.3 (26.10.2026)",13,10,0
+	dc.b	"Multicast.card 2.0 (26.10.2026)",13,10,0
 	even

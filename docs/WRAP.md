@@ -186,11 +186,11 @@ skip it: each one is panned onto its part of the big screen's bitmap
 compared or copied. Real cards can only show their own video memory, so
 for them it stays off.
 
-In the emulated 68040 of the tests, what is left is Multicast.card's own
-senders, which compare their whole screen every pass: five boards at 25
-passes a second leave the network too little CPU, at 10 they keep up.
-Telling the change from the drawing calls instead of comparing is the next
-step (see docs/PROTOCOL2.md).
+Multicast.card 2 heads don't compare their whole screen either: with
+HEADSHARE, Wrap.card passes the wrapped board's drawing calls on to them
+(McRecord), so they send orders and compare only what the calls don't
+explain; heads that get a copy hear what was copied (McDamage). See
+docs/COPPER.md.
 
 ## Known limits
 

@@ -1,23 +1,23 @@
 #!/bin/sh
-# P96Multicast - how much of the drawing reaches the card: Multicast.card with
-# BLITTER=1 in FS-UAE with AROS m68k and Riptide, and mctest WORKLOAD in 8 and
-# 16 bit. For each step of everyday work (a console listing directories,
-# windows moved and resized, drawing, scrolling, images, closing), it shows
-# how many of the tiles the sender found changed the card's recorded drawing
-# calls explain, and which calls. Like emu/run_test.sh it needs FSUAE_PCAP
-# and root: the sender compares only while a TCP/IP stack runs.
+# P96Multicast - Copper end to end: Multicast.card in FS-UAE with AROS m68k
+# and Riptide, mctest WORKLOAD (a console listing directories, windows moved
+# and resized, drawing, scrolling, images, closing) in each depth, and
+# client/p96view.py receiving. At the end of each workload mctest dumps the
+# screen as the card has it; the viewer's picture must be the same, pixel
+# for pixel. Also shows what each step sent: orders, pixels, KB. Needs
+# FSUAE_PCAP and root, like emu/run_test.sh.
 #
-#   emu/measure_test.sh [TIMEOUT]
+#   emu/copper_test.sh [TIMEOUT]
 #
-# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-measure),
-# DEPTHS (default "8 16").
+# Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-copper),
+# DEPTHS (default "8 16 32"), EXTRA_PREFS (more lines for Multicast.prefs).
 set -u
 cd "$(dirname "$0")/.."
-TIMEOUT=${1:-400}
+TIMEOUT=${1:-1500}
 AROSFS=${AROSFS:-/tmp/claude-0/arosfs}
 RIPTIDE=${RIPTIDE:-/home/user/Riptide/build/amiga/Riptide}
-OUT=${OUT:-build/emu-measure}
-DEPTHS=${DEPTHS:-"8 16"}
+OUT=${OUT:-build/emu-copper}
+DEPTHS=${DEPTHS:-"8 16 32"}
 GROUP=239.255.96.1
 AMIGA_IP=192.168.96.2
 HOST_IP=192.168.96.1
@@ -50,12 +50,11 @@ cp build/Multicast.card "$AROSFS/Libs/Picasso96/"
 rm -f "$AROSFS/Devs/Monitors/Wrap"
 cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Multicast"
 cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
-# written by emu/measure_test.sh
-BLITTER=1
+# written by emu/copper_test.sh
 DEST=$GROUP
 PORT=9696
-FPS=25
 LOG=RAM:Multicast.log
+${EXTRA_PREFS:-}
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
@@ -87,9 +86,10 @@ EOF
 	echo 'Run >Work:riptide.log Work:Riptide CONFIG=Work:riptide.conf'
 	echo 'Wait 5'
 	for d in $DEPTHS; do
-		echo "Work:mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=$d >Work:workload-$d.txt"
+		echo "Work:mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=$d DUMP=Work:screen-$d.raw >Work:workload-$d.txt"
 	done
 	echo 'Work:mctest STATUS >Work:status.txt'
+	echo 'Copy RAM:Multicast.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
 } > "$work/autorun"
 
@@ -123,9 +123,9 @@ fi
 status=0
 SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
-# a receiver, for a look at the last picture
+# the viewer, keeping its picture in the card's format too
 python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP \
-	--snapshot "$OUT/last.png" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
+	--snapshot "$OUT/last.png" --raw "$OUT/view.raw" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
 vpid=$!
 start=$(date +%s)
 while [ ! -f "$work/autorun.done" ]; do
@@ -134,7 +134,15 @@ while [ ! -f "$work/autorun.done" ]; do
 		status=1
 		break
 	fi
-	sleep 2
+	# a dump: give the viewer a moment, then keep what it shows
+	for d in $DEPTHS; do
+		if [ -f "$work/screen-$d.raw" ] && [ ! -f "$OUT/view-$d.raw" ]; then
+			sleep 4
+			cp "$OUT/view.raw" "$OUT/view-$d.raw" 2>/dev/null || touch "$OUT/view-$d.raw"
+			cp "$OUT/last.png" "$OUT/view-$d.png" 2>/dev/null
+		fi
+	done
+	sleep 1
 done
 kill $upid $vpid 2>/dev/null
 wait $upid $vpid 2>/dev/null
@@ -144,7 +152,15 @@ for d in $DEPTHS; do
 	echo "---- depth $d"
 	tr -d '\r' < "$work/workload-$d.txt" 2>/dev/null
 	tr -d '\r' < "$work/workload-$d.txt" 2>/dev/null | grep -q "mctest: done" || status=1
+	if python3 tests/compare_raw.py "$work/screen-$d.raw" "$OUT/view-$d.raw"; then
+		echo "PASS: depth $d: the viewer shows the card's screen exactly"
+	else
+		echo "FAIL: depth $d: the viewer's picture differs"
+		status=1
+	fi
 done
 echo "---- status"
 tr -d '\r' < "$work/status.txt" 2>/dev/null
+echo "---- viewer"
+cat "$OUT/p96view.log"
 exit $status

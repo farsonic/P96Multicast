@@ -1,13 +1,14 @@
 # P96Multicast - build with vbcc, vasm and vlink and the NDK 3.2 headers.
 #
 #   make                 build/Multicast.card, build/Wrap.card, mctest, wrapstat
-#   make check           offset test and Wrap.card test under vamos, hunk checks
+#   make check           offset test and Wrap.card test under vamos, hunk checks,
+#                        the viewer against the card's renderer (Copper)
 #   make package         build/P96Multicast.lha
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
 #   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
 #   make emu-mirror      ... and mirroring it to a second board, over the network
 #   make emu-span        ... and spanning one screen over four boards, over the network
-#   make emu-measure     how much of the drawing reaches the card (BLITTER=1)
+#   make emu-copper      the viewer shows exactly what the card has, after a workload
 #   make emu-prefs       MulticastPrefs installs on a clean AROS; its window
 #
 # Toolchain locations (see docs/BUILD.md):
@@ -22,7 +23,7 @@ VAMOS ?= vamos -C 68020
 BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
-CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/blit.o $(BUILD)/modes.o
+CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/orders.o $(BUILD)/render.o $(BUILD)/modes.o
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
@@ -88,6 +89,8 @@ check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake
 	tests/wraptest.sh "$(VAMOS)"
 	tests/modetest.sh "$(VAMOS)"
 	python3 tests/prefstest.py "$(VAMOS)"
+	python3 tests/test_client.py
+	python3 tests/test_copper.py
 
 package: all
 	dist/mkpackage.sh
@@ -104,8 +107,8 @@ emu-mirror: all
 emu-span: all
 	emu/span_test.sh
 
-emu-measure: all
-	emu/measure_test.sh
+emu-copper: all
+	emu/copper_test.sh
 
 emu-prefs: all
 	emu/prefs_test.sh
@@ -113,4 +116,4 @@ emu-prefs: all
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-measure emu-prefs clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs clean

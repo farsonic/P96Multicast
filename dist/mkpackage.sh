@@ -26,7 +26,7 @@ cp build/mctest build/wrapstat "$PKG/C/"
 cp build/MulticastPrefs "$PKG/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"
-cp docs/PROTOCOL.md docs/PROTOCOL2.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
+cp docs/COPPER.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
 git ls-files | while read -r f; do
 	mkdir -p "$PKG/Source/$(dirname "$f")"
 	cp "$f" "$PKG/Source/$f"

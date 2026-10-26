@@ -15,14 +15,15 @@
  *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
  *                                       card streams it while e.g. the Workbench
  *                                       stays in front on another board
- *   mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=8
- *                                       with BLITTER=1: a Workbench-like screen
- *                                       on the card and everyday work on it (a
- *                                       console listing directories, windows
- *                                       moved and resized, drawing, scrolling,
- *                                       images), and for each step how many
- *                                       changed tiles the card's recorded
- *                                       drawing calls explain
+ *   mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=8 [DUMP=Work:screen.raw]
+ *                                       a Workbench-like screen on the card and
+ *                                       everyday work on it (a console listing
+ *                                       directories, windows moved and resized,
+ *                                       drawing, scrolling, images), and for
+ *                                       each step what the card sent: orders,
+ *                                       pixels, KB. DUMP= then writes the screen
+ *                                       as the card has it (p96view.py --raw's
+ *                                       format), and keeps it 8 s longer
  *   mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16 [MARK=Work:span] [STEP=10]
  *                                       for Wrap.card's SPAN=: a screen of 2x2
  *                                       times the mode's size, the test pattern
@@ -69,13 +70,23 @@ ULONG __WritePixelArray(__reg("a6") void *, __reg("a0") APTR src, __reg("d0") UW
 #define WritePixelArray(src, sx, sy, mod, rp, dx, dy, w, h, fmt) \
 	__WritePixelArray(CyberGfxBase, src, sx, sy, mod, rp, dx, dy, w, h, fmt)
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S";
-enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_COUNT };
+/* cybergraphics.library LockBitMapTagList() and UnLockBitMap() */
+APTR __LockBitMapTagList(__reg("a6") void *, __reg("a0") APTR bm, __reg("a1") ULONG *tags) =
+	"\tjsr\t-168(a6)";
+void __UnLockBitMap(__reg("a6") void *, __reg("a0") APTR lock) = "\tjsr\t-174(a6)";
+#define LockBitMapTagList(bm, tags) __LockBitMapTagList(CyberGfxBase, bm, tags)
+#define UnLockBitMap(lock) __UnLockBitMap(CyberGfxBase, lock)
+#define LBMI_BYTESPERPIX  0x84001005UL
+#define LBMI_BYTESPERROW  0x84001006UL
+#define LBMI_BASEADDRESS  0x84001007UL
 
-static const char *blit_names[MC_BLIT_KINDS] = {
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K";
+enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_COUNT };
+
+static const char *blit_names[MC_BLIT_KINDS + 1] = {
 	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
-	"BlitRectNoMaskComplete", "BlitPlanar2Chunky", "BlitPlanar2Direct"
+	"BlitRectNoMaskComplete", "BlitPlanar2Chunky", "BlitPlanar2Direct", "copied by Wrap.card"
 };
 
 /* SPAN's window: its colour, and where it sits in each head's tile */
@@ -269,18 +280,25 @@ static void status(void)
 		       st.panning_calls, st.setgc_calls ? "" : " (no screen shown on the card yet)");
 		printf("  screen modes: %u from P96's settings when InitCard ran, %u added by the card\n",
 		       st.modes_before, st.modes_added);
-		if (st.blitter) {
+		if (card->lib.lib_Version >= 2) {
 			int k;
 
-			printf("  BLITTER=1: %lu of %lu changed tiles explained by drawing calls\n",
-			       st.tiles_explained, st.tiles_changed);
-			for (k = 0; k < MC_BLIT_KINDS; k++)
+			printf("  Copper: %lu KB sent in %lu datagrams, %lu send errors\n", st.sent_kb,
+			       st.datagrams, st.send_errors);
+			printf("    pixels: %lu tiles, %lu KB; viewers: %u, %lu messages heard, %lu repairs, "
+			       "%lu tiles asked for\n", st.pixel_tiles, st.pixel_kb, st.viewers, st.heard,
+			       st.repairs, st.wanted);
+			printf("    orders: %lu fills, %lu copies, %lu inverts, %lu texts, %lu patterns\n",
+			       st.orders[1], st.orders[3], st.orders[2], st.orders[4], st.orders[5]);
+			printf("    the whole screen compared every %u s; order ring overflows: %lu\n",
+			       st.sweep_secs, st.ring_lost);
+			printf("    pointer: %s, %lu moves\n", st.pointer ? "drawn by the viewers" :
+			       "not shown by the card", st.pointer_moves);
+			printf("  BLITTER=%u: drawing calls the card hears about\n", st.blitter);
+			for (k = 0; k <= MC_BLIT_KINDS; k++)
 				if (st.blit_calls[k])
-					printf("    %-24s %6lu calls, %6lu on screen, explained %lu tiles\n",
-					       blit_names[k], st.blit_calls[k], st.blit_screen[k], st.tiles_by[k]);
-			printf("    screen switches explained %lu tiles\n", st.tiles_switch);
-			printf("    copies within the screen: %lu, damage ring overruns: %lu\n",
-			       st.screen_copies, st.damage_lost);
+					printf("    %-24s %6lu calls, %6lu on screen\n", blit_names[k],
+					       st.blit_calls[k], k < MC_BLIT_KINDS ? st.blit_screen[k] : 0);
 		}
 	} else if (card) {
 		printf("  (version 1.0: no status block)\n");
@@ -415,43 +433,72 @@ static BOOL read_status(struct McStatus *st)
 	return ok;
 }
 
-/* let the sender look at everything, then say what the step changed */
+/* let the sender catch up, then say what the step sent */
 static void report(const char *step, struct McStatus *before)
 {
 	struct McStatus now;
-	ULONG changed, explained;
 	int k, n = 0;
 
 	Delay(3 * TICKS_PER_SECOND);
 	if (!read_status(&now))
 		return;
-	changed = now.tiles_changed - before->tiles_changed;
-	explained = now.tiles_explained - before->tiles_explained;
-	printf("step %-13s %5lu tiles changed, %5lu explained (%3lu%%)\n", step, changed, explained,
-	       changed ? explained * 100 / changed : 100);
+	printf("step %-13s %6lu KB sent, %5lu datagrams, %5lu pixel tiles (%lu KB)\n", step,
+	       now.sent_kb - before->sent_kb, now.datagrams - before->datagrams,
+	       now.pixel_tiles - before->pixel_tiles, now.pixel_kb - before->pixel_kb);
+	printf("    orders: %lu fills, %lu copies, %lu inverts, %lu texts, %lu patterns\n",
+	       now.orders[1] - before->orders[1], now.orders[3] - before->orders[3],
+	       now.orders[2] - before->orders[2], now.orders[4] - before->orders[4],
+	       now.orders[5] - before->orders[5]);
 	for (k = 0; k < MC_BLIT_KINDS; k++) {
 		ULONG calls = now.blit_calls[k] - before->blit_calls[k];
 		ULONG screen = now.blit_screen[k] - before->blit_screen[k];
-		ULONG tiles = now.tiles_by[k] - before->tiles_by[k];
 
 		if (!calls)
 			continue;
-		printf("%s%s %lu (%lu on screen, %lu tiles)", n++ % 3 ? ", " : "    ", blit_names[k],
-		       calls, screen, tiles);
+		printf("%s%s %lu (%lu on screen)", n++ % 3 ? ", " : "    ", blit_names[k], calls, screen);
 		if (n % 3 == 0)
 			printf("\n");
 	}
 	if (n % 3)
 		printf("\n");
-	if (now.tiles_switch != before->tiles_switch)
-		printf("    screen switch (another bitmap put on display): %lu tiles\n",
-		       now.tiles_switch - before->tiles_switch);
-	if (now.screen_copies != before->screen_copies)
-		printf("    copies within the screen: %lu\n", now.screen_copies - before->screen_copies);
-	if (now.damage_lost != before->damage_lost)
-		printf("    damage ring overruns: %lu\n", now.damage_lost - before->damage_lost);
+	if (now.ring_lost != before->ring_lost)
+		printf("    order ring overflows: %lu\n", now.ring_lost - before->ring_lost);
+	if (now.repairs != before->repairs || now.wanted != before->wanted)
+		printf("    repairs: %lu datagrams, %lu tiles\n", now.repairs - before->repairs,
+		       now.wanted - before->wanted);
 	fflush(stdout);
 	*before = now;
+}
+
+/* the screen's pixels as the card has them, for comparing with a viewer's */
+static void dump(struct Screen *scr, const char *path)
+{
+	ULONG base = 0, bpr = 0, bpp = 0;
+	ULONG tags[] = { LBMI_BASEADDRESS, (ULONG)&base, LBMI_BYTESPERROW, (ULONG)&bpr,
+	                 LBMI_BYTESPERPIX, (ULONG)&bpp, TAG_END };
+	UWORD w = scr->Width, h = scr->Height, y;
+	UBYTE head[12] = { 0 };
+	APTR lock;
+	BPTR fh;
+
+	if (!CyberGfxBase || !(lock = LockBitMapTagList(scr->RastPort.BitMap, tags))) {
+		printf("mctest: cannot read the screen's bitmap\n");
+		return;
+	}
+	fh = Open((STRPTR)path, MODE_NEWFILE);
+	if (fh) {
+		head[2] = w >> 8;
+		head[3] = w;
+		head[6] = h >> 8;
+		head[7] = h;
+		head[11] = bpp;
+		Write(fh, head, 12);
+		for (y = 0; y < h; y++)
+			Write(fh, (APTR)(base + y * bpr), w * bpp);
+		Close(fh);
+	}
+	UnLockBitMap(lock);
+	printf("mctest: the screen (%ux%u, %lu bytes per pixel) is in %s\n", w, h, bpp, path);
 }
 
 static void inner_box(struct Window *win, int *x, int *y, int *w, int *h)
@@ -467,7 +514,7 @@ static void inner_box(struct Window *win, int *x, int *y, int *w, int *h)
  * with BLITTER=1: after each step, how many of the tiles the sender found
  * changed a drawing call the card heard about explains, and which calls.
  */
-static int workload(ULONG id, UWORD w, UWORD h, UWORD depth)
+static int workload(ULONG id, UWORD w, UWORD h, UWORD depth, const char *dumpfile)
 {
 	static UWORD pattern[2] = { 0xaaaa, 0x5555 };
 	static const char *line = "The quick brown fox jumps over the lazy dog";
@@ -626,6 +673,12 @@ static int workload(ULONG id, UWORD w, UWORD h, UWORD depth)
 		FreeMem(pix, 64 * 64 * 3);
 	report("idle", &st);
 	report("total", &start);
+	if (dumpfile) {
+		/* the screen stays as it is a while longer, for the viewer to be compared */
+		dump(scr, dumpfile);
+		fflush(stdout);
+		Delay(8 * TICKS_PER_SECOND);
+	}
 	while (!(PubScreenStatus(scr, PSNF_PRIVATE) & 1))
 		Delay(TICKS_PER_SECOND);
 	CloseScreen(scr);
@@ -746,7 +799,7 @@ int main(void)
 	}
 
 	if (args[A_WORKLOAD]) {
-		int rc = workload(id, w, h, depth);
+		int rc = workload(id, w, h, depth, (const char *)args[A_DUMP]);
 
 		if (CyberGfxBase)
 			CloseLibrary(CyberGfxBase);

@@ -137,6 +137,11 @@ struct WrapBoard {
  * to right and top to bottom, each showing its tile of one big screen.
  * HEADSHARE=1: heads that can show any memory show the wrapped board's
  * bitmap itself instead of a copy.
+ *
+ * Multicast.card 2 heads hear what is drawn: the thunks pass the wrapped
+ * board's drawing calls (and pointer) on to a shared head (McRecord,
+ * McPointer), and the copying says what it copied to the others
+ * (McDamage), so the head sends orders and compares only what changed.
  */
 #define WRAP_MAXHEADS 4
 
@@ -154,7 +159,7 @@ struct WrapHead {
 	UWORD error;           /* WRAP_MERR_*, for the last attempt */
 	UWORD display;         /* its display is on */
 	UWORD shared;          /* it shows the wrapped board's bitmap (HEADSHARE) */
-	UWORD pad;
+	UWORD orders;          /* it hears the wrapped board's drawing (Multicast.card 2) */
 	struct Library *lib;   /* its card driver, open */
 	struct BoardInfo *bi;  /* its board, once set up */
 	ULONG setups;          /* modes set up on it */

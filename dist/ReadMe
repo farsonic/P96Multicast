@@ -1,10 +1,17 @@
-P96Multicast 1.2 - a P96 graphics card that is the network
+P96Multicast 2.0 - a P96 graphics card that is the network
 ============================================================
 
 Multicast.card is a Picasso96 (P96) card driver without hardware. Its
 video memory is a block of Fast RAM, and a background task sends what is
 on screen as UDP packets, by default to the multicast group 239.255.96.1,
 port 9696. Watch it on another machine with Client/p96view.py.
+
+New in 2.0: Copper, a protocol of drawing orders. What is drawn (fills,
+window moves, scrolling, text, patterns) goes out as a few bytes for the
+viewer to draw, pixels only for the rest, and the viewer draws the mouse
+pointer. The viewer tells the card what it missed, so nothing is resent
+blindly. Use the p96view.py from this package: older viewers speak
+protocol 1 only, and Multicast.card 2 no longer does.
 
 Needs: a 68020 or better, P96 (or AROS m68k), and a running TCP/IP stack
 with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
@@ -22,7 +29,7 @@ Contents
   Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
   Client/fake_sender.py            sends a test picture, to try a viewer
                                    without the Amiga
-  Docs/                            README, PROTOCOL (the packet format), BUILD,
+  Docs/                            README, COPPER (the protocol), BUILD,
                                    WRAP (Wrap.card)
   Source/                          the full source
 
@@ -92,9 +99,16 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   DEST=239.255.96.1   destination, multicast or unicast address
   PORT=9696           UDP port
   TTL=1               multicast TTL (1 = this LAN only)
-  FPS=25              update passes per second (1-50); lower it on a 68030
+  FPS=50              update passes per second (1-50)
   RATE=1500           most KB per second to send
-  REFRESH=5           seconds to resend the whole screen in the background
+  SCAN=2              seconds to compare the whole screen in, at the fastest
+  CPU=20              most percent of the CPU that comparing may take; a
+                      slow Amiga compares more slowly instead of slowing down
+  HISTORY=512         KB of sent data kept, to repair what viewers lost
+  REFRESH=10          while no viewer talks back: seconds between whole
+                      screens (0 = never)
+  POINTER=1           the viewers draw the mouse pointer (0: P96 draws it
+                      into the screen)
   VRAM=8              video memory in MB (read at boot)
   MAXWIDTH=1920       largest mode offered
   MAXHEIGHT=1200
@@ -111,8 +125,8 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
                       Picasso96Mode, as before. With both, remove the
                       board's modes in Picasso96Mode, or sizes show twice.
                       AROS uses its own fixed list.
-  BLITTER=0           1: the card records the drawing rtg.library hands it
-                      (mctest STATUS shows how much); for measuring
+  BLITTER=1           send the drawing as orders (0: compare the screen
+                      and send pixels only, as 1.x did)
 
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.
@@ -149,7 +163,9 @@ On the receiving machine:
   python3 fake_sender.py --dest 127.0.0.1 --seconds 0
                     with "p96view.py --group 127.0.0.1" in another window:
                     checks the viewer without the Amiga
-numpy makes the viewer much faster but is optional.
+numpy makes the viewer much faster but is optional. The viewer answers the
+card (what it lost, the whole picture when it starts) at the address the
+packets come from; a firewall must let that through.
 
 Under FS-UAE
 ------------
@@ -186,12 +202,14 @@ open a screen twice as wide and high as its mode (1280x960 in a 640x480
 mode for 2x2), or use a mode that big. With CARD=Multicast.card and
 HEAD=Multicast.card, BOARDS=5: the heads stream to ports 9697-9700.
 Try it: mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16
-Tested on AROS m68k only, wrapping Multicast.card.
+Mirroring to Multicast.card with HEADSHARE=1 (what SETUP=MIRROR sets up),
+Wrap.card passes the real card's drawing on, so the mirror sends orders
+too. wrapstat says "hears the wrapped board's drawing" for it.
 
 Status
 ------
-Early test version. Dumb frame buffer: no hardware sprite (the pointer is
-drawn into the picture) and no blitter (rtg.library draws with the CPU).
-Tested with AROS m68k's P96 layer in FS-UAE with Riptide 0.12; not yet
-with iComp's P96. The sender compares the whole screen every pass, so on
-slower CPUs lower FPS.
+Test version. rtg.library still draws with the CPU; the card hears about
+it and sends orders. Tested with AROS m68k's P96 layer in FS-UAE with
+Riptide (where the viewer's picture is checked against the card's, pixel
+for pixel), and with P96 in FS-UAE. mctest STATUS shows what the card
+sends: orders, pixels, repairs, viewers.
