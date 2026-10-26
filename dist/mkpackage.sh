@@ -3,8 +3,9 @@
 #
 #   dist/mkpackage.sh            (make package)
 #
-# Needs a built card and mctest (make), jlha or another lha that can create
-# archives, and Riptide's tools/mkicon.py for the monitor icon (RIPTIDE_SRC,
+# Needs a built card and mctest (make), and an lha that can create
+# archives (else dist/mklha.py writes one, stored), and Riptide's
+# tools/mkicon.py for the monitor icon (RIPTIDE_SRC,
 # default /home/user/Riptide).
 set -eu
 cd "$(dirname "$0")/.."
@@ -25,7 +26,7 @@ cp build/mctest build/wrapstat "$PKG/C/"
 cp build/MulticastPrefs "$PKG/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"
-cp docs/PROTOCOL.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
+cp docs/PROTOCOL.md docs/PROTOCOL2.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
 git ls-files | while read -r f; do
 	mkdir -p "$PKG/Source/$(dirname "$f")"
 	cp "$f" "$PKG/Source/$f"
@@ -83,5 +84,11 @@ else
 fi
 
 # Amiga line ends are LF already; make the scripts and docs plain files
-(cd "$STAGE" && lha a ../P96Multicast.lha P96Multicast >/dev/null)
+# an lha that can create archives, or our own writer (stored, level 2)
+if (cd "$STAGE" && lha a ../P96Multicast.lha P96Multicast >/dev/null 2>&1) && [ -s build/P96Multicast.lha ]; then
+	:
+else
+	rm -f build/P96Multicast.lha
+	python3 dist/mklha.py build/P96Multicast.lha "$PKG" P96Multicast
+fi
 echo "built build/P96Multicast.lha"
