@@ -689,7 +689,8 @@ static void auto_modes(void)
 			FreeMem(buf, 4096);
 		Close(fh);
 	}
-	if (p96) {
+	/* under Wrap.card the board is a "Wrap" board: Picasso96Mode's Multicast modes don't count */
+	if (p96 && !*prefs_value(find_setting("CARD"))) {
 		say("Screen modes: Picasso96Mode has some for Multicast, so those (MODES= would "
 		    "add the card's own).");
 		return;

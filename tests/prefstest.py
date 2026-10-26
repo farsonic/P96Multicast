@@ -233,6 +233,9 @@ def main():
     write("devs", "Picasso96Settings", "\x00\x01junk Multicast\x00more")
     rc, out = run("INSTALL", "DRY", "FROM=p96:build")
     check("Picasso96Mode has some for Multicast" in out, "Picasso96Settings with Multicast: no MODES=")
+    rc, out = run("INSTALL", "SETUP=DESKTOP", "DRY", "FROM=p96:build")
+    check("the card's own, MODES=" in out,
+          "... but under Wrap.card (a Wrap board) the card's own modes: %r" % out)
     rc, out = run("INSTALL", "SETUP=NONSENSE", "FROM=p96:build")
     check(rc != 0 and "SETUP must be" in out, "SETUP=NONSENSE refused")
 
