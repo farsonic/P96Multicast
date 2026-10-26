@@ -43,6 +43,7 @@ cat > "$PKG/Prefs/Multicast.prefs" <<'EOF'
 #MAXWIDTH=1920
 #MAXHEIGHT=1200
 #LOG=T:Multicast.log
+#BOARDS=1
 EOF
 
 cat > "$PKG/Prefs/Wrap.prefs" <<'EOF'
@@ -51,6 +52,9 @@ cat > "$PKG/Prefs/Wrap.prefs" <<'EOF'
 CARD=uaegfx.card
 # DRAW=0 leaves the drawing functions unwrapped
 #DRAW=1
+# MIRROR= a card driver to show the same screen on, e.g. Multicast.card
+#MIRROR=Multicast.card
+#MIRRORFPS=25
 EOF
 
 # the monitor icon: a TOOL icon whose ToolTypes name the board, like P96's own

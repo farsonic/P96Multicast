@@ -9,6 +9,8 @@
  * function with every register as rtg.library passed it. This version
  * changes nothing on the way: it is the base for mirroring, spanning and
  * other features that need to see what the driver is asked to do.
+ * MIRROR= adds the first of them: mirror.c shows the first board's screen
+ * on a board of another card as well.
  *
  * The real driver keeps its BoardInfo to itself: Wrap.card never touches
  * CardData or ChipData, and bi->CardBase points at the real driver, for
@@ -20,8 +22,7 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stddef.h>
-#include "boardinfo.h"
-#include "wrap_status.h"
+#include "wrap.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -30,11 +31,6 @@ extern char LibName[];
 extern char LibId[];
 extern char WrapThunks[];
 extern char WrapThunksEnd[];
-extern void LibNull(void);
-
-BOOL InnerFindCard(__reg("a0") struct BoardInfo *bi, __reg("a1") struct Library *card);
-BOOL InnerInitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes,
-                   __reg("a2") struct Library *card);
 
 #define THUNK_SIZE 8
 
@@ -62,6 +58,7 @@ typedef char libsize_check[sizeof(struct WrapBase) <= WRAP_LIBSIZE ? 1 : -1];
 
 static struct WrapStatus *status;
 static struct WrapBoard boards[WRAP_MAXBOARDS];
+static struct WrapMirror mirror;
 static struct Library *inner;
 
 /* ---------------------------------------------------------------- library */
@@ -75,6 +72,8 @@ struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR segl
 	status->magic = WRAP_STATUS_MAGIC;
 	status->draw = 1;
 	status->boards = boards;
+	status->mirror = &mirror;
+	mirror.fps = 25;
 	base->lib.lib_Node.ln_Type = NT_LIBRARY;
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
@@ -146,6 +145,16 @@ static const char *match_key(const char *s, const char *key)
 	return s;
 }
 
+/* a card name, up to the first blank */
+static void copy_name(char *to, const char *v)
+{
+	int i;
+
+	for (i = 0; v[i] && v[i] != ' ' && v[i] != '\t' && i < WRAP_NAMELEN - 1; i++)
+		to[i] = v[i];
+	to[i] = 0;
+}
+
 static void config_line(const char *line)
 {
 	const char *v;
@@ -153,13 +162,18 @@ static void config_line(const char *line)
 	while (*line == ' ' || *line == '\t')
 		line++;
 	if ((v = match_key(line, "card")) != NULL) {
-		int i;
-
-		for (i = 0; v[i] && v[i] != ' ' && v[i] != '\t' && i < WRAP_NAMELEN - 1; i++)
-			status->card[i] = v[i];
-		status->card[i] = 0;
+		copy_name(status->card, v);
 	} else if ((v = match_key(line, "draw")) != NULL) {
 		status->draw = *v != '0';
+	} else if ((v = match_key(line, "mirror")) != NULL) {
+		copy_name(mirror.card, v);
+	} else if ((v = match_key(line, "mirrorfps")) != NULL) {
+		LONG n = 0;
+
+		while (*v >= '0' && *v <= '9')
+			n = n * 10 + (*v++ - '0');
+		if (n >= 1 && n <= 50)
+			mirror.fps = n;
 	}
 }
 
@@ -207,18 +221,56 @@ static BOOL config_file(const char *path)
 
 /* ---------------------------------------------------------------- the wrapped card */
 
+ULONG wrap_bytesperpixel(ULONG fmt)
+{
+	switch (fmt) {
+	case RGBFB_CLUT:
+		return 1;
+	case RGBFB_R5G6B5PC: case RGBFB_R5G5B5PC: case RGBFB_R5G6B5:
+	case RGBFB_R5G5B5: case RGBFB_B5G6R5PC: case RGBFB_B5G5R5PC:
+		return 2;
+	case RGBFB_R8G8B8: case RGBFB_B8G8R8:
+		return 3;
+	case RGBFB_A8R8G8B8: case RGBFB_A8B8G8R8: case RGBFB_R8G8B8A8:
+	case RGBFB_B8G8R8A8:
+		return 4;
+	}
+	return 0;
+}
+
 /*
  * CARD=uaegfx.card opens LIBS:Picasso96/uaegfx.card; a name with a path
  * is taken as it is. A card already in memory is opened by its name, so
- * it is not loaded a second time.
+ * it is not loaded a second time. Not Wrap.card itself.
  */
-static BOOL open_inner(void)
+struct Library *wrap_open_card(const char *card)
 {
 	char path[16 + WRAP_NAMELEN];
-	const char *name;
+	const char *name = (const char *)FilePart((STRPTR)card);
 	struct Node *found;
 	int i, j;
 
+	if (!card[0] || same_name(name, LibName))
+		return NULL;
+	Forbid();
+	found = FindName(&SysBase->LibList, (STRPTR)name);
+	Permit();
+	if (found)
+		return OpenLibrary((STRPTR)name, 0);
+	for (i = 0; card[i] && card[i] != ':'; i++)
+		;
+	if (card[i] == ':')
+		return OpenLibrary((STRPTR)card, 0);
+	for (i = 0; "LIBS:Picasso96/"[i]; i++)
+		path[i] = "LIBS:Picasso96/"[i];
+	for (j = 0; card[j]; j++)
+		path[i++] = card[j];
+	path[i] = 0;
+	return OpenLibrary((STRPTR)path, 0);
+}
+
+static BOOL open_inner(void)
+{
 	if (FindTask(NULL)->tc_Node.ln_Type == NT_PROCESS) {
 		if (!config_file("ENV:Wrap.prefs"))
 			config_file("ENVARC:Wrap.prefs");
@@ -227,33 +279,11 @@ static BOOL open_inner(void)
 		status->error = WRAP_ERR_NOCARD;
 		return FALSE;
 	}
-	name = (const char *)FilePart((STRPTR)status->card);
-	if (same_name(name, LibName)) {
+	if (same_name((const char *)FilePart((STRPTR)status->card), LibName)) {
 		status->error = WRAP_ERR_SELF;
 		return FALSE;
 	}
-
-	Forbid();
-	found = FindName(&SysBase->LibList, (STRPTR)name);
-	Permit();
-	if (found) {
-		inner = OpenLibrary((STRPTR)name, 0);
-	} else {
-		for (i = 0; status->card[i] && status->card[i] != ':'; i++)
-			;
-		if (status->card[i] == ':') {
-			inner = OpenLibrary((STRPTR)status->card, 0);
-		} else {
-			const char *prefix = "LIBS:Picasso96/";
-
-			for (i = 0; prefix[i]; i++)
-				path[i] = prefix[i];
-			for (j = 0; status->card[j]; j++)
-				path[i++] = status->card[j];
-			path[i] = 0;
-			inner = OpenLibrary((STRPTR)path, 0);
-		}
-	}
+	inner = wrap_open_card(status->card);
 	if (!inner) {
 		status->error = WRAP_ERR_OPEN;
 		return FALSE;
@@ -316,12 +346,16 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 		struct ModeInfo *mi = (struct ModeInfo *)regs[9];
 
 		if (mi) {
+			d->mode = *mi;
 			d->width = mi->Width;
 			d->height = mi->Height;
 		}
 		d->serial++;
 		break;
 	}
+	case SLOT_SetColorArray:
+		d->pal_serial++;
+		break;
 	case SLOT_SetPanning:
 		d->mem = (UBYTE *)regs[9];
 		d->bm_width = regs[0];
@@ -421,5 +455,7 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	}
 	install_thunks(b);
 	b->initialised = 1;
+	if (b == &boards[0] && mirror.card[0] && !mirror.bi)
+		wrap_mirror_start(b, inner, &mirror);
 	return TRUE;
 }

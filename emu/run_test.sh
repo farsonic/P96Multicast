@@ -72,6 +72,8 @@ work=$(cd "$OUT/work" && pwd)
 mkdir -p "$AROSFS/Libs/Picasso96"
 cp build/Multicast.card "$AROSFS/Libs/Picasso96/Multicast.card"
 cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Multicast"
+# the card on its own: no Wrap.card from emu/wrap_test.sh or mirror_test.sh
+rm -f "$AROSFS/Devs/Monitors/Wrap"
 # AROS's multi-user startup loads AROS's own usergroup.library, and Riptide
 # (rightly) refuses to start next to another stack's libraries
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then

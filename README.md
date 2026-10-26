@@ -40,10 +40,10 @@ p96gfx.hidd, WinUAE) and is checked by `tests/offsets.c`.
 `Wrap.card` is a second driver in this repository: a card driver that
 loads a real card driver (`CARD=uaegfx.card` in `ENV:Wrap.prefs`) and sits
 between it and rtg.library, putting a thunk in front of every BoardInfo
-function. Version 0.1 passes every call through unchanged, counts them and
-records what is on display (`wrapstat` shows it). It is the base for
-mirroring a real board's screen to the network, spanning and similar
-features. See [docs/WRAP.md](docs/WRAP.md).
+function. It passes every call through unchanged, counts them and records
+what is on display (`wrapstat` shows it), and with `MIRROR=Multicast.card`
+it copies the screen onto a second board, so a real board's screen can be
+streamed to the network too. See [docs/WRAP.md](docs/WRAP.md).
 
 ## Installing
 
@@ -76,6 +76,7 @@ P96. `ENV:` wins over ToolTypes.
 | `PRI` | -1 | sender task priority |
 | `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
 | `QUIET` | 0 | set BIF_QUIET |
+| `BOARDS` | 1 | boards to offer (1-4); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there only Wrap.card's mirror uses a second |
 
 ## Watching
 
@@ -97,6 +98,7 @@ make check      # BoardInfo offsets, library header checks, Wrap.card under vamo
 python3 tests/test_client.py
 make emu-test   # AROS + Riptide in FS-UAE, end to end
 make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
+make emu-mirror # ... mirroring it to a second Multicast board, over the network
 ```
 
 ## Layout
@@ -107,11 +109,11 @@ make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
 | `src/card.c` | library init, FindCard, InitCard, the BoardInfo functions |
 | `src/sender.c` | the sender process |
 | `src/config.c` | settings |
-| `src/wrapstart.s`, `src/wrap.c` | Wrap.card: library header and thunks, the wrapper |
+| `src/wrapstart.s`, `src/wrap.c`, `src/mirror.c` | Wrap.card: library header and thunks, the wrapper, the mirror |
 | `include/wrap_status.h` | Wrap.card's slot table and status block |
 | `include/boardinfo.h` | the P96 BoardInfo structure |
 | `include/p96mc_proto.h` | the wire protocol |
 | `client/p96view.py` | viewer / receiver |
 | `tests/` | offset test, hunk checks, client tests, `mctest` and `wrapstat` (Amiga), `wraptest` with `Fake.card` (vamos) |
 | `emu/run_test.sh` | end-to-end test on FS-UAE |
-| `emu/wrap_test.sh` | Wrap.card on FS-UAE |
+| `emu/wrap_test.sh`, `emu/mirror_test.sh` | Wrap.card on FS-UAE, and its mirror over the network |

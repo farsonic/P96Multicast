@@ -62,6 +62,9 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   BOARDTYPE=6         P96 board type reported (6 = PicassoII)
   PRI=-1              sender task priority
   LOG=T:Multicast.log log file: stack found, modes, send errors, throughput
+  BOARDS=1            boards to offer (1-4): board n sends to PORT+n, its
+                      modes are called Multicast2:..., and it logs to LOG.2
+                      (P96; AROS takes one board per card, see Wrap.card)
 
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.
@@ -115,8 +118,9 @@ Wrap.card (experimental)
 ------------------------
 Wrap.card loads another card driver and passes every call between it and
 rtg.library through, counting the calls and recording what is on display.
-It changes nothing yet; it is the start of mirroring, spanning and other
-features for real boards. Docs/WRAP.md has the details.
+With MIRROR= it also shows the screen on a second board, e.g. a Multicast
+board, so the screen of a real graphics card goes out on the network too.
+Docs/WRAP.md has the details.
 1. Copy Libs/Picasso96/Wrap.card to LIBS:Picasso96/, next to the real card.
 2. P96: set the board's monitor icon ToolType BOARDTYPE=Wrap.
    AROS: Copy DEVS:Monitors/P96 DEVS:Monitors/Wrap, and remove the real
@@ -124,6 +128,9 @@ features for real boards. Docs/WRAP.md has the details.
 3. Copy Prefs/Wrap.prefs to ENVARC: and ENV:, and set CARD= to the real
    card, e.g. CARD=uaegfx.card
 4. Reboot, then run wrapstat.
+Mirror: add MIRROR=Multicast.card to Wrap.prefs. If CARD= is also
+Multicast.card, put BOARDS=2 in Multicast.prefs: the mirror then streams
+to port 9697 (python3 p96view.py --port 9697).
 Tested on AROS m68k only, wrapping Multicast.card.
 
 Status

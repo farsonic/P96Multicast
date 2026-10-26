@@ -105,7 +105,9 @@
 
 /* what the wrapped card was last told to show, written by the thunks */
 struct WrapDisplay {
-	ULONG serial;          /* bumped on every change below */
+	ULONG serial;          /* bumped on every change below but the palette */
+	ULONG pal_serial;      /* SetColorArray: bi->CLUT changed */
+	struct ModeInfo mode;  /* SetGC: a copy of the mode */
 	UBYTE *mem;            /* SetPanning: start of the displayed bitmap */
 	UWORD bm_width;        /* its width in pixels */
 	WORD  xoff, yoff;
@@ -122,6 +124,38 @@ struct WrapBoard {
 	APTR  inner[WRAP_NSLOTS];  /* the card's function, NULL if not wrapped */
 	ULONG calls[WRAP_NSLOTS];
 	struct WrapDisplay disp;
+};
+
+/*
+ * MIRROR=card: Wrap.card sets up one board of that card driver on a
+ * BoardInfo of its own, which rtg.library never sees, and a process copies
+ * what the first wrapped board shows onto it, following its mode, palette
+ * and display state.
+ */
+#define WRAP_MERR_NONE    0
+#define WRAP_MERR_OPEN    1  /* the MIRROR= card did not open */
+#define WRAP_MERR_NOBOARD 2  /* its FindCard found no board */
+#define WRAP_MERR_INIT    3  /* its InitCard failed */
+#define WRAP_MERR_NOMEM   4
+#define WRAP_MERR_NOTASK  5  /* no mirror process */
+#define WRAP_MERR_FORMAT  6  /* it cannot show the wrapped board's pixel format */
+#define WRAP_MERR_TOOBIG  7  /* the screen does not fit in its video memory */
+
+struct WrapMirror {
+	char  card[WRAP_NAMELEN];  /* MIRROR= */
+	UWORD fps;             /* MIRRORFPS= */
+	UWORD error;           /* WRAP_MERR_*, for the last attempt */
+	struct Library *lib;   /* the mirror's card driver */
+	struct BoardInfo *bi;  /* its board */
+	struct Process *task;  /* the mirror process, while it runs */
+	ULONG setups;          /* modes set up on the mirror */
+	ULONG frames;          /* passes that copied the screen */
+	UWORD width, height;   /* the mirror's current mode */
+	ULONG format;
+	UWORD display;         /* the mirror's display is on */
+	UWORD pad;
+	UBYTE *mem;            /* where the mirror shows it */
+	ULONG bpr;             /* its bytes per row */
 };
 
 /* WrapStatus.error */
@@ -146,6 +180,7 @@ struct WrapStatus {
 	UWORD nboards;
 	UWORD pad;
 	struct WrapBoard *boards;  /* WRAP_MAXBOARDS of them */
+	struct WrapMirror *mirror;
 };
 
 struct WrapBase {

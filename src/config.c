@@ -25,6 +25,7 @@ void mc_config_defaults(struct McConfig *cfg)
 	cfg->maxwidth = 1920;
 	cfg->maxheight = 1200;
 	cfg->boardtype = BT_PicassoII;
+	cfg->boards = 1;
 	cfg->quiet = 0;
 	cfg->log[0] = 0;
 }
@@ -135,6 +136,9 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 	} else if ((v = match_key(line, "boardtype")) != NULL) {
 		if (parse_num(v, &n) && n >= 0 && n < 256)
 			cfg->boardtype = n;
+	} else if ((v = match_key(line, "boards")) != NULL) {
+		if (parse_num(v, &n) && n >= 1 && n <= MC_MAXBOARDS)
+			cfg->boards = n;
 	} else if ((v = match_key(line, "quiet")) != NULL) {
 		if (parse_num(v, &n))
 			cfg->quiet = n != 0;

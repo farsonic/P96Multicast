@@ -24,7 +24,7 @@ extern char LibName[];
 extern char LibId[];
 extern void SetMemoryMode(void);
 
-/* one card per system: there is nothing to enumerate */
+/* boards set up so far; BOARDS= says how many to offer */
 static UWORD cards_found;
 
 /* RGB formats the card offers; all of them coexist in memory */
@@ -321,8 +321,8 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 	UBYTE *vram;
 
 	status->findcard_calls++;
-	/* one board: rtg.library asks again until FindCard fails */
-	if (cards_found)
+	/* rtg.library asks again until FindCard fails */
+	if (cards_found >= MC_MAXBOARDS)
 		return FALSE;
 
 	mc = AllocMem(sizeof(*mc), MEMF_PUBLIC | MEMF_CLEAR);
@@ -331,9 +331,14 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 		return FALSE;
 	}
 	mc->bi = bi;
+	mc->boardnum = cards_found;
 	mc_config_defaults(&mc->cfg);
 	if (is_process())
 		mc_config_env(&mc->cfg);
+	if (cards_found >= mc->cfg.boards) {
+		FreeMem(mc, sizeof(*mc));
+		return FALSE;
+	}
 
 	if (!alloc_vram(mc)) {
 		status->error = MC_ERR_NOVRAM;
@@ -369,7 +374,15 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 			mc_config_env(&mc->cfg);
 	}
 
-	bi->BoardName = "Multicast";
+	if (mc->boardnum) {
+		/* "Multicast2" ..., up to MC_MAXBOARDS */
+		CopyMem("Multicast", mc->boardname, 9);
+		mc->boardname[9] = '1' + mc->boardnum;
+		mc->boardname[10] = 0;
+	} else {
+		CopyMem("Multicast", mc->boardname, 10);
+	}
+	bi->BoardName = mc->boardname;
 	bi->BoardType = mc->cfg.boardtype;
 	bi->PaletteChipType = PCT_Unknown;
 	bi->GraphicsControllerType = GCT_Unknown;

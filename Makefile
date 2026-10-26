@@ -5,6 +5,7 @@
 #   make package         build/P96Multicast.lha
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
 #   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
+#   make emu-mirror      ... and mirroring it to a second board, over the network
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -19,7 +20,7 @@ BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
 CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o
-WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o
+WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
 all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat
@@ -81,7 +82,10 @@ emu-test: all
 emu-wrap: all
 	emu/wrap_test.sh
 
+emu-mirror: all
+	emu/mirror_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap clean
+.PHONY: all check package emu-test emu-wrap emu-mirror clean

@@ -40,12 +40,22 @@ struct McConfig {
 	ULONG vramsize;    /* bytes */
 	UWORD maxwidth, maxheight;
 	UWORD boardtype;
+	UWORD boards;      /* boards to offer, 1-MC_MAXBOARDS */
 	UWORD quiet;
 	char  log[80];     /* sender log file, "" for none */
 };
 
+/*
+ * BOARDS=n: up to this many boards, each with its own video memory and
+ * sender. Board n sends to PORT + n and is called "Multicast<n+1>" from the
+ * second one on, so its modes can be told apart.
+ */
+#define MC_MAXBOARDS 4
+
 struct McCard {
 	struct BoardInfo *bi;
+	UWORD  boardnum;       /* 0 for the first board */
+	char   boardname[16];
 	struct McConfig cfg;
 	APTR   vram_alloc;     /* AllocMem() block, vram is aligned inside it */
 	ULONG  vram_allocsize;

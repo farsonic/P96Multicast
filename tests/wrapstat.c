@@ -2,7 +2,8 @@
  * P96Multicast - wrapstat: what Wrap.card wraps and what the wrapped card
  * has been asked to do.
  *
- *   wrapstat            the wrapped card, its boards, display state, calls
+ *   wrapstat            the wrapped card, its boards, display state, calls,
+ *                       and the mirror (MIRROR=)
  *   wrapstat ALL        ... also the slots that are not wrapped
  */
 #include <exec/types.h>
@@ -22,10 +23,18 @@ static const char *errors[] = {
 	"InitCard for an unknown board"
 };
 
+static const char *mirror_errors[] = {
+	"none", "the MIRROR= card did not open", "its FindCard found no board",
+	"its InitCard failed", "no memory", "no mirror process",
+	"it cannot show the wrapped board's pixel format",
+	"the screen does not fit in its video memory"
+};
+
 static const char template[] = "ALL/S";
 
 static struct WrapStatus st;
 static struct WrapBoard boards[WRAP_MAXBOARDS];
+static struct WrapMirror mirror;
 
 int main(void)
 {
@@ -49,6 +58,8 @@ int main(void)
 		st = base->status;
 		for (i = 0; i < WRAP_MAXBOARDS; i++)
 			boards[i] = st.boards[i];
+		if (st.mirror)
+			mirror = *st.mirror;
 		if (st.inner) {
 			const char *n = st.inner->lib_Node.ln_Name;
 
@@ -99,6 +110,18 @@ int main(void)
 			else if (args[0])
 				printf("  %-30s -\n", slot_names[j]);
 		}
+	}
+	if (mirror.card[0]) {
+		printf("mirror: MIRROR=%s MIRRORFPS=%u, %s\n", mirror.card, mirror.fps,
+		       mirror.task ? "running" : "not running");
+		printf("  last error: %s\n", mirror.error < sizeof(mirror_errors) / sizeof(mirror_errors[0]) ?
+		       mirror_errors[mirror.error] : "?");
+		if (mirror.bi)
+			printf("  board %s, display %s, %ux%u, format %lu, at 0x%08lx, %lu bytes per row\n",
+			       mirror.bi->BoardName ? mirror.bi->BoardName : "(no name)",
+			       mirror.display ? "on" : "off", mirror.width, mirror.height,
+			       mirror.format, (ULONG)mirror.mem, mirror.bpr);
+		printf("  modes set up %lu, frames copied %lu\n", mirror.setups, mirror.frames);
 	}
 	FreeArgs(rda);
 	return RETURN_OK;

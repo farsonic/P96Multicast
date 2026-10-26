@@ -3,11 +3,11 @@
 `Wrap.card` is a P96 card driver that loads another card driver and sits
 between it and rtg.library. rtg.library still does the graphics, and the
 real driver still drives the hardware. Wrap.card sees every call between
-the two. Version 0.1 only passes them through, counts them and records what
-is on display. It is the base for features that need to watch or redirect a
-real board: mirroring a screen to the network (Multicast's sender), showing
-one screen on two boards, spanning a screen across monitors, a software or
-viewer-drawn pointer, and driver call logging.
+the two. It passes them through, counts them and records what is on
+display, and can mirror the screen to a second board (`MIRROR=`, below).
+It is the base for further features that need to watch or redirect a real
+board: spanning a screen across monitors, a software or viewer-drawn
+pointer, and driver call logging.
 
 ## How it works
 
@@ -67,11 +67,59 @@ WaitBlitter) unwrapped, for speed.
 |---|---|---|
 | `CARD` | (none) | the card driver to wrap: a name in `LIBS:Picasso96/`, or a path |
 | `DRAW` | 1 | 0 leaves the drawing functions unwrapped |
+| `MIRROR` | (none) | a card driver to mirror the first wrapped board onto |
+| `MIRRORFPS` | 25 | mirror copies per second (1-50) |
 
 The settings are read when FindCard runs, so only from `ENV:`/`ENVARC:`.
 The monitor's ToolTypes are passed on to the real card's InitCard untouched.
 
+## Mirror
+
+With `MIRROR=card`, Wrap.card (in its InitCard, for the first board it
+wraps) opens that card driver too and sets up one of its boards on a
+BoardInfo of its own. rtg.library never hears of this board: no screen
+opens on it, nothing draws on it, and it offers no modes. A process,
+"Wrap.card mirror", then follows what the thunks record about the wrapped
+board, MIRRORFPS times a second:
+
+* a new mode: the same on the mirror, the way rtg.library sets one
+  (ResolvePixelClock, SetClock, SetGC with a copy of the wrapped board's
+  ModeInfo, SetDAC, CalculateBytesPerRow, SetPanning onto the start of the
+  mirror's video memory);
+* a palette change (SetColorArray): the wrapped board's CLUT on the mirror;
+* display on or off (SetDisplay, SetSwitch): the same on the mirror;
+* and every pass, it copies the visible part of the wrapped board's screen
+  into the mirror's video memory, row by row.
+
+The pixels are copied as they are, so the mirror's card has to offer the
+wrapped board's pixel format (wrapstat says so if not). The mirror can be a
+second board of the same driver. With Multicast.card, `BOARDS=2` in
+`Multicast.prefs` gives a second board that streams to PORT+1:
+
+```
+# ENVARC:Wrap.prefs                # ENVARC:Multicast.prefs
+CARD=Multicast.card                BOARDS=2
+MIRROR=Multicast.card
+```
+
+Or, to stream a real board's screen to the network:
+
+```
+CARD=uaegfx.card
+MIRROR=Multicast.card
+```
+
+The mirror copies the whole visible screen every pass: about 1.2 MB per
+pass at 640x480 in 32 bit. That's fine in an emulator or on a fast CPU, but
+a lot over Zorro on a real machine. Copying only what changed (Multicast's
+sender already compares tiles) is the next step for real hardware.
+
 ## Known limits
+
+* **AROS gives a card driver one board.** `p96gfx.hidd` calls a `.card`
+  library's FindCard once, while rtg.library calls it until it fails. So
+  `BOARDS=2` in Multicast.card should give two independent boards on P96
+  (not tested yet), but on AROS only Wrap.card's mirror reaches the second.
 
 * **AROS also calls the wrapped card directly.** AROS's `p96gfx.hidd`
   calls `FindCard` on every `.card` library in memory, so after Wrap.card
@@ -97,3 +145,8 @@ The monitor's ToolTypes are passed on to the real card's InitCard untouched.
   Wrap.card wrapping Multicast.card, opens and draws 8, 16 and 32 bit
   screens with mctest, and checks `wrapstat`: the board is set up through
   Wrap.card and SetGC and SetPanning went through it. It needs no network.
+* `make emu-mirror` (`emu/mirror_test.sh`) is the mirror over the network,
+  like `make emu-test` (Riptide, FSUAE_PCAP, root). Wrap.card wraps
+  Multicast.card's first board and mirrors it onto the second. mctest
+  draws on the first in 8, 16 and 32 bit, and the receivers on ports 9696
+  and 9697 must both see the test pattern and the same picture.

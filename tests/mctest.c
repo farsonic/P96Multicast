@@ -104,7 +104,13 @@ static ULONG find_mode(const char *name, UWORD *want_w, UWORD *want_h, UWORD *wa
 	UWORD w, h, d;
 
 	while ((id = NextDisplayInfo(id)) != INVALID_ID) {
-		if (!mode_name(id, buf, sizeof(buf)) || !strstr(buf, name))
+		char *m;
+
+		/* the whole board name: "Multicast" is not "Multicast2" */
+		if (!mode_name(id, buf, sizeof(buf)) || !(m = strstr(buf, name)))
+			continue;
+		m += strlen(name);
+		if ((*m >= '0' && *m <= '9') || (*m >= 'A' && *m <= 'Z') || (*m >= 'a' && *m <= 'z'))
 			continue;
 		if (!mode_dims(id, &w, &h, &d) || d < *want_d)
 			continue;

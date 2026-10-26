@@ -66,23 +66,33 @@ struct Sender {
 /*
  * A line in the log file, if LOG= is set; up to four LONG arguments. The
  * file is opened for each line, so it can be read while the card runs.
+ * The second board logs to LOG.2, the third to LOG.3, ...
  */
 static void mc_log(struct Sender *s, const char *fmt, LONG a, LONG b, LONG c, LONG d)
 {
 	struct Process *me = (struct Process *)FindTask(NULL);
+	char path[sizeof(s->mc->cfg.log) + 2];
 	APTR oldwin;
 	LONG args[4];
 	BPTR fh;
+	int i;
 
 	if (!s->mc->cfg.log[0])
 		return;
+	for (i = 0; s->mc->cfg.log[i]; i++)
+		path[i] = s->mc->cfg.log[i];
+	if (s->mc->boardnum) {
+		path[i++] = '.';
+		path[i++] = '1' + s->mc->boardnum;
+	}
+	path[i] = 0;
 	args[0] = a;
 	args[1] = b;
 	args[2] = c;
 	args[3] = d;
 	oldwin = me->pr_WindowPtr;
 	me->pr_WindowPtr = (APTR)-1;
-	fh = Open((STRPTR)s->mc->cfg.log, s->logstarted ? MODE_READWRITE : MODE_NEWFILE);
+	fh = Open((STRPTR)path, s->logstarted ? MODE_READWRITE : MODE_NEWFILE);
 	me->pr_WindowPtr = oldwin;
 	if (!fh)
 		return;
@@ -442,7 +452,7 @@ static BOOL open_socket(struct Sender *s)
 	setsockopt(s->sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
 	s->to.sin_len = sizeof(s->to);
 	s->to.sin_family = AF_INET;
-	s->to.sin_port = s->mc->cfg.port;
+	s->to.sin_port = s->mc->cfg.port + s->mc->boardnum;
 	s->to.sin_addr.s_addr = s->mc->cfg.dest;
 	return TRUE;
 }
@@ -500,7 +510,7 @@ static void SenderMain(void)
 
 				mc_log(s, "sending to %ld.%ld.%ld.%ld", d >> 24, (d >> 16) & 255,
 				       (d >> 8) & 255, d & 255);
-				mc_log(s, ":%ld, %ld fps, %ld KB/s\n", mc->cfg.port, mc->cfg.fps,
+				mc_log(s, ":%ld, %ld fps, %ld KB/s\n", mc->cfg.port + mc->boardnum, mc->cfg.fps,
 				       mc->cfg.rate >> 10, 0);
 				break;
 			}
@@ -539,11 +549,20 @@ static void SenderMain(void)
 
 BOOL mc_sender_start(struct McCard *mc)
 {
+	/* "Multicast.card sender", then "Multicast.card sender 2", ... */
+	static char names[MC_MAXBOARDS][24];
+	char *name = names[mc->boardnum];
 	struct Process *p;
 
+	CopyMem("Multicast.card sender", name, 22);
+	if (mc->boardnum) {
+		name[21] = ' ';
+		name[22] = '1' + mc->boardnum;
+		name[23] = 0;
+	}
 	Forbid();
 	p = CreateNewProcTags(NP_Entry, (ULONG)SenderMain,
-	                      NP_Name, (ULONG)"Multicast.card sender",
+	                      NP_Name, (ULONG)name,
 	                      NP_Priority, mc->cfg.pri,
 	                      NP_StackSize, 8192,
 	                      TAG_END);
