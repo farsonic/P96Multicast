@@ -339,8 +339,10 @@ void mc_blitter_install(struct McCard *mc)
 	struct BoardInfo *bi = mc->bi;
 	int k;
 
+	/* only where rtg.library has its own version to go on to */
 	for (k = 0; k < MC_BLIT_KINDS; k++)
-		SLOT(bi, descs[k].slot) = DmgStubs + STUB_SIZE * k;
+		if (SLOT(bi, descs[k].fallback))
+			SLOT(bi, descs[k].slot) = DmgStubs + STUB_SIZE * k;
 	bi->Flags |= BIF_BLITTER;
 	if (mc->boardnum == 0)
 		mc_status->blitter = 1;
