@@ -4,7 +4,7 @@
     p96view.py                              join 239.255.96.1:9696, show a window
     p96view.py --group 127.0.0.1            UAE's NAT (slirp): the card sends to 10.0.2.2
     p96view.py --group 239.255.96.2 --port 9700
-    p96view.py --span 2x1                   two boards side by side (Wrap.card's SPAN=2x1)
+    p96view.py --span 2x1                   two boards, a window each (Wrap.card's SPAN=2x1)
     p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
     p96view.py --web                        show it in a web browser instead
 
@@ -772,28 +772,37 @@ def run_headless(heads, args):
 
 
 def run_window(heads, args):  # pragma: no cover - interactive
+    """A window per board (--span: like a monitor each), or all in one (--one-window)."""
     import tkinter as tk
 
     root = tk.Tk()
-    root.title("P96Multicast")
-    canvas = tk.Canvas(root, bg="black", highlightthickness=0, width=640, height=480)
-    canvas.pack(fill="both", expand=True)
-    state = {"wall": None}
+    separate = len(heads) > 1 and not args.one_window
+    windows = []
+    for i, h in enumerate(heads):
+        win = root if i == 0 or not separate else tk.Toplevel(root)
+        canvas = tk.Canvas(win, bg="black", highlightthickness=0, width=640, height=480)
+        canvas.pack(fill="both", expand=True)
+        if i == 0 or separate:
+            win.protocol("WM_DELETE_WINDOW", root.destroy)
+            windows.append((win, canvas))
     per = [{"img": None, "item": None, "size": None, "ptr": None, "ptr_item": None,
-            "ptr_serial": -1, "at": (0, 0)} for _ in heads]
+            "ptr_serial": -1, "at": None, "placed": False} for _ in heads]
+    state = {"wall": None}
     for h in heads:
         h.sock.setblocking(False)
 
     def present():
         offsets, ww, wh = wall(heads)
-        if (ww, wh) != state["wall"] and ww:
+        if not separate and (ww, wh) != state["wall"] and ww:
             state["wall"] = (ww, wh)
-            canvas.configure(width=ww, height=wh)
+            windows[0][1].configure(width=ww, height=wh)
             scr = heads[0].screen
             root.title("P96Multicast %dx%d %s%s" % (ww, wh, FORMAT_NAMES.get(scr.fmt, "?"),
                        ", %d screens" % len(heads) if len(heads) > 1 else ""))
-        for h, st, at in zip(heads, per, offsets):
+        for i, (h, st) in enumerate(zip(heads, per)):
             screen = h.screen
+            win, canvas = windows[i] if separate else windows[0]
+            at = (0, 0) if separate else offsets[i]
             size = (screen.width, screen.height)
             if not screen.width:
                 continue
@@ -801,6 +810,16 @@ def run_window(heads, args):  # pragma: no cover - interactive
                 if size != st["size"]:
                     st["img"] = tk.PhotoImage(width=size[0], height=size[1])
                     screen.all_dirty = True
+                    if separate:
+                        canvas.configure(width=size[0], height=size[1])
+                        win.title("P96Multicast screen %d of %d (port %d) %dx%d %s" % (
+                            i + 1, len(heads), args.port + i, size[0], size[1],
+                            FORMAT_NAMES.get(screen.fmt, "?")))
+                        if not st["placed"]:
+                            # side by side as the boards are, like monitors
+                            win.geometry("+%d+%d" % (40 + offsets[i][0] + 8 * h.col,
+                                                     40 + offsets[i][1] + 30 * h.row))
+                            st["placed"] = True
                 if st["item"] is None:
                     st["item"] = canvas.create_image(at[0], at[1], anchor="nw", image=st["img"])
                 else:
@@ -969,8 +988,10 @@ def main(argv=None):
                     help="multicast group to join (a unicast address just binds)")
     ap.add_argument("--port", type=int, default=9696)
     ap.add_argument("--span", type=parse_span, metavar="CxR",
-                    help="several boards side by side in one window, e.g. 2x1 for Wrap.card's "
+                    help="several boards, a window each (like monitors), e.g. 2x1 for Wrap.card's "
                          "SPAN=2x1: ports PORT, PORT+1, ... left to right, top to bottom")
+    ap.add_argument("--one-window", action="store_true",
+                    help="with --span: all boards in one window, not a window each")
     ap.add_argument("--iface", help="local address of the interface to join on")
     ap.add_argument("--snapshot", help="no window: write the screen to this PNG")
     ap.add_argument("--raw", help="with --snapshot: also the card's own pixels to this file")

@@ -117,7 +117,7 @@ P96. `ENV:` wins over ToolTypes.
 python3 client/p96view.py                       # a window (tkinter)
 python3 client/p96view.py --group 127.0.0.1     # UAE's NAT (slirp): the card sends to 10.0.2.2
 python3 client/p96view.py --iface 192.168.1.10  # join on this interface
-python3 client/p96view.py --span 2x1            # Wrap.card's SPAN=2x1: both boards in one window
+python3 client/p96view.py --span 2x1            # Wrap.card's SPAN=2x1: a window per board
 python3 client/p96view.py --snapshot amiga.png --duration 30
 ```
 
