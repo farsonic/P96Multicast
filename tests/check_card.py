@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Static checks of the built Multicast.card (an AmigaOS hunk file).
+"""Static checks of a built card driver (an AmigaOS hunk file).
 
     check_card.py build/Multicast.card
+    check_card.py build/Wrap.card Wrap.card
 
 * the first hunk is code and starts with "moveq #-1,d0; rts", so running the
   library as a program fails harmlessly;
 * it has a RomTag (RTC_MATCHWORD, pointing at itself) for an auto-init
-  NT_LIBRARY named "Multicast.card";
+  NT_LIBRARY named "Multicast.card" (or the name given);
 * the function table has Open, Close, Expunge, Null, FindCard and InitCard
   (6 entries, -1 terminated), so FindCard is at -30 and InitCard at -36.
 """
@@ -83,6 +84,7 @@ def load_hunks(data):
 
 def main(argv):
     path = argv[1] if len(argv) > 1 else "build/Multicast.card"
+    want = argv[2] if len(argv) > 2 else "Multicast.card"
     with open(path, "rb") as f:
         data = f.read()
     hunks, _ = load_hunks(data)
@@ -104,7 +106,7 @@ def main(argv):
         name = code[name_off:code.index(b"\0", name_off)].decode()
         if not flags & 0x80 or ntype != 9:
             fails.append("RomTag is not an auto-init library")
-        if name != "Multicast.card":
+        if name != want:
             fails.append("library name is %r" % name)
         functable = struct.unpack(">I", code[init_off + 4:init_off + 8])[0]
         entries = []

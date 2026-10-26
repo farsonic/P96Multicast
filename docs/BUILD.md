@@ -13,8 +13,8 @@ mkdir -p /home/user/toolchain/{dl,src,vbcc/bin} && cd /home/user/toolchain/dl
 wget http://phoenix.owl.de/tags/vbcc0_9h.tar.gz \
      http://phoenix.owl.de/vbcc/current/vbcc_target_m68k-amigaos.lha \
      http://phoenix.owl.de/vbcc/current/vbcc_unix_config.tar.gz \
-     http://sun.hasenbraten.de/vasm/release/vasm.tar.gz \
-     http://sun.hasenbraten.de/vlink/release/vlink.tar.gz \
+     http://phoenix.owl.de/tags/vasm.tar.gz \
+     http://phoenix.owl.de/tags/vlink.tar.gz \
      https://aminet.net/dev/misc/NDK3.2.lha
 cd ../src && for f in vbcc0_9h vasm vlink; do tar xzf ../dl/$f.tar.gz; done
 (cd vasm && make CPU=m68k SYNTAX=mot && cp vasmm68k_mot vobjdump ../../vbcc/bin/)
@@ -43,6 +43,17 @@ it needs, and vbcc's own target includes have the inlines.
 * BoardInfo functions take register arguments (`__reg("a0")` and so on).
   `SetMemoryMode`, `SetWriteMask`, `SetClearMask` and `SetReadPlane` must
   preserve all registers, so they point at an `rts` in `libstart.s`.
+
+## Wrap.card tests
+
+`make check` also runs `tests/wraptest.sh`: under vamos, `build/wraptest`
+plays rtg.library, loading the built `Wrap.card`, which wraps
+`build/Fake.card`. vamos only loads files named `*.library`, so the script
+copies both cards under such names.
+
+`emu/wrap_test.sh` (`make emu-wrap`) boots AROS in FS-UAE, like the test
+below, with `Wrap.card` wrapping `Multicast.card`. It needs neither Riptide
+nor networking.
 
 ## End-to-end test
 

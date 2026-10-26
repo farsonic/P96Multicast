@@ -35,6 +35,16 @@ The interface follows the P96 driver documentation at
 in `include/boardinfo.h` was written from the published offsets (AROS
 p96gfx.hidd, WinUAE) and is checked by `tests/offsets.c`.
 
+## Wrap.card
+
+`Wrap.card` is a second driver in this repository: a card driver that
+loads a real card driver (`CARD=uaegfx.card` in `ENV:Wrap.prefs`) and sits
+between it and rtg.library, putting a thunk in front of every BoardInfo
+function. Version 0.1 passes every call through unchanged, counts them and
+records what is on display (`wrapstat` shows it). It is the base for
+mirroring a real board's screen to the network, spanning and similar
+features. See [docs/WRAP.md](docs/WRAP.md).
+
 ## Installing
 
 1. Copy `Multicast.card` to `LIBS:Picasso96/`.
@@ -82,10 +92,11 @@ numpy makes the viewer much faster, but is optional.
 vbcc, vasm, vlink and the NDK 3.2; see [docs/BUILD.md](docs/BUILD.md).
 
 ```
-make            # build/Multicast.card, build/mctest
-make check      # BoardInfo offsets (vamos), library header checks
+make            # build/Multicast.card, build/Wrap.card, mctest, wrapstat
+make check      # BoardInfo offsets, library header checks, Wrap.card under vamos
 python3 tests/test_client.py
 make emu-test   # AROS + Riptide in FS-UAE, end to end
+make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
 ```
 
 ## Layout
@@ -96,8 +107,11 @@ make emu-test   # AROS + Riptide in FS-UAE, end to end
 | `src/card.c` | library init, FindCard, InitCard, the BoardInfo functions |
 | `src/sender.c` | the sender process |
 | `src/config.c` | settings |
+| `src/wrapstart.s`, `src/wrap.c` | Wrap.card: library header and thunks, the wrapper |
+| `include/wrap_status.h` | Wrap.card's slot table and status block |
 | `include/boardinfo.h` | the P96 BoardInfo structure |
 | `include/p96mc_proto.h` | the wire protocol |
 | `client/p96view.py` | viewer / receiver |
-| `tests/` | offset test, hunk checks, client tests, `mctest` (Amiga) |
+| `tests/` | offset test, hunk checks, client tests, `mctest` and `wrapstat` (Amiga), `wraptest` with `Fake.card` (vamos) |
 | `emu/run_test.sh` | end-to-end test on FS-UAE |
+| `emu/wrap_test.sh` | Wrap.card on FS-UAE |

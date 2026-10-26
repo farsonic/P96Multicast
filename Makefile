@@ -1,9 +1,10 @@
 # P96Multicast - build with vbcc, vasm and vlink and the NDK 3.2 headers.
 #
-#   make                 build/Multicast.card and build/mctest
-#   make check           offset test under vamos, hunk sanity checks
+#   make                 build/Multicast.card, build/Wrap.card, mctest, wrapstat
+#   make check           offset test and Wrap.card test under vamos, hunk checks
 #   make package         build/P96Multicast.lha
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
+#   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -18,14 +19,15 @@ BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
 CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o
+WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o
 HDRS := $(wildcard include/*.h src/*.h)
 
-all: $(BUILD)/Multicast.card $(BUILD)/mctest
+all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/libstart.o: src/libstart.s | $(BUILD)
+$(BUILD)/%.o: src/%.s | $(BUILD)
 	$(VASM) -quiet -Fhunk -m68020 -o $@ $<
 
 $(BUILD)/%.o: src/%.c $(HDRS) | $(BUILD)
@@ -35,15 +37,40 @@ $(BUILD)/%.o: src/%.c $(HDRS) | $(BUILD)
 $(BUILD)/Multicast.card: $(CARD_OBJ)
 	$(VC) -nostdlib -o $@ $(CARD_OBJ) -lvc -lamiga
 
+# the same, wrapstart.o first
+$(BUILD)/Wrap.card: $(WRAP_OBJ)
+	$(VC) -nostdlib -o $@ $(WRAP_OBJ) -lvc -lamiga
+
 $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
+
+$(BUILD)/wrapstat: tests/wrapstat.c $(HDRS) | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
+
+# test programs for make check: Fake.card is a card for Wrap.card to wrap
+$(BUILD)/fakestart.o: tests/fakestart.s | $(BUILD)
+	$(VASM) -quiet -Fhunk -m68020 -o $@ $<
+
+$(BUILD)/fakecard.o: tests/fakecard.c $(HDRS) tests/fakecard.h | $(BUILD)
+	$(VC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/Fake.card: $(BUILD)/fakestart.o $(BUILD)/fakecard.o
+	$(VC) -nostdlib -o $@ $^ -lvc -lamiga
+
+$(BUILD)/wraptest_asm.o: tests/wraptest_asm.s | $(BUILD)
+	$(VASM) -quiet -Fhunk -m68020 -o $@ $<
+
+$(BUILD)/wraptest: tests/wraptest.c $(BUILD)/wraptest_asm.o $(HDRS) tests/fakecard.h | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ tests/wraptest.c $(BUILD)/wraptest_asm.o -lamiga
 
 $(BUILD)/offsets: tests/offsets.c include/boardinfo.h | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $<
 
-check: $(BUILD)/offsets $(BUILD)/Multicast.card
+check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest
 	$(VAMOS) $(BUILD)/offsets
 	python3 tests/check_card.py $(BUILD)/Multicast.card
+	python3 tests/check_card.py $(BUILD)/Wrap.card Wrap.card
+	tests/wraptest.sh "$(VAMOS)"
 
 package: all
 	dist/mkpackage.sh
@@ -51,7 +78,10 @@ package: all
 emu-test: all
 	emu/run_test.sh
 
+emu-wrap: all
+	emu/wrap_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test clean
+.PHONY: all check package emu-test emu-wrap clean

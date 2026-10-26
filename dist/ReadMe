@@ -12,13 +12,17 @@ with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
 Contents
 --------
   Libs/Picasso96/Multicast.card    the driver
+  Libs/Picasso96/Wrap.card         experimental: wraps another card driver
   Devs/Monitors/Multicast.info     monitor icon, ToolType BOARDTYPE=Multicast
   Prefs/Multicast.prefs            example settings
+  Prefs/Wrap.prefs                 example settings for Wrap.card
   C/mctest                         test tool (see below)
+  C/wrapstat                       shows what Wrap.card wraps
   Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
   Client/fake_sender.py            sends a test picture, to try a viewer
                                    without the Amiga
-  Docs/                            README, PROTOCOL (the packet format), BUILD
+  Docs/                            README, PROTOCOL (the packet format), BUILD,
+                                   WRAP (Wrap.card)
   Source/                          the full source
 
 Installing on P96 (AmigaOS 3.x)
@@ -106,6 +110,21 @@ Under FS-UAE
 * With FS-UAE bridged to your LAN (Riptide's uaenet pcap patch) the
   default multicast works, but the host running FS-UAE cannot see the
   Amiga's frames through the bridge: watch from another machine.
+
+Wrap.card (experimental)
+------------------------
+Wrap.card loads another card driver and passes every call between it and
+rtg.library through, counting the calls and recording what is on display.
+It changes nothing yet; it is the start of mirroring, spanning and other
+features for real boards. Docs/WRAP.md has the details.
+1. Copy Libs/Picasso96/Wrap.card to LIBS:Picasso96/, next to the real card.
+2. P96: set the board's monitor icon ToolType BOARDTYPE=Wrap.
+   AROS: Copy DEVS:Monitors/P96 DEVS:Monitors/Wrap, and remove the real
+   card's monitor.
+3. Copy Prefs/Wrap.prefs to ENVARC: and ENV:, and set CARD= to the real
+   card, e.g. CARD=uaegfx.card
+4. Reboot, then run wrapstat.
+Tested on AROS m68k only, wrapping Multicast.card.
 
 Status
 ------

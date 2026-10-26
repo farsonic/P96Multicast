@@ -12,7 +12,7 @@ RIPTIDE_SRC=${RIPTIDE_SRC:-/home/user/Riptide}
 STAGE=build/package
 PKG=$STAGE/P96Multicast
 
-for f in build/Multicast.card build/mctest; do
+for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat; do
 	[ -f "$f" ] || { echo "$f missing: run make first"; exit 1; }
 done
 rm -rf "$STAGE" build/P96Multicast.lha
@@ -20,11 +20,11 @@ mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
 	"$PKG/Client" "$PKG/Docs" "$PKG/Source"
 
 cp dist/ReadMe "$PKG/ReadMe"
-cp build/Multicast.card "$PKG/Libs/Picasso96/"
-cp build/mctest "$PKG/C/"
+cp build/Multicast.card build/Wrap.card "$PKG/Libs/Picasso96/"
+cp build/mctest build/wrapstat "$PKG/C/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
 cp README.md "$PKG/Docs/README.md"
-cp docs/PROTOCOL.md docs/BUILD.md "$PKG/Docs/"
+cp docs/PROTOCOL.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
 git ls-files | while read -r f; do
 	mkdir -p "$PKG/Source/$(dirname "$f")"
 	cp "$f" "$PKG/Source/$f"
@@ -43,6 +43,14 @@ cat > "$PKG/Prefs/Multicast.prefs" <<'EOF'
 #MAXWIDTH=1920
 #MAXHEIGHT=1200
 #LOG=T:Multicast.log
+EOF
+
+cat > "$PKG/Prefs/Wrap.prefs" <<'EOF'
+# Wrap.card settings: copy to ENVARC:Wrap.prefs (and ENV:)
+# CARD= the card driver to wrap, in LIBS:Picasso96/ (or give a path)
+CARD=uaegfx.card
+# DRAW=0 leaves the drawing functions unwrapped
+#DRAW=1
 EOF
 
 # the monitor icon: a TOOL icon whose ToolTypes name the board, like P96's own
