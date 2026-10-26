@@ -132,6 +132,30 @@ struct ModeInfo {
 #define GMF_INTERLACE    (1 << 1)
 #define GMF_DOUBLESCAN   (1 << 2)
 
+/*
+ * A resolution of the board: one per size, with a ModeInfo for each depth
+ * class (CHUNKY ... TRUEALPHA) it can be shown in. P96 makes these from its
+ * settings (Picasso96Mode), but a card may also put its own in
+ * bi->ResolutionsList in InitCard, as UAE's uaegfx.card does. ln_Name
+ * points at P96ID, which runs on into Name ("P96-0:Multicast:640x480").
+ */
+#define MAXRESOLUTIONNAMELENGTH 22
+#define P96B_PUBLIC 1               /* offered to programs */
+#define P96F_PUBLIC (1 << P96B_PUBLIC)
+
+struct LibResolution {
+	struct Node Node;
+	char  P96ID[6];
+	char  Name[MAXRESOLUTIONNAMELENGTH];
+	ULONG DisplayID;
+	UWORD Width;
+	UWORD Height;
+	UWORD Flags;
+	struct ModeInfo *Modes[MAXMODES];
+	APTR  BoardInfo;
+	ULONG reserved;     /* UAE allocates 80 bytes: room for rtg.library */
+};
+
 struct CLUTEntry {
 	UBYTE Red;
 	UBYTE Green;

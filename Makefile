@@ -21,7 +21,7 @@ VAMOS ?= vamos -C 68020
 BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
-CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/blit.o
+CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/blit.o $(BUILD)/modes.o
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
@@ -66,14 +66,19 @@ $(BUILD)/wraptest_asm.o: tests/wraptest_asm.s | $(BUILD)
 $(BUILD)/wraptest: tests/wraptest.c $(BUILD)/wraptest_asm.o $(HDRS) tests/fakecard.h | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ tests/wraptest.c $(BUILD)/wraptest_asm.o -lamiga
 
+$(BUILD)/modetest: tests/modetest.c $(HDRS) | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ $< -lamiga
+
 $(BUILD)/offsets: tests/offsets.c include/boardinfo.h | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $<
 
-check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest
+check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest \
+       $(BUILD)/modetest
 	$(VAMOS) $(BUILD)/offsets
 	python3 tests/check_card.py $(BUILD)/Multicast.card
 	python3 tests/check_card.py $(BUILD)/Wrap.card Wrap.card
 	tests/wraptest.sh "$(VAMOS)"
+	tests/modetest.sh "$(VAMOS)"
 
 package: all
 	dist/mkpackage.sh

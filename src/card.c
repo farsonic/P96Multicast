@@ -439,6 +439,7 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	mc->format = RGBFB_CLUT;
 	if (mc->cfg.blitter)
 		mc_blitter_install(mc);
+	mc_modes_build(mc);
 
 	if (!mc_sender_start(mc)) {
 		mc_status->error = MC_ERR_NOSENDER;

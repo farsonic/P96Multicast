@@ -1,0 +1,94 @@
+/*
+ * P96Multicast - modetest: runs the built Multicast.card under vamos, with
+ * this program in the place of rtg.library, and checks the screen modes it
+ * puts in bi->ResolutionsList (src/modes.c).
+ *
+ *   modetest PATH COUNT [WxH]   PATH: Multicast.card's file
+ *                               COUNT: the resolutions expected
+ *                               WxH: one that must be among them
+ *
+ * tests/modetest.sh sets up LIBS: and ENV: for it.
+ */
+#include <exec/types.h>
+#include <exec/memory.h>
+#include <exec/execbase.h>
+#include <proto/exec.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "boardinfo.h"
+
+BOOL __FindCard(__reg("a6") struct Library *, __reg("a0") struct BoardInfo *) = "\tjsr\t-30(a6)";
+BOOL __InitCard(__reg("a6") struct Library *, __reg("a0") struct BoardInfo *,
+                __reg("a1") char **) = "\tjsr\t-36(a6)";
+
+static int fails;
+
+static void check(int ok, const char *what)
+{
+	printf("%s: %s\n", ok ? "ok" : "FAIL", what);
+	if (!ok)
+		fails++;
+}
+
+int main(int argc, char **argv)
+{
+	static const UBYTE depths[MAXMODES] = { 0, 8, 16, 24, 32 };
+	struct Library *card;
+	struct BoardInfo *bi;
+	struct LibResolution *res;
+	int count = 0, want = argc > 2 ? atoi(argv[2]) : -1, found = 0, good = 1;
+	UWORD fw = 0, fh = 0;
+
+	if (argc > 3)
+		sscanf(argv[3], "%hux%hu", &fw, &fh);
+	card = OpenLibrary((STRPTR)(argc > 1 ? argv[1] : "LIBS:Picasso96/Multicast.card"), 0);
+	check(card != NULL, "Multicast.card opens");
+	if (!card)
+		return 20;
+	bi = AllocMem(sizeof(*bi) + 4096, MEMF_PUBLIC | MEMF_CLEAR);
+	bi->CardBase = card;
+	bi->ExecBase = SysBase;
+	NewList((struct List *)&bi->ResolutionsList);
+	check(__FindCard(card, bi), "FindCard");
+	/* InitCard fails here when vamos cannot start the sender; the modes come before */
+	__InitCard(card, bi, NULL);
+
+	for (res = (struct LibResolution *)bi->ResolutionsList.mlh_Head;
+	     res->Node.ln_Succ; res = (struct LibResolution *)res->Node.ln_Succ) {
+		int k, n = 0;
+
+		count++;
+		printf("  %08lx %4ux%-4u %-22s", res->DisplayID, res->Width, res->Height, res->Name);
+		for (k = CHUNKY; k < MAXMODES; k++) {
+			struct ModeInfo *mi = res->Modes[k];
+
+			if (!mi)
+				continue;
+			printf(" %u", mi->Depth);
+			n++;
+			if (mi->Width != res->Width || mi->Height != res->Height || mi->Depth != depths[k] ||
+			    !mi->Active || mi->HorTotal <= mi->Width || mi->VerTotal <= mi->Height ||
+			    !mi->PixelClock || bi->MaxHorResolution[k] < mi->Width ||
+			    bi->MaxVerResolution[k] < mi->Height)
+				good = 0;
+		}
+		printf("\n");
+		if (!n || res->BoardInfo != bi || !(res->Flags & P96F_PUBLIC) ||
+		    strncmp(res->Node.ln_Name, "P96-0:Multicast:", 16) || !res->DisplayID)
+			good = 0;
+		if (res->Width == fw && res->Height == fh)
+			found = 1;
+	}
+	if (want >= 0) {
+		char what[64];
+
+		sprintf(what, "%d resolutions", want);
+		check(count == want, what);
+	}
+	check(good, "names, IDs, flags, a ModeInfo for each depth that fits, within the board's limits");
+	if (fw)
+		check(found, "the asked-for size is there");
+	printf("modetest: %s\n", fails ? "FAILED" : "passed");
+	return fails ? 20 : 0;
+}

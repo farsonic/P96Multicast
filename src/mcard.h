@@ -28,6 +28,9 @@ extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
 extern struct GfxBase *GfxBase;
 
+/* MODES=: at most this many sizes */
+#define MC_MAXMODES 24
+
 /* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs
    (ENVARC: if ENV: has none yet) */
 struct McConfig {
@@ -43,6 +46,9 @@ struct McConfig {
 	UWORD boardtype;
 	UWORD boards;      /* boards to offer, 1-MC_MAXBOARDS */
 	UWORD blitter;     /* record the drawing functions (BLITTER=1) */
+	UWORD nmodes;      /* MODES=: sizes to offer, 0 for the built-in list */
+	UWORD nomodes;     /* MODES=NONE: offer none, P96's settings do */
+	UWORD mode_w[MC_MAXMODES], mode_h[MC_MAXMODES];
 	UWORD quiet;
 	char  log[80];     /* sender log file, "" for none */
 };
@@ -95,6 +101,9 @@ struct McCard {
 	struct Process *sender;
 	volatile UWORD sender_quit;
 
+	APTR   modes;          /* the resolutions made for P96 (modes.c) */
+	ULONG  modessize;
+
 	struct McRect damage[MC_DAMAGE_RING];
 	volatile ULONG damage_head;  /* rectangles put in so far */
 };
@@ -105,6 +114,9 @@ struct McCard {
 ULONG mc_bytesperpixel(RGBFTYPE fmt);
 ULONG mc_bytesperrow(UWORD width, RGBFTYPE fmt);
 extern struct McStatus *mc_status;
+
+/* modes.c */
+void mc_modes_build(struct McCard *mc);
 
 /* blit.c */
 void mc_blitter_install(struct McCard *mc);

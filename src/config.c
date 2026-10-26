@@ -140,6 +140,32 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 	} else if ((v = match_key(line, "boards")) != NULL) {
 		if (parse_num(v, &n) && n >= 1 && n <= MC_MAXBOARDS)
 			cfg->boards = n;
+	} else if ((v = match_key(line, "modes")) != NULL) {
+		/* MODES=640x480,800x600,...  or MODES=NONE */
+		cfg->nmodes = 0;
+		cfg->nomodes = (v[0] == 'n' || v[0] == 'N');
+		while (!cfg->nomodes && cfg->nmodes < MC_MAXMODES) {
+			LONG w, h;
+
+			while (*v == ' ' || *v == ',')
+				v++;
+			if (!parse_num(v, &w))
+				break;
+			while (*v >= '0' && *v <= '9')
+				v++;
+			if (*v != 'x' && *v != 'X')
+				break;
+			v++;
+			if (!parse_num(v, &h))
+				break;
+			while (*v >= '0' && *v <= '9')
+				v++;
+			if (w >= 160 && w <= 4095 && h >= 100 && h <= 4095) {
+				cfg->mode_w[cfg->nmodes] = w;
+				cfg->mode_h[cfg->nmodes] = h;
+				cfg->nmodes++;
+			}
+		}
 	} else if ((v = match_key(line, "blitter")) != NULL) {
 		if (parse_num(v, &n))
 			cfg->blitter = n != 0;
