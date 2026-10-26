@@ -19,8 +19,10 @@ driver and calls its `FindCard` and `InitCard`. Wrap.card:
    the boot) and opens that card driver. A name without a path is looked
    for in `LIBS:Picasso96/`, and a card already in memory is opened by name
    rather than loaded again. It then calls the card's `FindCard` with the
-   same BoardInfo, with `bi->CardBase` set to the real card.
-2. **InitCard:** calls the card's `InitCard`. Then, for every BoardInfo
+   same BoardInfo, with `bi->CardBase` set to the real card, and sets
+   `bi->CardBase` back to Wrap.card afterwards.
+2. **InitCard:** calls the card's `InitCard`, again with `bi->CardBase` set
+   to the real card only during the call. Then, for every BoardInfo
    function the card filled in, it stores the card's pointer and puts a
    thunk in the slot. Slots still holding rtg.library's software fallback
    (`FillRect == FillRectDefault` and so on) are left alone, as are the
@@ -34,8 +36,11 @@ driver and calls its `FindCard` and `InitCard`. Wrap.card:
    card's results and its own a6.
 
 Wrap.card stays out of the BoardInfo's driver-owned data: it never touches
-`CardData` or `ChipData`, and `bi->CardBase` points at the real card for
-drivers that find their library base there. Its own state is in a table
+`CardData` or `ChipData`. `bi->CardBase` points at the real card only
+while its `FindCard` and `InitCard` run: P96's rtg.library calls `InitCard`
+through `bi->CardBase`, so leaving the real card there (as Wrap.card 0.2
+did) makes P96 call the real card's `InitCard` directly, and Wrap.card
+never sets up the board (wrapstat: "InitCard called 0 times"). Its own state is in a table
 of up to 4 boards, keyed by BoardInfo.
 
 The thunks keep the rules the P96 driver interface sets. All arguments are
@@ -199,10 +204,9 @@ step (see docs/PROTOCOL2.md).
   loads the real card, AROS asks that card for a board too. The card has to
   say no. Multicast.card does, because it has one board. Drivers for real
   hardware normally do too, once they have claimed their Zorro board.
-* **Not yet tried on real P96 (rtg.library).** It has been tested on AROS
-  only. The open questions for P96 are whether rtg.library reads
-  `bi->CardBase` after InitCard, and whether it calls any slot with a
-  BoardInfo that isn't in a0.
+* **Real P96 (rtg.library).** rtg.library calls `InitCard` through
+  `bi->CardBase` (fixed in 0.3, see above). Still open: whether it calls
+  any slot with a BoardInfo that isn't in a0.
 * **Stays loaded.** BoardInfo pointers lead into Wrap.card's code, so it
   never expunges (like Multicast.card).
 

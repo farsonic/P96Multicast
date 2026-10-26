@@ -52,7 +52,7 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 {
 	fake->initcard_calls++;
-	if (bi->CardData[0] != FAKE_CARDDATA)
+	if (bi->CardData[0] != FAKE_CARDDATA || bi->CardBase != &fake->lib)
 		return FALSE;
 	bi->BoardName = "Fake";
 	bi->SetGC = (APTR)FakeRecord;

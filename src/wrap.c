@@ -13,8 +13,11 @@
  * board's screen on boards of other cards too, all of it or a tile each.
  *
  * The real driver keeps its BoardInfo to itself: Wrap.card never touches
- * CardData or ChipData, and bi->CardBase points at the real driver, for
- * drivers that find their library base there.
+ * CardData or ChipData. bi->CardBase points at the real driver while its
+ * FindCard and InitCard run, for drivers that find their library base there,
+ * and at Wrap.card otherwise: P96 calls InitCard through bi->CardBase, so
+ * leaving the real driver there would skip Wrap.card's InitCard. The thunks
+ * call the real functions with a6 = the real driver.
  */
 #include <exec/execbase.h>
 #include <exec/memory.h>
@@ -480,6 +483,7 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 			close_inner();
 		return FALSE;
 	}
+	bi->CardBase = oldbase;
 	status->inner_found++;
 	b = &boards[status->nboards++];
 	b->bi = bi;
@@ -488,7 +492,9 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 
 BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 {
+	struct Library *oldbase = bi->CardBase;
 	struct WrapBoard *b = find_board(bi);
+	BOOL ok;
 
 	status->initcard_calls++;
 	if (!b) {
@@ -496,7 +502,9 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 		return FALSE;
 	}
 	bi->CardBase = inner;
-	if (!InnerInitCard(bi, tooltypes, inner)) {
+	ok = InnerInitCard(bi, tooltypes, inner);
+	bi->CardBase = oldbase;
+	if (!ok) {
 		/* rtg.library drops this BoardInfo: forget it */
 		struct WrapBoard *last = &boards[--status->nboards];
 		UBYTE *p = (UBYTE *)last;

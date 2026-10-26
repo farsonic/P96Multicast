@@ -111,11 +111,12 @@ int main(int argc, char **argv)
 	if (!fake)
 		return 20;
 	check(fake->findcard_calls == 1, "Fake.card's FindCard called once");
-	check(bi->CardBase == &fake->lib, "bi->CardBase is the wrapped card");
+	check(bi->CardBase == &wrap->lib, "bi->CardBase is Wrap.card again, so InitCard comes to it");
 	check(bi->CardData[0] == FAKE_CARDDATA, "CardData is the wrapped card's");
 
 	check(__InitCard(&wrap->lib, bi, NULL), "InitCard");
 	check(fake->initcard_calls == 1, "Fake.card's InitCard called once");
+	check(bi->CardBase == &wrap->lib, "bi->CardBase is Wrap.card after InitCard");
 	check(st->nboards == 1 && st->inner_found == 1 && st->inner_init == 1, "one board");
 	check(st->draw == draw, "DRAW= read from ENV:Wrap.prefs");
 	b = &st->boards[0];

@@ -24,7 +24,7 @@
 	xdef	_WrapThunksEnd
 
 VERSION		equ	0
-REVISION	equ	2
+REVISION	equ	3
 LIBSIZE		equ	128		; struct WrapBase, WRAP_LIBSIZE in wrap_status.h
 NSLOTS		equ	68		; WRAP_NSLOTS
 RTF_AUTOINIT	equ	$80
@@ -122,5 +122,5 @@ thunk_common:
 _LibName:
 	dc.b	"Wrap.card",0
 _LibId:
-	dc.b	"Wrap.card 0.2 (26.10.2026)",13,10,0
+	dc.b	"Wrap.card 0.3 (26.10.2026)",13,10,0
 	even
