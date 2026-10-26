@@ -827,6 +827,15 @@ def run_window(heads, args):  # pragma: no cover - interactive
             at = (0, 0) if separate else offsets[i]
             size = (screen.width, screen.height)
             if not screen.width:
+                # say what is (not) arriving, in the title
+                n = h.viewer.stats["datagrams"]
+                text = ("P96Multicast screen %d (port %d): %s" % (
+                    i + 1, args.port + i,
+                    "nothing from the Amiga yet" if not n else
+                    "%d datagrams, but no screen shown on this board yet" % n))
+                if st.get("wait") != text and (separate or i == 0):
+                    st["wait"] = text
+                    win.title(text)
                 continue
             if size != st["size"] or at != st["at"]:
                 if size != st["size"]:
