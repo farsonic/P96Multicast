@@ -879,8 +879,15 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						tell("MulticastPrefs", "Could not write the settings to ENV: or ENVARC:");
 						break;
 					}
-					if (report[0])
-						tell("MulticastPrefs", report);
+					if (report[0]) {
+						/* changes that the card only takes at boot: offer it */
+						if (strstr(report, "reboot") && g->GadgetID == ID_SAVE) {
+							if (ask("MulticastPrefs", report, "Reboot now|Later"))
+								mp_reboot();
+						} else {
+							tell("MulticastPrefs", report);
+						}
+					}
 					done = TRUE;
 					break;
 				case ID_INSTALL:
@@ -892,12 +899,24 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					if (!ask("MulticastPrefs: Install", report, "Install|Cancel"))
 						break;
 					report[0] = 0;
-					install(note, FALSE, NULL, NULL);
-					if (!prefs_write(TRUE))
-						note("Could not write the settings to ENV: or ENVARC:");
-					else
-						note("Settings saved.");
-					tell("MulticastPrefs: Install", report);
+					{
+						BOOL ok = install(note, FALSE, NULL, NULL);
+
+						if (!prefs_write(TRUE)) {
+							note("Could not write the settings to ENV: or ENVARC:");
+							ok = FALSE;
+						} else {
+							note("Settings saved.");
+						}
+						/* it all starts at the next boot: offer one now */
+						if (ok) {
+							note("\nReboot now?");
+							if (ask("MulticastPrefs: Install", report, "Reboot now|Later"))
+								mp_reboot();
+						} else {
+							tell("MulticastPrefs: Install", report);
+						}
+					}
 					if (page == PAGE_STATUS)
 						status_show(TRUE);
 					break;

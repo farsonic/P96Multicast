@@ -57,7 +57,8 @@ Unpack, then in a Shell, inside this drawer:
     python3 p96view.py --span 2x1                (on your computer)
                                            (DESKTOP2x2: four windows)
   Or do it all in MulticastPrefs' Desktop page (below).
-and reboot. Add DRY to see first what it would do. INSTALL sets up
+and say y when it asks to reboot (REBOOT reboots without asking,
+NOREBOOT never does). Add DRY to see first what it would do. INSTALL sets up
 everything for the next boot: the cards in LIBS:Picasso96, mctest and
 wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,
 screen modes if Picasso96Mode has none for Multicast, and DEST=10.0.2.2 if

@@ -69,6 +69,7 @@ int  mp_stricmp(const char *a, const char *b);
 
 /* install.c */
 BOOL install(void (*note)(const char *), BOOL dry, const char *from, const char *setup);
+void mp_reboot(void);
 
 /* status.c */
 int status_lines(char lines[][80], int max);

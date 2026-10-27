@@ -142,7 +142,7 @@ boot() {
 cat > "$work/autorun" <<'EOF3'
 FailAt 21
 Work:pkg/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 >Work:set.txt
-Work:pkg/MulticastPrefs INSTALL >Work:install.txt
+Work:pkg/MulticastPrefs INSTALL NOREBOOT >Work:install.txt
 Work:pkg/MulticastPrefs SHOW >Work:show.txt
 List DEVS:Monitors >Work:monitors.txt
 Echo >Work:boot1.done done

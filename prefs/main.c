@@ -26,6 +26,8 @@
  *                                       screen over two Multicast boards (SPAN,
  *                                       SPAN2x2: four), one desktop. DRY says
  *                                       what it would do
+ *                                       Then it asks to reboot (REBOOT: without
+ *                                       asking, NOREBOOT: not at all)
  *   MulticastPrefs STATUS               what the running cards say
  */
 #include <exec/types.h>
@@ -37,8 +39,9 @@
 
 static const char version[] = "$VER: MulticastPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
+       A_REBOOT, A_NOREBOOT,
        A_COUNT };
 
 static void print_note(const char *s)
@@ -102,6 +105,24 @@ int main(int argc, char **argv)
 			rc = RETURN_WARN;
 		if (!args[A_DRY] && !prefs_write(TRUE))
 			rc = RETURN_FAIL;
+		/* it all starts at the next boot: REBOOT does it, else ask */
+		if (rc == RETURN_OK && !args[A_DRY] && !args[A_NOREBOOT]) {
+			BOOL now = args[A_REBOOT] != 0;
+
+			if (!now && IsInteractive(Input())) {
+				char answer[8];
+
+				printf("Reboot now? (y/n) ");
+				fflush(stdout);
+				if (fgets(answer, sizeof(answer), stdin) && (answer[0] | 32) == 'y')
+					now = TRUE;
+			}
+			if (now) {
+				printf("Rebooting...\n");
+				fflush(stdout);
+				mp_reboot();
+			}
+		}
 	}
 	if (args[A_SHOW])
 		prefs_show();

@@ -817,6 +817,16 @@ running:
 		say(line);
 }
 
+/*
+ * The new settings and files take effect at the next boot: give the disks a
+ * moment to finish writing, then reboot.
+ */
+void mp_reboot(void)
+{
+	Delay(2 * TICKS_PER_SECOND);
+	ColdReboot();
+}
+
 BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const char *setup)
 {
 	const char *card, *monitor_name;
