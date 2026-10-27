@@ -23,7 +23,7 @@
  *   MulticastDesktop SWAP               the desktop or the Workbench in front
  *   MulticastDesktop CLOSE              tells the running one to quit
  *   MulticastDesktop SHELL              a Shell in the middle of the desktop
- *   MulticastDesktop INFO               the desktop's size and display mode
+ *   MulticastDesktop INFO               every public screen: size, mode, owner
  *   ... WAIT=10                         wait up to 10 s for the desktop to open
  *   ... WINDOW=title                    a window by its title, not the active one
  *
@@ -480,6 +480,22 @@ static int command(LONG *args)
 			printf("MulticastDesktop: is not running.\n");
 		return port ? RETURN_OK : RETURN_WARN;
 	}
+	if (args[A_INFO]) {
+		/* every public screen: its mode, and whose it is */
+		struct List *l = LockPubScreenList();
+		struct PubScreenNode *p;
+		char buf[160];
+
+		for (p = (struct PubScreenNode *)l->lh_Head; p->psn_Node.ln_Succ;
+		     p = (struct PubScreenNode *)p->psn_Node.ln_Succ) {
+			describe(p->psn_Screen, buf, sizeof(buf));
+			printf("%-16s %s, opened by %s\n", p->psn_Node.ln_Name, buf,
+			       p->psn_SigTask && p->psn_SigTask->tc_Node.ln_Name ?
+			       p->psn_SigTask->tc_Node.ln_Name : "(the system)");
+		}
+		UnlockPubScreenList();
+		return RETURN_OK;
+	}
 	scr = LockPubScreen((STRPTR)pubname);
 	if (!scr && args[A_WAIT]) {
 		/* just started in the background: give it a moment */
@@ -507,11 +523,6 @@ static int command(LONG *args)
 			say("cannot start the Shell.");
 		if (nil)
 			Close(nil);
-	} else if (args[A_INFO]) {
-		char buf[160];
-
-		describe(scr, buf, sizeof(buf));
-		printf("MulticastDesktop: %s is %s\n", pubname, buf);
 	} else if (args[A_SWAP]) {
 		swap(scr);
 	} else {
