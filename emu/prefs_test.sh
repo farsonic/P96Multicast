@@ -128,6 +128,18 @@ boot() {
 			status=1
 			break
 		fi
+		if [ -f "$work/click" ] && [ ! -f "$OUT/clicked" ]; then
+			# work the Desktop page from here (INPUT=1): every layout, the
+			# Workbench's places, a click on the map
+			touch "$OUT/clicked"
+			python3 tests/send_input.py --group $GROUP --port 9696 --iface 192.168.96.1 \
+				move:330,184 click:1 wait:1 click:1 wait:1 click:1 wait:1 click:1 wait:1 \
+				click:1 wait:1 move:330,199 click:1 wait:1 click:1 wait:1 \
+				move:330,60 click:1 wait:1 move:330,184 click:1 wait:1 >"$OUT/click.log" 2>&1
+			python3 client/p96view.py --group $GROUP --port 9696 --iface 192.168.96.1 \
+				--snapshot "$OUT/gui-clicked.png" --duration 5 2>>"$OUT/click.log"
+			touch "$work/clicked"
+		fi
 		if [ -f "$work/gui-$shot" ]; then
 			python3 client/p96view.py --group $GROUP --port 9696 --iface 192.168.96.1 \
 				--snapshot "$OUT/gui-$shot.png" --duration 7 2>"$OUT/p96view-$shot.log"
@@ -141,7 +153,7 @@ boot() {
 
 cat > "$work/autorun" <<'EOF3'
 FailAt 21
-Work:pkg/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 >Work:set.txt
+Work:pkg/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 INPUT=1 >Work:set.txt
 Work:pkg/MulticastPrefs INSTALL NOREBOOT >Work:install.txt
 Work:pkg/MulticastPrefs SHOW >Work:show.txt
 List DEVS:Monitors >Work:monitors.txt
@@ -164,6 +176,16 @@ boot boot1.done
 			echo "Echo >Work:gui-$n x"
 			echo 'Wait 10'
 		done
+		# the Desktop page, worked from the viewer's side
+		echo 'Run >Work:gui-click.log Work:pkg/MulticastPrefs PUBSCREEN=MCPREFS PAGE=0 TIMEOUT=60'
+		echo 'Wait 4'
+		echo 'Echo >Work:click x'
+		for i in $(seq 1 60); do
+			echo 'If NOT EXISTS Work:clicked'
+			echo 'Wait 1'
+			echo 'EndIf'
+		done
+		echo 'Echo >Work:alive x'
 	fi
 	echo 'Echo >Work:boot2.done done'
 } > "$work/autorun"
@@ -195,6 +217,10 @@ if [ $NET = 1 ]; then
 		[ -s "$OUT/gui-$n.png" ] && pass "window, page $n, from the card: $OUT/gui-$n.png" ||
 			fail "window, page $n"
 	done
+	[ -f "$work/alive" ] && [ -s "$OUT/gui-clicked.png" ] &&
+		pass "the Desktop page worked by clicks (layouts, Workbench): $OUT/gui-clicked.png" ||
+		fail "the Desktop page worked by clicks (layouts, Workbench)"
+	cat "$OUT/click.log" 2>/dev/null
 else
 	echo "SKIP: the window (needs FSUAE_PCAP and root, to see it through the card)"
 fi
