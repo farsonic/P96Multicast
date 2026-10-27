@@ -78,6 +78,24 @@ def main():
         if pic:
             seen.append(red_per_half(pic))
     print("Boing, red pixels per monitor at each step: %s" % seen)
+    # one ball, not a trail of them: the red pixels fit in one ball's square (60)
+    spans = []
+    for i in range(1, 11):
+        pic = load(out, "boing%d" % i)
+        if not pic:
+            continue
+        w, h, rgb = pic
+        xs, ys = [], []
+        for y in range(0, h, 2):
+            for x in range(0, w, 2):
+                o = (y * w + x) * 3
+                if rgb[o] > 170 and rgb[o + 1] < 90 and rgb[o + 2] < 90:
+                    xs.append(x)
+                    ys.append(y)
+        if xs:
+            spans.append((max(xs) - min(xs), max(ys) - min(ys)))
+    print("Boing, extent of the red at each step: %s" % spans)
+    check(spans and all(a <= 66 and b <= 66 for a, b in spans), "one ball, no trail")
     check(any(l > 50 for l, r in seen), "the ball on monitor 1")
     check(any(r > 50 for l, r in seen), "the ball on monitor 2")
 

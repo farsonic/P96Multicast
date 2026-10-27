@@ -889,10 +889,19 @@ def run_window(heads, args):  # pragma: no cover - interactive
                 elif st["ptr_item"] is not None:
                     canvas.itemconfigure(st["ptr_item"], state="hidden")
 
+    state["shown"] = 0.0
+
     def poll():
+        # show only whole updates: when the card says one is complete (FRAME),
+        # or now and then anyway
+        framed = False
         for h in heads:
-            receive_some(h.sock, h.viewer)
-        present()
+            if FRAME in receive_some(h.sock, h.viewer):
+                framed = True
+        now = time.monotonic()
+        if framed or now - state["shown"] > 0.25:
+            present()
+            state["shown"] = now
         root.after(10, poll)
 
     poll()

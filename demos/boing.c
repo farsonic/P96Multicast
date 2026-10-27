@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char version[] = "$VER: Boing 1.1 (27.10.2026)";
+static const char version[] = "$VER: Boing 1.2 (27.10.2026)";
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -217,7 +217,8 @@ int main(void)
 	win = OpenWindowTags(NULL, WA_PubScreen, (ULONG)scr, WA_Left, x, WA_Top, y,
 	                     WA_Width, size, WA_Height, size, WA_Borderless, TRUE,
 	                     WA_RMBTrap, TRUE, WA_SimpleRefresh, TRUE, WA_NoCareRefresh, TRUE,
-	                     WA_IDCMP, IDCMP_MOUSEBUTTONS, WA_Title, (ULONG)"Boing", TAG_END);
+	                     WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_CHANGEWINDOW, WA_Title, (ULONG)"Boing",
+	                     TAG_END);
 	if (!win) {
 		printf("Boing: cannot open the window\n");
 		goto unlock;
@@ -269,13 +270,35 @@ int main(void)
 			ny = scr->BarHeight + 1;
 			vy = 0;
 		}
+		/*
+		 * Intuition moves the window later, not at once: wait until it has
+		 * (IDCMP_CHANGEWINDOW), so moves don't pile up and the next one is
+		 * worked out from where the window really is. Then draw the next
+		 * turn of the ball, at its new place.
+		 */
+		MoveWindow(win, nx - win->LeftEdge, ny - win->TopEdge);
+		{
+			int tries;
+			BOOL moved = FALSE;
+
+			for (tries = 0; tries < 10 && !moved; tries++) {
+				WaitTOF();
+				while ((m = (struct IntuiMessage *)GetMsg(win->UserPort)) != NULL) {
+					if (m->Class == IDCMP_CHANGEWINDOW)
+						moved = TRUE;
+					else if (m->Class == IDCMP_MOUSEBUTTONS && m->Code == SELECTDOWN)
+						stop = TRUE;
+					ReplyMsg((struct Message *)m);
+				}
+			}
+		}
+		x = win->LeftEdge;
+		y = win->TopEdge;
 		phase = (phase + (vx > 0 ? 1 : PHASES - 1)) % PHASES;
 		BltBitMapRastPort(frames[phase], 0, 0, win->RPort, 0, 0, size, size, 0xc0);
-		MoveWindow(win, nx - win->LeftEdge, ny - win->TopEdge);
-		x = nx;
-		y = ny;
 		WaitTOF();
-		WaitTOF();
+		if (stop)
+			break;
 	}
 
 unlock:
