@@ -30,6 +30,8 @@ const struct Setting settings[] = {
 	{ "CPU",       FILE_MC, T_NUM,  1, 100,     "20",    "Most CPU percent for checking the screen" },
 	{ "HISTORY",   FILE_MC, T_NUM,  16, 4096,   "512",   "KB of sent data kept to repair losses" },
 	{ "POINTER",   FILE_MC, T_BOOL, 0, 1,       "1",     "The viewers draw the mouse pointer" },
+	{ "INPUT",     FILE_MC, T_BOOL, 0, 1,       "0",     "The viewers' mouse and keys work this Amiga" },
+	{ "INPUTFROM", FILE_MC, T_IP,   0, 0,       "",      "INPUT=1: only from this viewer's address (empty: any)" },
 	{ "SPLIT",     FILE_MC, T_SPAN, 0, 0,       "1x1",   "The screen in CxR parts, a stream (and a window) each, ports PORT, PORT+1, ..." },
 	/* the shared screen MulticastDesktop opens (the card itself ignores these) */
 	{ "MONITOR",   FILE_MC, T_MODES, 0, 0,      "800x600", "Size of each part (monitor) of the shared screen" },

@@ -101,6 +101,7 @@ P96. `ENV:` wins over ToolTypes.
 | `HISTORY` | 512 | KB of sent datagrams kept, to repair what viewers lost |
 | `REFRESH` | 10 | while no viewer talks back: seconds between whole screens (0 = never) |
 | `POINTER` | 1 | a hardware pointer, drawn by the viewers (0: rtg.library draws it) |
+| `INPUT` | 0 | 1: the mouse and keys in the viewer windows work the Amiga, on the card's screen (`INPUTFROM=` an address: only from there). Off unless set, since anyone who can reach the card could type on the Amiga; `SETUP=DESKTOP` sets it |
 | `SPLIT` | 1x1 | the screen in CxR parts (at most 4), each sent to a port of its own (PORT, PORT+1, ...) and, with a multicast DEST, a group of its own (DEST, DEST+1, ...): with `p96view.py --span CxR`, a window for each, like monitors, and windows dragged from one to the other; `p96view.py --part N` shows one part, e.g. on another device. `SETUP=DESKTOP` sets it up |
 | `DEST2` ... `DEST4` | | where parts 2-4 go instead |
 | `VRAM` | 8 | video memory in MB (read at boot only) |

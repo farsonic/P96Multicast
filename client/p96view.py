@@ -38,7 +38,9 @@ FILL, INVERT, COPY, TEXT, PATTERN = 0x10, 0x11, 0x12, 0x13, 0x14
 PIXELS, POINTER, POINTERPOS = 0x20, 0x30, 0x31
 JAM2, COMPLEMENT, INVERSVID = 1, 2, 4
 RAW, SOLID, RLE = 0, 1, 2
-HELLO, NAK, WANT = 1, 2, 3
+HELLO, NAK, WANT, INPUT = 1, 2, 3, 4
+IN_MOVE, IN_BUTTON, IN_KEY = 1, 2, 3
+SF_INPUT = 1                    # SURFACE: the card takes our mouse and keys
 
 # P96 RGBFTYPE numbers
 CLUT, R8G8B8, B8G8R8, R5G6B5PC, R5G5B5PC = 1, 2, 3, 4, 5
@@ -103,6 +105,7 @@ class Screen:
         self.width = self.height = 0
         self.fmt = self.bpp = 0
         self.display = 0
+        self.takes_input = False     # the card works the Amiga with our mouse and keys
         self.tw = self.th = 16
         self.tcols = self.trows = 0
         self.pixels = bytearray()
@@ -129,7 +132,8 @@ class Screen:
         self.valid = bytearray(self.tcols * self.trows)
 
     def _surface(self, b):
-        w, h, fmt, bpp, display, _pad, tw, th = struct.unpack(">HHBBBBHH", b[:12])
+        w, h, fmt, bpp, display, flags, tw, th = struct.unpack(">HHBBBBHH", b[:12])
+        self.takes_input = bool(flags & SF_INPUT)
         self.stats["modes"].add((w, h, FORMAT_NAMES.get(fmt, str(fmt))))
         if display != self.display:
             self.all_dirty = True
@@ -612,6 +616,12 @@ class Viewer:
             self.send(struct.pack(">HBBI", MAGIC, VERSION, mtype, self.stream or 0) + payload,
                       self.amiga)
 
+    def send_input(self, events):
+        """Mouse and key events, (kind, a, x, y) each, for a card with INPUT=1."""
+        for i in range(0, len(events), 128):
+            self._msg(INPUT, b"".join(struct.pack(">BBHH", k, a, max(x, 0), max(y, 0))
+                                      for k, a, x, y in events[i:i + 128]))
+
     def tick(self, now=None):
         now = time.monotonic() if now is None else now
         if self.stream is None:
@@ -793,6 +803,48 @@ def receive_some(sock, viewer, limit=4000):
         types += viewer.feed(data, addr)
     viewer.tick()
     return types
+
+
+def _keymap():
+    """Tk key names to Amiga raw key codes (a US keyboard)."""
+    m = {}
+    rows = [("`1234567890-=\\", 0x00), ("qwertyuiop[]", 0x10), ("asdfghjkl;'", 0x20),
+            ("zxcvbnm,./", 0x31)]
+    names = {"`": "grave", "-": "minus", "=": "equal", "\\": "backslash", "[": "bracketleft",
+             "]": "bracketright", ";": "semicolon", "'": "apostrophe", ",": "comma",
+             ".": "period", "/": "slash"}
+    for keys, first in rows:
+        for i, ch in enumerate(keys):
+            m[names.get(ch, ch)] = first + i
+    shifted = {"asciitilde": "grave", "exclam": "1", "at": "2", "numbersign": "3",
+               "dollar": "4", "percent": "5", "asciicircum": "6", "ampersand": "7",
+               "asterisk": "8", "parenleft": "9", "parenright": "0", "underscore": "minus",
+               "plus": "equal", "bar": "backslash", "braceleft": "bracketleft",
+               "braceright": "bracketright", "colon": "semicolon", "quotedbl": "apostrophe",
+               "quoteright": "apostrophe", "less": "comma", "greater": "period",
+               "question": "slash"}
+    for k, v in shifted.items():
+        m[k] = m[v]
+    for ch in "abcdefghijklmnopqrstuvwxyz":
+        m[ch.upper()] = m[ch]
+    m.update({
+        "space": 0x40, "BackSpace": 0x41, "Tab": 0x42, "ISO_Left_Tab": 0x42, "KP_Enter": 0x43,
+        "Return": 0x44, "Escape": 0x45, "Delete": 0x46, "Up": 0x4C, "Down": 0x4D,
+        "Right": 0x4E, "Left": 0x4F, "Help": 0x5F, "F11": 0x5F, "Insert": 0x5F,
+        "Shift_L": 0x60, "Shift_R": 0x61, "Caps_Lock": 0x62, "Control_L": 0x63,
+        "Control_R": 0x63, "Alt_L": 0x64, "Option_L": 0x64, "Alt_R": 0x65, "Option_R": 0x65,
+        "Meta_L": 0x66, "Super_L": 0x66, "Command": 0x66, "Meta_R": 0x67, "Super_R": 0x67,
+        "KP_0": 0x0F, "KP_1": 0x1D, "KP_2": 0x1E, "KP_3": 0x1F, "KP_4": 0x2D, "KP_5": 0x2E,
+        "KP_6": 0x2F, "KP_7": 0x3D, "KP_8": 0x3E, "KP_9": 0x3F, "KP_Decimal": 0x3C,
+        "KP_Subtract": 0x4A, "KP_Add": 0x5E, "KP_Divide": 0x5C, "KP_Multiply": 0x5D,
+    })
+    for i in range(10):
+        m["F%d" % (i + 1)] = 0x50 + i
+    return m
+
+
+KEYMAP = _keymap()
+WHEEL_UP, WHEEL_DOWN = 0x7A, 0x7B   # NewMouse wheel keys
 
 
 class InStep:
@@ -980,9 +1032,107 @@ def run_window(heads, args):  # pragma: no cover - interactive
     state["shown"] = 0.0
     step = InStep(heads)
 
+    # INPUT=1: the mouse and keys in these windows work the Amiga
+    pending = [[] for _ in heads]
+    aqua = root.tk.call("tk", "windowingsystem") == "aqua"
+    buttons = {1: 1, 2: 3 if aqua else 2, 3: 2 if aqua else 3}
+    held = set()
+    state["keys"] = 0
+    state["cursor"] = [None] * len(heads)
+
+    def head_at(widget, x, y):
+        """The head under the pointer, and the position on its part."""
+        for i, (win, canvas) in enumerate(windows):
+            if canvas is widget:
+                break
+        else:
+            return None, 0, 0
+        if separate:
+            return i, x, y
+        for j, st in enumerate(per):
+            if st["at"] is None:
+                continue
+            ax, ay = st["at"]
+            if ax <= x < ax + st["size"][0] and ay <= y < ay + st["size"][1]:
+                return j, x - ax, y - ay
+        return None, 0, 0
+
+    def add(i, kind, a, x=0, y=0):
+        if i is None or args.no_input or not heads[i].screen.takes_input:
+            return
+        ev = pending[i]
+        if kind == IN_MOVE and ev and ev[-1][0] == IN_MOVE:
+            ev[-1] = (kind, a, x, y)
+        else:
+            ev.append((kind, a, x, y))
+
+    def on_motion(e):
+        i, x, y = head_at(e.widget, e.x, e.y)
+        if i is not None:
+            state["keys"] = i
+        add(i, IN_MOVE, 0, x, y)
+
+    def on_button(e, up):
+        i, x, y = head_at(e.widget, e.x, e.y)
+        if e.num in (4, 5):
+            if not up:
+                code = WHEEL_UP if e.num == 4 else WHEEL_DOWN
+                add(i, IN_KEY, code)
+                add(i, IN_KEY, code | 0x80)
+            return
+        b = buttons.get(e.num)
+        if b is None:
+            return
+        if not up:
+            e.widget.focus_set()
+        add(i, IN_MOVE, 0, x, y)
+        add(i, IN_BUTTON, b | (0x80 if up else 0))
+
+    def on_wheel(e):
+        i, x, y = head_at(e.widget, e.x, e.y)
+        code = WHEEL_UP if e.delta > 0 else WHEEL_DOWN
+        add(i, IN_KEY, code)
+        add(i, IN_KEY, code | 0x80)
+
+    def on_key(e, up):
+        code = KEYMAP.get(e.keysym)
+        if code is None:
+            return
+        if up:
+            if code not in held:
+                return
+            held.discard(code)
+        else:
+            held.add(code)
+        add(state["keys"], IN_KEY, code | (0x80 if up else 0))
+        return "break"
+
+    for win, canvas in windows:
+        canvas.bind("<Motion>", on_motion)
+        canvas.bind("<ButtonPress>", lambda e: on_button(e, False))
+        canvas.bind("<ButtonRelease>", lambda e: on_button(e, True))
+        canvas.bind("<MouseWheel>", on_wheel)
+        win.bind("<KeyPress>", lambda e: on_key(e, False))
+        win.bind("<KeyRelease>", lambda e: on_key(e, True))
+
+    def flush_input():
+        for i, h in enumerate(heads):
+            if pending[i]:
+                h.viewer.send_input(pending[i])
+                pending[i] = []
+            # the Amiga's pointer is the one to see, while the card takes ours
+            want = "none" if h.screen.takes_input and not args.no_input else ""
+            if state["cursor"][i] != want and (separate or i == 0):
+                try:
+                    windows[i if separate else 0][1].configure(cursor=want)
+                except tk.TclError:
+                    want = ""
+                state["cursor"][i] = want
+
     def poll():
         # show only whole updates: when the card says one is complete (FRAME),
         # all parts of the screen at the same moment, or now and then anyway
+        flush_input()
         ready = step.receive()
         now = time.monotonic()
         if ready or now - state["shown"] > 0.25:
@@ -1142,6 +1292,9 @@ def main(argv=None):
                          "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
+    ap.add_argument("--no-input", action="store_true",
+                    help="don't send the mouse and keys to the Amiga (the card does that only "
+                         "with INPUT=1 in Multicast.prefs)")
     ap.add_argument("--iface", help="local address of the interface to join on")
     ap.add_argument("--snapshot", help="no window: write the screen to this PNG")
     ap.add_argument("--raw", help="with --snapshot: also the card's own pixels to this file")

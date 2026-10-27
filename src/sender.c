@@ -27,9 +27,12 @@
 #include <devices/timer.h>
 #include <intuition/intuitionbase.h>
 #include <intuition/screens.h>
+#include <devices/input.h>
+#include <devices/inputevent.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/timer.h>
+#include <proto/intuition.h>
 #include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
 #include "mcard.h"
@@ -58,6 +61,9 @@ struct Sender {
 	struct McConfig *cfg;
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
+	struct MsgPort *inport;          /* INPUT=1: input.device, once a viewer types */
+	struct IOStdReq *inreq;
+	BOOL   in_failed;
 	LONG   sock;
 	struct sockaddr_in to;
 	ULONG  stream;
@@ -229,6 +235,8 @@ static void finish(struct Sender *s)
 }
 
 static void flush_solid(struct Sender *s);
+static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y);
+static struct Screen *our_screen(struct Sender *s);
 static void set_tail(struct Sender *s, ULONG tail);
 
 /* what a sender process is started with: its board, and its part of the screen */
@@ -319,7 +327,7 @@ static void send_surface(struct Sender *s)
 	p[4] = s->fmt;
 	p[5] = s->bpp;
 	p[6] = s->visible;
-	p[7] = 0;
+	p[7] = s->cfg->input ? CU_SF_INPUT : 0;
 	put16(p + 8, s->tw);
 	put16(p + 10, s->th);
 }
@@ -950,6 +958,13 @@ static void message(struct Sender *s, UBYTE *m, LONG n, struct sockaddr_in *from
 		}
 		break;
 	}
+	case CU_INPUT:
+		if (!s->cfg->input ||
+		    (s->cfg->input_from && s->cfg->input_from != from->sin_addr.s_addr))
+			break;
+		for (i = 8; i + 6 <= n; i += 6)
+			input_event(s, m[i], m[i + 1], get16(m + i + 2), get16(m + i + 4));
+		break;
 	case CU_WANT:
 		for (i = 8; i + 8 <= n; i += 8) {
 			UWORD x = get16(m + i), y = get16(m + i + 2);
@@ -975,6 +990,144 @@ static void message(struct Sender *s, UBYTE *m, LONG n, struct sockaddr_in *from
 	}
 }
 
+/* ---------------------------------------------------------------- input */
+
+static BOOL open_input(struct Sender *s)
+{
+	if (s->inreq)
+		return TRUE;
+	if (s->in_failed)
+		return FALSE;
+	s->inport = CreateMsgPort();
+	if (s->inport)
+		s->inreq = (struct IOStdReq *)CreateIORequest(s->inport, sizeof(struct IOStdReq));
+	if (s->inreq && OpenDevice("input.device", 0, (struct IORequest *)s->inreq, 0) == 0) {
+		mc_log(s, "viewers' mouse and keys on (INPUT=1)\n", 0, 0, 0, 0);
+		return TRUE;
+	}
+	if (s->inreq)
+		DeleteIORequest((struct IORequest *)s->inreq);
+	if (s->inport)
+		DeleteMsgPort(s->inport);
+	s->inreq = NULL;
+	s->inport = NULL;
+	s->in_failed = TRUE;
+	mc_log(s, "no input.device\n", 0, 0, 0, 0);
+	return FALSE;
+}
+
+static void close_input(struct Sender *s)
+{
+	if (!s->inreq)
+		return;
+	CloseDevice((struct IORequest *)s->inreq);
+	DeleteIORequest((struct IORequest *)s->inreq);
+	DeleteMsgPort(s->inport);
+	s->inreq = NULL;
+}
+
+/* the qualifier a raw key holds down, if it is one (0x60-0x67) */
+static UWORD key_qualifier(UBYTE code)
+{
+	static const UWORD q[8] = {
+		IEQUALIFIER_LSHIFT, IEQUALIFIER_RSHIFT, IEQUALIFIER_CAPSLOCK, IEQUALIFIER_CONTROL,
+		IEQUALIFIER_LALT, IEQUALIFIER_RALT, IEQUALIFIER_LCOMMAND, IEQUALIFIER_RCOMMAND
+	};
+
+	return code >= 0x60 && code <= 0x67 ? q[code - 0x60] : 0;
+}
+
+static BOOL numeric_pad(UBYTE code)
+{
+	return code == 0x0f || (code >= 0x1d && code <= 0x1f) || (code >= 0x2d && code <= 0x2f) ||
+	       (code >= 0x3c && code <= 0x3f) || code == 0x43 || code == 0x4a ||
+	       (code >= 0x5a && code <= 0x5e);
+}
+
+/* one event from a viewer, as if from this Amiga's own mouse or keyboard */
+static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
+{
+	struct McCard *mc = s->mc;
+	struct IntuitionBase *IntuitionBase = s->ibase;
+	struct InputEvent ie;
+	struct IEPointerPixel pp;
+	struct Screen *scr;
+	UWORD q;
+
+	if (!open_input(s) || !IntuitionBase)
+		return;
+	scr = our_screen(s);
+	if (!scr)
+		return;
+	/* the viewers show this screen: it is the one to work */
+	if (IntuitionBase->FirstScreen != scr && (kind != CU_IN_KEY))
+		ScreenToFront(scr);
+	ie.ie_NextEvent = NULL;
+	ie.ie_SubClass = 0;
+	ie.ie_X = 0;
+	ie.ie_Y = 0;
+	ie.ie_EventAddress = NULL;
+	if (s->timer)
+		GetSysTime(&ie.ie_TimeStamp);
+	else
+		ie.ie_TimeStamp.tv_secs = ie.ie_TimeStamp.tv_micro = 0;
+
+	switch (kind) {
+	case CU_IN_MOVE:
+		pp.iepp_Screen = scr;
+		pp.iepp_Position.X = x + s->vx + s->xoff;
+		pp.iepp_Position.Y = y + s->vy + s->yoff;
+		ie.ie_Class = IECLASS_NEWPOINTERPOS;
+		ie.ie_SubClass = IESUBCLASS_PIXEL;
+		ie.ie_Code = IECODE_NOBUTTON;
+		ie.ie_Qualifier = mc->in_qual;
+		ie.ie_EventAddress = (APTR)&pp;
+		break;
+	case CU_IN_BUTTON: {
+		static const UWORD code[3] = { IECODE_LBUTTON, IECODE_RBUTTON, IECODE_MBUTTON };
+		static const UWORD bit[3] = {
+			IEQUALIFIER_LEFTBUTTON, IEQUALIFIER_RBUTTON, IEQUALIFIER_MIDBUTTON
+		};
+		UBYTE b = (a & 0x7f) - 1;
+
+		if (b > 2)
+			return;
+		if (a & 0x80)
+			mc->in_qual &= ~bit[b];
+		else
+			mc->in_qual |= bit[b];
+		ie.ie_Class = IECLASS_RAWMOUSE;
+		ie.ie_Code = code[b] | (a & 0x80 ? IECODE_UP_PREFIX : 0);
+		ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
+		break;
+	}
+	case CU_IN_KEY:
+		q = key_qualifier(a & 0x7f);
+		if (q == IEQUALIFIER_CAPSLOCK) {
+			if (!(a & 0x80))
+				mc->in_qual ^= q;
+		} else if (q) {
+			if (a & 0x80)
+				mc->in_qual &= ~q;
+			else
+				mc->in_qual |= q;
+		}
+		ie.ie_Class = IECLASS_RAWKEY;
+		ie.ie_Code = a;
+		ie.ie_Qualifier = mc->in_qual | (numeric_pad(a & 0x7f) ? IEQUALIFIER_NUMERICPAD : 0);
+		break;
+	default:
+		return;
+	}
+	s->inreq->io_Command = IND_WRITEEVENT;
+	s->inreq->io_Data = (APTR)&ie;
+	s->inreq->io_Length = sizeof(ie);
+	s->inreq->io_Flags = 0;
+	DoIO((struct IORequest *)s->inreq);
+	if (first_board(s))
+		mc_status->input_events++;
+}
+
 static void read_viewers(struct Sender *s)
 {
 	struct Library *SocketBase = s->sockbase;
@@ -994,14 +1147,38 @@ static void read_viewers(struct Sender *s)
 
 /* ---------------------------------------------------------------- a pass */
 
-/* where Intuition has the mouse, on the screen at the front */
+/*
+ * The screen shown on this board: the one whose viewport or bitmap P96 has
+ * on it, else the one at the front.
+ */
+static struct Screen *our_screen(struct Sender *s)
+{
+	struct IntuitionBase *IntuitionBase = s->ibase;
+	struct BoardInfo *bi = s->mc->bi;
+	struct Screen *scr, *found = NULL;
+	ULONG lock;
+
+	if (!IntuitionBase)
+		return NULL;
+	lock = LockIBase(0);
+	for (scr = IntuitionBase->FirstScreen; scr; scr = scr->NextScreen)
+		if ((bi->ViewPort && &scr->ViewPort == bi->ViewPort) ||
+		    (bi->VisibleBitMap && scr->RastPort.BitMap == bi->VisibleBitMap)) {
+			found = scr;
+			break;
+		}
+	if (!found)
+		found = IntuitionBase->FirstScreen;
+	UnlockIBase(lock);
+	return found;
+}
+
+/* where Intuition has the mouse, on this board's screen */
 static BOOL mouse(struct Sender *s, WORD *x, WORD *y)
 {
 	struct Screen *scr;
 
-	if (!s->ibase)
-		return FALSE;
-	scr = s->ibase->FirstScreen;
+	scr = our_screen(s);
 	if (!scr)
 		return FALSE;
 	*x = scr->MouseX - s->xoff - s->vx;
@@ -1362,6 +1539,7 @@ static void SenderMain(void)
 	mc_log(s, "sender stopped\n", 0, 0, 0, 0);
 	if (s->timer)
 		CloseDevice((struct IORequest *)&s->tr);
+	close_input(s);
 	if (s->ibase)
 		CloseLibrary((struct Library *)s->ibase);
 	free_tiles(s);

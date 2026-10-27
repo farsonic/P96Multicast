@@ -171,6 +171,12 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
                       screens (0 = never)
   POINTER=1           the viewers draw the mouse pointer (0: P96 draws it
                       into the screen)
+  INPUT=0             1: the mouse and keys in the viewer's windows work
+                      the Amiga (the card's screen comes to the front);
+                      anyone who can reach the card could, so it is off
+                      unless set; SETUP=DESKTOP sets it. p96view.py
+                      --no-input keeps a viewer's to itself
+  INPUTFROM=          with INPUT=1: only from this address
   SPLIT=1x1           the screen in CxR parts (at most 4), each sent to a
                       port of its own, PORT, PORT+1, ..., and with a
                       multicast DEST to a group of its own, DEST, DEST+1,

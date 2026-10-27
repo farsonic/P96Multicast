@@ -58,6 +58,7 @@ MONITOR=320x480
 COLOURS=16
 PUBSCREEN=MULTICAST
 DEFAULTSCREEN=1
+INPUT=1
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
@@ -117,6 +118,14 @@ EOF
 	echo 'Wait 5'
 	echo "Echo >Work:mark-shell x"
 	echo 'Wait 4'
+	# INPUT=1: the test types into the Shell from the viewer's side
+	echo "Echo >Work:mark-input x"
+	for i in $(seq 1 40); do
+		echo 'If NOT EXISTS Work:typed'
+		echo 'Wait 1'
+		echo 'EndIf'
+	done
+	echo 'Wait 2'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	echo 'Copy RAM:Multicast.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
@@ -170,6 +179,13 @@ while [ ! -f "$work/autorun.done" ]; do
 		if [ ! -f "$OUT/at-$n.png" ]; then
 			sleep 1
 			cp "$OUT/last.png" "$OUT/at-$n.png" 2>/dev/null
+			if [ "$n" = input ]; then
+				# on monitor 2: click into the Shell, type, then point somewhere
+				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+					--iface $HOST_IP move:50,240 click:1 \
+					'type:echo >Work:typed "Hello from the viewer"\n' move:100,100 \
+					>"$OUT/input.log" 2>&1 &
+			fi
 		fi
 	done
 	sleep 0.5
@@ -184,6 +200,23 @@ tr -d '\r' < "$work/move.log" 2>/dev/null
 tr -d '\r' < "$work/info.log" 2>/dev/null
 echo "---- Boing"
 tr -d '\r' < "$work/boing.log" 2>/dev/null
+echo "---- input"
+cat "$OUT/input.log" 2>/dev/null
+typed=$(tr -d '\r' < "$work/typed" 2>/dev/null)
+if [ "$typed" = "Hello from the viewer" ]; then
+	echo "PASS: INPUT: typed into the Shell from the viewer"
+else
+	echo "FAIL: INPUT: typed into the Shell from the viewer (Work:typed: '$typed')"
+	status=1
+fi
+ptr=$(grep '^pointer' "$OUT/input.log" 2>/dev/null)
+set -- $ptr
+if [ $# -ge 3 ] && [ $(( ($2 - 100) * ($2 - 100) + ($3 - 100) * ($3 - 100) )) -le 512 ]; then
+	echo "PASS: INPUT: the pointer where the viewer put it ($2,$3 on monitor 2)"
+else
+	echo "FAIL: INPUT: the pointer where the viewer put it ('$ptr')"
+	status=1
+fi
 python3 tests/check_desktop.py "$OUT" || status=1
 echo "---- status"
 tr -d '\r' < "$work/status.txt" 2>/dev/null

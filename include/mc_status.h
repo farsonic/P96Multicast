@@ -76,6 +76,7 @@ struct McStatus {
 	UWORD sweep_secs;      /* seconds the background comparing takes for the screen */
 	ULONG send_errors;
 	ULONG pointer_moves;
+	ULONG input_events;    /* INPUT=1: mouse and key events from viewers */
 };
 
 struct McBase {

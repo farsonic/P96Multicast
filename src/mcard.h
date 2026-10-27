@@ -22,7 +22,7 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "2.2"
+#define MC_VERSION_STR "2.3"
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -59,6 +59,8 @@ struct McConfig {
 	UWORD nmodes;      /* MODES=: sizes to offer, 0 for the built-in list */
 	UWORD nomodes;     /* MODES=NONE: offer none, P96's settings do */
 	UWORD mode_w[MC_MAXMODES], mode_h[MC_MAXMODES];
+	UWORD input;       /* INPUT=1: the viewers' mouse and keys work the Amiga */
+	ULONG input_from;  /* INPUTFROM=address: only that viewer's (0: any viewer's) */
 	UWORD quiet;
 	char  log[80];     /* sender log file, "" for none */
 };
@@ -155,6 +157,9 @@ struct McCard {
 	volatile ULONG tick, tick_head;
 	struct Task *view_task[MC_MAXVIEWS];
 	volatile UWORD lead_gone;    /* the first part's sender has stopped */
+
+	/* INPUT=1: the qualifiers (shift, buttons, ...) the viewers hold down */
+	volatile UWORD in_qual;
 
 	/* POINTER=1: the hardware pointer */
 	volatile ULONG ptr_serial;   /* shape or colours changed */

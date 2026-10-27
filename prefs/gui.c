@@ -68,6 +68,7 @@ static const struct Field fields[] = {
 	{ 0, F_SETTING, CHECKBOX_KIND, "Programs open on it", "DEFAULTSCREEN" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Open at boot",     "ATBOOT" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Behind Workbench", "BEHIND" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Viewers control it", "INPUT" },
 	{ 0, F_OPEN,    BUTTON_KIND,   "Open now",         NULL, 1, 1 },
 	{ 0, F_CLOSE,   BUTTON_KIND,   "Close",            NULL, 1, 2 },
 

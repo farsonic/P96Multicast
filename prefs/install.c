@@ -715,8 +715,10 @@ static BOOL apply_setup(const char *setup)
 		    size[0] == '2' && size[2] == '2' ?
 		    "1280x960,1600x1200,2048x1536,640x480,800x600" :
 		    "640x480,800x600,1024x768,1280x1024");
+		set("INPUT", "1");
 		notef("Setup: one Multicast screen split %s, a window for each part%s", size,
 		      ", one desktop; the Workbench stays where it is");
+		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who)");
 		return TRUE;
 	}
 	say("SETUP must be SINGLE, TWO, MIRROR, SPAN (SPAN2x2) or DESKTOP (DESKTOP2x2)");
@@ -812,7 +814,8 @@ static void summary(void)
 		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s",
 		         split, multicast ? "" : " --group 127.0.0.1");
 		say(line);
-		say("  a window for each part; drag windows from one to the other");
+		say("  a window for each part; use the mouse and keys in them (INPUT=1),");
+		say("  and drag windows from one to the other");
 		goto running;
 	}
 	if (*card && *span)

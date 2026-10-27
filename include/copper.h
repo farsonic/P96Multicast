@@ -69,6 +69,17 @@
 #define CU_WANT       3        /* ULONG stream, then up to 128 * (x, y, w, h): send these
                                   pixels again (all 0: the whole surface) */
 
+/* SURFACE flags (the byte after display on) */
+#define CU_SF_INPUT   1        /* the card takes the viewers' mouse and keys (INPUT=1) */
+
+#define CU_INPUT      4        /* ULONG stream, then up to 128 * (kind u8, a u8, x u16, y u16):
+                                  the viewer's mouse and keys, with INPUT=1 */
+
+/* CU_INPUT kinds */
+#define CU_IN_MOVE    1        /* the pointer to x, y on this part of the screen */
+#define CU_IN_BUTTON  2        /* a: 1 left, 2 right, 3 middle; | 0x80 released */
+#define CU_IN_KEY     3        /* a: Amiga raw key code; | 0x80 released */
+
 #define CU_CTRL_MAX   1024
 
 #endif

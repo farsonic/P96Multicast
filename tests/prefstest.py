@@ -216,6 +216,7 @@ def main():
     wrap = read("envarc", "Wrap.prefs") or []
     mc = read("envarc", "Multicast.prefs") or []
     check(rc == 0 and not any(l.startswith("CARD=") for l in wrap) and "SPLIT=2x1" in mc and
+          "INPUT=1" in mc and
           "BOARDS=1" in mc and any(l.startswith("MODES=1280x480,1600x600") for l in mc) and
           os.path.exists(os.path.join(mon, "Multicast")) and os.path.exists(os.path.join(mon, "uaegfx"))
           and not os.path.exists(os.path.join(mon, "Wrap")),

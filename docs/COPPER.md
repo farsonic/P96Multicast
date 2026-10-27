@@ -129,7 +129,7 @@ Coordinates are u16 pixels on the surface (the visible screen). A **pixel** is
 
 | Type | Name | Body |
 |---|---|---|
-| 0x01 | SURFACE | w, h, format u8, bytes per pixel u8, display on u8, pad u8, tile w, tile h |
+| 0x01 | SURFACE | w, h, format u8, bytes per pixel u8, display on u8, flags u8 (bit 0: takes INPUT), tile w, tile h |
 | 0x02 | PALETTE | first u16, count u16, count × RGB |
 | 0x03 | FRAME | frame u32: show what came before |
 | 0x10 | FILL | x, y, w, h, pixel |
@@ -174,6 +174,24 @@ the magic, the version, a type and the stream.
 | 1 | HELLO | next seq wanted u32; sent every 2 s |
 | 2 | NAK | up to 64 × (first seq u32, count u16): datagrams to send again |
 | 3 | WANT | up to 128 × (x, y, w, h): send these pixels from the shadow; one all-zero rectangle means everything, with SURFACE, PALETTE and the pointer |
+| 4 | INPUT | up to 128 × (kind u8, a u8, x u16, y u16): the viewer's mouse and keys, with `INPUT=1` |
+
+INPUT kinds:
+
+| Kind | Name | |
+|---|---|---|
+| 1 | MOVE | the pointer to x, y on this part of the screen |
+| 2 | BUTTON | a: 1 left, 2 right, 3 middle; + 0x80 when released |
+| 3 | KEY | a: an Amiga raw key code; + 0x80 when released (0x7A/0x7B: the wheel, as NewMouse) |
+
+With `INPUT=1` the card sets bit 0 of the byte after "display on" in SURFACE,
+so viewers know their mouse and keys are taken. It writes them to input.device
+as the Amiga's own: the pointer goes to the screen shown on the board (which
+comes to the front), at the part's position plus the part's place on the
+screen. Any part's sender takes them, so every window of a split screen works
+the same desktop, from the same device or different ones. `INPUTFROM=` limits
+input to one address. Anyone else who can reach the card can type on the Amiga,
+so INPUT is off unless set (`SETUP=DESKTOP` sets it).
 
 ## Reliability
 
@@ -213,6 +231,8 @@ the magic, the version, a type and the stream.
 | `REFRESH` | 10 | seconds between whole screens while no viewer talks back (0 = never) |
 | `SPLIT` | 1x1 | the screen in C×R parts, each a stream of its own on PORT, PORT+1, ... and, with a multicast DEST, in a group of its own, DEST, DEST+1, ... (a sender each, with its own shadow, history and ring position) |
 | `DEST2`-`DEST4` | | where parts 2-4 go instead of the next group |
+| `INPUT` | 0 | 1: the viewers' mouse and keys work the Amiga |
+| `INPUTFROM` | | with `INPUT=1`: only from this address |
 
 ## What it costs
 
@@ -230,7 +250,6 @@ images and for what rtg.library draws with the CPU (lines, planar blits).
 * **Offscreen bitmaps** in video memory as surfaces, so blits from them are
   copies too.
 * **Viewports** in the viewer: one desktop spread over several monitors.
-* **Input:** mouse and keys from the viewer back to the Amiga.
 
 ## For Riptide
 
