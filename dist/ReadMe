@@ -28,6 +28,15 @@ Contents
   C/wrapstat                       shows what Wrap.card wraps
   C/MulticastDesktop               the shared desktop, with hotkeys (below)
   C/Boing                          the ball, bouncing over the desktop
+  Scripts/                         the desktop without typing (double-click,
+                                   or by name in a Shell once installed):
+    DesktopOpen                    open it, with a Shell in the middle
+    DesktopShell                   another Shell in the middle
+    DesktopBoing                   the Boing ball on it
+    DesktopClose                   close it
+  Client/desktop.command           on a Mac: both halves, a window each
+                                   (FS-UAE's NAT; desktop-lan.command for
+                                   multicast on a real network)
   Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
   Client/fake_sender.py            sends a test picture, to try a viewer
                                    without the Amiga
@@ -95,6 +104,8 @@ HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers. From a Shell:
   MulticastDesktop CENTRE=2
   MulticastDesktop SWAP
   MulticastDesktop CLOSE            quits it (once no windows are left)
+  MulticastDesktop SHELL            a Shell in the middle of the desktop
+  MulticastDesktop INFO             the desktop's size and display mode
 
 Boing (C:) bounces the ball over the whole desktop, from monitor to
 monitor: Boing [SIZE=100] [SPEED=5] [SECS=n] [PUBSCREEN=name].

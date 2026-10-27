@@ -22,6 +22,9 @@
  *   MulticastDesktop CENTRE=2           ... to the middle of monitor 2
  *   MulticastDesktop SWAP               the desktop or the Workbench in front
  *   MulticastDesktop CLOSE              tells the running one to quit
+ *   MulticastDesktop SHELL              a Shell in the middle of the desktop
+ *   MulticastDesktop INFO               the desktop's size and display mode
+ *   ... WAIT=10                         wait up to 10 s for the desktop to open
  *   ... WINDOW=title                    a window by its title, not the active one
  *
  * The settings are MulticastPrefs': SPLIT, MONITOR, COLOURS, PUBSCREEN,
@@ -30,6 +33,7 @@
 #include <exec/memory.h>
 #include <exec/ports.h>
 #include <dos/dos.h>
+#include <dos/dostags.h>
 #include <intuition/intuition.h>
 #include <intuition/intuitionbase.h>
 #include <intuition/screens.h>
@@ -54,8 +58,8 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *CxBase;
 
-static const char template[] = "MOVE/K,CENTRE=CENTER/K/N,SWAP/S,CLOSE/S,WINDOW/K";
-enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_COUNT };
+static const char template[] = "MOVE/K,CENTRE=CENTER/K/N,SWAP/S,CLOSE/S,WINDOW/K,SHELL/S,WAIT/K/N,INFO/S";
+enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_COUNT };
 
 /* the desktop: C x R monitors of MW x MH */
 static UWORD cols = 1, rows = 1, mw = 800, mh = 600, depth = 16;
@@ -119,6 +123,25 @@ static void say(const char *text)
 	}
 }
 
+/* a line for the Shell, when there is one to see it */
+static void tell(const char *text)
+{
+	if (!from_wb && Output() && IsInteractive(Output()))
+		printf("MulticastDesktop: %s\n", text);
+}
+
+/* "1600x600, mode 50de1100 Multicast:1600x600 16bit PC" */
+static void describe(struct Screen *scr, char *buf, int len)
+{
+	ULONG id = GetVPModeID(&scr->ViewPort);
+	struct NameInfo ni;
+
+	if (id == INVALID_ID || !GetDisplayInfoData(NULL, (UBYTE *)&ni, sizeof(ni), DTAG_NAME, id))
+		ni.Name[0] = 0;
+	snprintf(buf, len, "%dx%d, mode %08lx %s", scr->Width, scr->Height, id,
+	         ni.Name[0] ? (char *)ni.Name : "(no name)");
+}
+
 /* ---------------------------------------------------------------- the screen */
 
 /* a Multicast mode of this size with at least this depth */
@@ -155,8 +178,17 @@ static struct Screen *open_desktop(BOOL *ours)
 	char buf[160];
 
 	*ours = FALSE;
-	if ((scr = LockPubScreen((STRPTR)pubname)) != NULL)
-		return scr;   /* open already: use it (it stays locked while we run) */
+	if ((scr = LockPubScreen((STRPTR)pubname)) != NULL) {
+		/* open already: use it (it stays locked while we run) */
+		describe(scr, buf, sizeof(buf));
+		tell("a public screen of that name is open already, using it:");
+		tell(buf);
+		if (!strstr(buf, "Multicast"))
+			say("The public screen MULTICAST is open already, but not on the Multicast "
+			    "board: close it (or the program that opened it) and start MulticastDesktop "
+			    "again.");
+		return scr;
+	}
 
 	id = find_mode(w, h, depth);
 	if (id == INVALID_ID) {
@@ -177,6 +209,9 @@ static struct Screen *open_desktop(BOOL *ours)
 	}
 	PubScreenStatus(scr, 0);
 	*ours = TRUE;
+	describe(scr, buf, sizeof(buf));
+	tell("the desktop is open:");
+	tell(buf);
 	return scr;
 }
 
@@ -301,8 +336,14 @@ static int commodity(void)
 	port = FindPort((STRPTR)PORTNAME);
 	Permit();
 	if (port) {
-		say("is running already (Exchange, or MulticastDesktop CLOSE, quits it).");
-		return RETURN_WARN;
+		/* running already: its desktop to the front, and that's all */
+		struct Screen *scr = LockPubScreen((STRPTR)pubname);
+
+		if (scr) {
+			ScreenToFront(scr);
+			UnlockPubScreen(NULL, scr);
+		}
+		return RETURN_OK;
 	}
 	CxBase = OpenLibrary("commodities.library", 37);
 	if (!CxBase) {
@@ -435,16 +476,43 @@ static int command(LONG *args)
 		if (port)
 			Signal(port->mp_SigTask, SIGBREAKF_CTRL_C);
 		Permit();
-		if (!port)
-			say("is not running.");
+		if (!port && Output() && IsInteractive(Output()))
+			printf("MulticastDesktop: is not running.\n");
 		return port ? RETURN_OK : RETURN_WARN;
 	}
 	scr = LockPubScreen((STRPTR)pubname);
+	if (!scr && args[A_WAIT]) {
+		/* just started in the background: give it a moment */
+		LONG n = *(LONG *)args[A_WAIT] * 4;
+
+		while (!scr && n-- > 0) {
+			Delay(TICKS_PER_SECOND / 4);
+			scr = LockPubScreen((STRPTR)pubname);
+		}
+	}
 	if (!scr) {
 		say("the desktop is not open.");
 		return RETURN_WARN;
 	}
-	if (args[A_SWAP]) {
+	if (args[A_SHELL]) {
+		/* 600 x 200, or less on a small desktop, right in the middle */
+		WORD w = scr->Width > 640 ? 600 : scr->Width - 40;
+		WORD h = scr->Height > 240 ? 200 : scr->Height - 40;
+		char cmd[200];
+		BPTR nil = Open((STRPTR)"NIL:", MODE_OLDFILE);
+
+		snprintf(cmd, sizeof(cmd), "NewShell \"CON:%d/%d/%d/%d/Multicast Shell/CLOSE/SCREEN%s\"",
+		         (scr->Width - w) / 2, (scr->Height - h) / 2, w, h, pubname);
+		if (SystemTags((STRPTR)cmd, SYS_Input, nil, SYS_Output, NULL, TAG_END) == -1)
+			say("cannot start the Shell.");
+		if (nil)
+			Close(nil);
+	} else if (args[A_INFO]) {
+		char buf[160];
+
+		describe(scr, buf, sizeof(buf));
+		printf("MulticastDesktop: %s is %s\n", pubname, buf);
+	} else if (args[A_SWAP]) {
 		swap(scr);
 	} else {
 		w = target(scr, (const char *)args[A_WINDOW]);
@@ -495,7 +563,8 @@ int main(int argc, char **argv)
 			goto out;
 		}
 	}
-	if (args[A_MOVE] || args[A_CENTRE] || args[A_SWAP] || args[A_CLOSE])
+	if (args[A_MOVE] || args[A_CENTRE] || args[A_SWAP] || args[A_CLOSE] || args[A_SHELL] ||
+	    args[A_INFO])
 		rc = command(args);
 	else
 		rc = commodity();

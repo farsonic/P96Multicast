@@ -1,0 +1,2 @@
+; P96Multicast: another Shell, in the middle of the shared desktop
+C:MulticastDesktop SHELL WAIT=10

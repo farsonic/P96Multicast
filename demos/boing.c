@@ -124,7 +124,8 @@ int main(void)
 	struct Window *win = NULL;
 	struct BitMap *frames[PHASES] = { 0 };
 	struct RastPort rp;
-	LONG size = 100, speed = 5, pen[3], x, y, vx, vy, g = 1, frames_left = -1;
+	LONG size = 100, speed = 5, pen[3], x, y, vx, vy, g = 1, secs = 0;
+	struct DateStamp start, now;
 	BOOL got_pens = FALSE;
 	int i, rc = RETURN_FAIL, phase = 0;
 
@@ -146,7 +147,7 @@ int main(void)
 	if (args[A_SPEED])
 		speed = *(LONG *)args[A_SPEED];
 	if (args[A_SECS])
-		frames_left = *(LONG *)args[A_SECS] * 25;
+		secs = *(LONG *)args[A_SECS];
 	if (size < 16)
 		size = 16;
 	if (size > 400)
@@ -225,6 +226,7 @@ int main(void)
 	       scr->Height);
 	fflush(stdout);
 	rc = RETURN_OK;
+	DateStamp(&start);
 
 	for (;;) {
 		struct IntuiMessage *m;
@@ -238,10 +240,15 @@ int main(void)
 				stop = TRUE;
 			ReplyMsg((struct Message *)m);
 		}
-		if (stop || frames_left == 0)
+		if (stop)
 			break;
-		if (frames_left > 0)
-			frames_left--;
+		/* SECS=: by the clock, however fast the frames go */
+		if (secs) {
+			DateStamp(&now);
+			if ((now.ds_Days - start.ds_Days) * 86400 + (now.ds_Minute - start.ds_Minute) * 60 +
+			    (now.ds_Tick - start.ds_Tick) / TICKS_PER_SECOND >= secs)
+				break;
+		}
 
 		/* a bounce: gravity down, the walls and the floor of the whole desktop */
 		vy += g;

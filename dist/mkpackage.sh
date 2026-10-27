@@ -19,13 +19,18 @@ for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat build/
 done
 rm -rf "$STAGE" build/P96Multicast.lha
 mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
-	"$PKG/Client" "$PKG/Docs" "$PKG/Source"
+	"$PKG/Client" "$PKG/Docs" "$PKG/Source" "$PKG/Scripts"
 
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Multicast.card build/Wrap.card "$PKG/Libs/Picasso96/"
 cp build/mctest build/wrapstat build/MulticastDesktop build/Boing "$PKG/C/"
 cp build/MulticastPrefs "$PKG/"
 cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
+# scripts: the shared desktop from Workbench (IconX) or a Shell; the viewer on a Mac
+cp dist/scripts/DesktopOpen dist/scripts/DesktopShell dist/scripts/DesktopBoing \
+	dist/scripts/DesktopClose "$PKG/Scripts/"
+cp dist/scripts/desktop.command dist/scripts/desktop-lan.command "$PKG/Client/"
+chmod +x "$PKG/Client/"*.command
 cp README.md "$PKG/Docs/README.md"
 cp docs/COPPER.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
 git ls-files | while read -r f; do
@@ -68,6 +73,10 @@ EOF
 # the monitor icon: a TOOL icon whose ToolTypes name the board, like P96's own
 if [ -f "$RIPTIDE_SRC/tools/mkicon.py" ]; then
 	python3 "$RIPTIDE_SRC/tools/mkicon.py" tool "$PKG/MulticastPrefs.info" >/dev/null
+	for s in DesktopOpen DesktopShell DesktopBoing DesktopClose; do
+		python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Scripts/$s.info" --tool C:IconX \
+			--tooltype "WINDOW=NIL:" >/dev/null
+	done
 	python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Devs/Monitors/Multicast.info" \
 		--tooltype "BOARDTYPE=Multicast" --tooltype "(DEST=239.255.96.1)" \
 		--tooltype "(PORT=9696)" --tooltype "(FPS=25)" --tooltype "(LOG=T:Multicast.log)" >/dev/null

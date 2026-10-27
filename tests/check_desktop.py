@@ -92,6 +92,12 @@ def main():
           abs(rb[1] - lb[1]) <= 4, "MOVE=RIGHT: the same place on monitor 2")
     check(cb is not None and cb[2] < HALF and abs((cb[0] + cb[2]) // 2 - HALF // 2) <= 6,
           "CENTRE=1: the middle of monitor 1")
+    # SHELL: a Shell in the middle of the whole desktop (after the window closed)
+    pic = load(out, "shell")
+    sb = changed_box(base, pic) if pic else None
+    print("Shell: %s" % (sb,))
+    check(sb is not None and abs((sb[0] + sb[2]) // 2 - HALF) <= 6 and
+          abs((sb[1] + sb[3]) // 2 - 240) <= 12, "SHELL: a Shell in the middle of the desktop")
     return 1 if fails else 0
 
 

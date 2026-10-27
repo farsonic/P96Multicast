@@ -110,6 +110,13 @@ EOF
 	echo 'Wait 5'
 	echo "Echo >Work:mark-centre x"
 	echo 'Wait 4'
+	echo 'Work:MulticastDesktop INFO >Work:info.log'
+	echo 'Run >NIL: Work:MulticastDesktop >>Work:info.log'
+	echo 'Wait 50'
+	echo 'Work:MulticastDesktop SHELL >>Work:info.log'
+	echo 'Wait 5'
+	echo "Echo >Work:mark-shell x"
+	echo 'Wait 4'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	echo 'Copy RAM:Multicast.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
@@ -174,6 +181,7 @@ wait $upid $vpid 2>/dev/null
 echo "---- MulticastDesktop"
 tr -d '\r' < "$work/desktop.log" 2>/dev/null
 tr -d '\r' < "$work/move.log" 2>/dev/null
+tr -d '\r' < "$work/info.log" 2>/dev/null
 echo "---- Boing"
 tr -d '\r' < "$work/boing.log" 2>/dev/null
 python3 tests/check_desktop.py "$OUT" || status=1

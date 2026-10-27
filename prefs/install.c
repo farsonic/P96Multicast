@@ -510,6 +510,30 @@ static void boot_desktop(void)
 	notef("Copied C:MulticastDesktop to %s: the desktop opens at every boot%s", wb, "");
 }
 
+/* a script from the package's Scripts/ to C:, marked as a script, so its name runs it */
+static void install_script(const char *file)
+{
+	static const char *from[] = { "PROGDIR:Scripts/", "Scripts/" };
+	char src[100], dst[100];
+	int i;
+
+	snprintf(dst, sizeof(dst), "C:%s", file);
+	for (i = 0; i < 2; i++) {
+		snprintf(src, sizeof(src), "%s%s", from[i], file);
+		if (exists(src) && !same_file(src, dst))
+			break;
+	}
+	if (i == 2)
+		return;
+	if (copy_file(src, dst)) {
+		if (!dry)
+			SetProtection((STRPTR)dst, FIBF_SCRIPT);
+		notef("Copied %s to %s", src, dst);
+	} else {
+		notef("Could not copy %s to %s", src, dst);
+	}
+}
+
 /* MulticastPrefs itself to SYS:Prefs, with its icon, so it is at hand */
 static void install_program(void)
 {
@@ -776,10 +800,12 @@ static void summary(void)
 
 	say("After the reboot:");
 	if (!*card && *split && strcmp(split, "1x1")) {
-		if (prefs_value(find_setting("ATBOOT"))[0] != '1')
-			say("  open the desktop: Run >NIL: MulticastDesktop");
-		else
+		if (prefs_value(find_setting("ATBOOT"))[0] != '1') {
+			say("  open the desktop: DesktopOpen (or Execute C:DesktopOpen, or");
+			say("  double-click Scripts/DesktopOpen): it opens a Shell in the middle too");
+		} else {
 			say("  the desktop opens by itself (SYS:WBStartup/MulticastDesktop)");
+		}
 		say("  hotkeys: ctrl alt + cursor keys: the active window to the next monitor;");
 		say("  ctrl alt 1-4: to the middle of that monitor; ctrl alt m: desktop or Workbench");
 		say("  Boing bounces a ball over all of it");
@@ -859,6 +885,10 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	install_tool("wrapstat");
 	install_tool("MulticastDesktop");
 	install_tool("Boing");
+	install_script("DesktopOpen");
+	install_script("DesktopShell");
+	install_script("DesktopBoing");
+	install_script("DesktopClose");
 	boot_desktop();
 	install_program();
 

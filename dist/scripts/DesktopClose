@@ -1,0 +1,2 @@
+; P96Multicast: close the shared desktop (once its windows are closed)
+C:MulticastDesktop CLOSE

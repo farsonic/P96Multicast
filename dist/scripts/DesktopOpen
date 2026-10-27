@@ -1,0 +1,5 @@
+; P96Multicast: the shared desktop, and a Shell in the middle of it.
+; MulticastPrefs' Desktop page sets its size; Ctrl-Alt-M swaps it with
+; the Workbench, Ctrl-Alt + cursor keys move a window to the next monitor.
+Run >NIL: C:MulticastDesktop
+C:MulticastDesktop SHELL WAIT=10
