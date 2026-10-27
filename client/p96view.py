@@ -110,6 +110,7 @@ class Screen:
         self.valid = bytearray()
         self.palette = bytearray(256 * 3)
         self.frames = 0
+        self.frame = 0               # the number of the last FRAME (SPLIT=: the same for all parts)
         self.dirty = None            # (x0, y0, x1, y1) changed since the last take_dirty()
         self.all_dirty = True
         self.pointer = None          # (w, h, hotx, hoty, rgba bytes)
@@ -225,6 +226,8 @@ class Screen:
             return True
         if rtype == FRAME:
             self.frames += 1
+            if len(b) >= 4:
+                self.frame = struct.unpack(">I", b[:4])[0]
             return True
         if rtype == POINTER:
             self._pointer(b)
@@ -489,11 +492,44 @@ class Viewer:
         self.last_pixels = 0
         self.amiga = None
         self.warned_old = False
+        # in step (several parts of one screen): stop after each FRAME, until
+        # release(), so a picture is never shown with half of the next update
+        self.in_step = False
+        self.stopped = False
+        self.waiting = []
         self.stats = {"datagrams": 0, "bytes": 0, "repairs": 0, "naks": 0, "wants": 0,
                       "gaps": 0, "dups": 0, "bad": 0}
 
     def feed(self, data, addr=None, now=None):
         """One datagram. Returns the record types applied, in order."""
+        if self.stopped:
+            self.waiting.append((data, addr))
+            return []
+        types = self._feed(data, addr, now)
+        if self.in_step and FRAME in types:
+            self.stopped = True
+        return types
+
+    def release(self):
+        """Go on after a FRAME: what waited, up to the next FRAME."""
+        self.stopped = False
+        types = []
+        while self.waiting and not self.stopped:
+            data, addr = self.waiting.pop(0)
+            types += self.feed(data, addr)
+        return types
+
+    def frame_waiting(self):
+        """Does a whole update wait (a FRAME among what waits)?"""
+        for data, _addr in self.waiting:
+            pos, n = 12, len(data)
+            while pos + 3 <= n:
+                if data[pos] == FRAME:
+                    return True
+                pos += 3 + ((data[pos + 1] << 8) | data[pos + 2])
+        return False
+
+    def _feed(self, data, addr=None, now=None):
         now = time.monotonic() if now is None else now
         st = self.stats
         st["datagrams"] += 1
@@ -759,6 +795,59 @@ def receive_some(sock, viewer, limit=4000):
     return types
 
 
+class InStep:
+    """
+    The parts of one screen (SPLIT=) shown together. The card's parts keep
+    in step and number their FRAMEs alike; each head stops at a FRAME, and
+    the picture is shown when every head has stopped at the same one, or a
+    moment later (a part with nothing new sends no FRAME).
+    """
+    WAIT = 0.025
+
+    def __init__(self, heads):
+        self.heads = heads
+        self.since = None
+        for h in heads:
+            h.viewer.in_step = len(heads) > 1
+
+    def receive(self):
+        """Take what arrived. True when a picture is ready to show."""
+        framed = False
+        for h in self.heads:
+            if FRAME in receive_some(h.sock, h.viewer):
+                framed = True
+        if len(self.heads) == 1:
+            return framed
+        stopped = [h for h in self.heads if h.viewer.stopped]
+        if not stopped:
+            return False
+        now = time.monotonic()
+        if self.since is None:
+            self.since = now
+        # a part behind the others catches up first
+        top = max(h.screen.frame for h in stopped)
+        for h in stopped:
+            while h.screen.frame != top and h.viewer.stopped and h.viewer.frame_waiting():
+                h.viewer.release()
+        stopped = [h for h in self.heads if h.viewer.stopped]
+        frames = set(h.screen.frame for h in stopped)
+        if len(stopped) < len(self.heads) or len(frames) > 1:
+            if now - self.since < self.WAIT:
+                return False
+            # late: catch up on what is waiting, to the last whole update
+            for h in stopped:
+                while h.viewer.stopped and h.viewer.frame_waiting():
+                    h.viewer.release()
+        return True
+
+    def shown(self):
+        """After showing the picture: on to the next."""
+        self.since = None
+        for h in self.heads:
+            if h.viewer.stopped:
+                h.viewer.release()
+
+
 def run_headless(heads, args):
     """Save the latest complete picture to args.snapshot, at most once a second."""
     import select
@@ -778,17 +867,16 @@ def run_headless(heads, args):
             if args.raw:
                 write_raw_wall(args.raw, heads)
 
+    step = InStep(heads)
     while end is None or time.time() < end:
-        select.select([h.sock for h in heads], [], [], 0.05)
-        framed = False
-        for h in heads:
-            if FRAME in receive_some(h.sock, h.viewer):
-                framed = True
-        if framed and all(h.screen.complete() for h in heads):
-            now = time.time()
-            if now - last_save >= 1:
-                save()
-                last_save = now
+        select.select([h.sock for h in heads], [], [], 0.01)
+        if step.receive():
+            if all(h.screen.complete() for h in heads):
+                now = time.time()
+                if now - last_save >= 1:
+                    save()
+                    last_save = now
+            step.shown()
     if all(h.screen.complete() for h in heads):
         save()
     for h in heads:
@@ -890,19 +978,19 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     canvas.itemconfigure(st["ptr_item"], state="hidden")
 
     state["shown"] = 0.0
+    step = InStep(heads)
 
     def poll():
         # show only whole updates: when the card says one is complete (FRAME),
-        # or now and then anyway
-        framed = False
-        for h in heads:
-            if FRAME in receive_some(h.sock, h.viewer):
-                framed = True
+        # all parts of the screen at the same moment, or now and then anyway
+        ready = step.receive()
         now = time.monotonic()
-        if framed or now - state["shown"] > 0.25:
+        if ready or now - state["shown"] > 0.25:
             present()
             state["shown"] = now
-        root.after(10, poll)
+            if ready:
+                step.shown()
+        root.after(5, poll)
 
     poll()
     root.mainloop()

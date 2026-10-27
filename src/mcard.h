@@ -22,7 +22,7 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "2.1"
+#define MC_VERSION_STR "2.2"
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -145,6 +145,16 @@ struct McCard {
 	volatile ULONG ring_lost;    /* times it overflowed: compare everything */
 	volatile UWORD ring_full;
 	UWORD  nviews;               /* senders: SPLIT= columns x rows */
+
+	/*
+	 * SPLIT=: the parts keep in step. The first part's sender starts each
+	 * pass: it bumps tick, fixes tick_head (how far on the ring this pass
+	 * goes) and signals the others (CTRL-F), so every part shows the same
+	 * moment and says so in its FRAME.
+	 */
+	volatile ULONG tick, tick_head;
+	struct Task *view_task[MC_MAXVIEWS];
+	volatile UWORD lead_gone;    /* the first part's sender has stopped */
 
 	/* POINTER=1: the hardware pointer */
 	volatile ULONG ptr_serial;   /* shape or colours changed */

@@ -765,7 +765,12 @@ static void order(struct Sender *s, struct McRec *r)
 		sx += cx;
 		sy += cy;
 		if (sx < 0 || sy < 0 || sx + w > s->w || sy + h > s->h) {
-			/* from outside the screen: the viewers don't have that */
+			/*
+			 * from outside the screen (another part of it): the viewers
+			 * don't have that. Compare now, so it shows with the other
+			 * part's copy, and again once the drawing is surely done.
+			 */
+			mark_tiles(s, s->heat, x, y, w, h, 1);
 			mark_tiles(s, s->soon, x, y, w, h, 3);
 			return;
 		}
@@ -830,7 +835,11 @@ static void order(struct Sender *s, struct McRec *r)
 	}
 
 	default:
-		/* drawn some other way: compare, from the next pass on */
+		/*
+		 * drawn some other way: compare now (it is most likely drawn by
+		 * the time this pass looks), and from the next pass on
+		 */
+		mark_tiles(s, s->heat, x, y, w, h, 1);
 		mark_tiles(s, s->soon, x, y, w, h, 3);
 		break;
 	}
@@ -854,8 +863,11 @@ static void take_orders(struct Sender *s)
 		s->any_heat = TRUE;
 		return;
 	}
-	head = mc->ring_head;
+	/* as far as this pass goes, for every part alike */
+	head = mc->nviews > 1 ? mc->tick_head : mc->ring_head;
 	tail = mc->view_tail[s->view];
+	if (head - tail > MC_RING_SIZE)
+		head = mc->ring_head;
 	while (tail != head && room_orders(s)) {
 		struct McRec *r = (struct McRec *)(mc->ring + (tail & (MC_RING_SIZE - 1)));
 
@@ -1156,7 +1168,7 @@ static void pass(struct Sender *s)
 	if (s->emitted) {
 		UBYTE *p = rec(s, CU_FRAME, 4);
 
-		put32(p, ++s->frame);
+		put32(p, mc->nviews > 1 ? mc->tick : ++s->frame);
 	}
 	finish(s);
 	transmit(s);
@@ -1305,12 +1317,41 @@ static void SenderMain(void)
 	ticks = TICKS_PER_SECOND / mc->cfg.fps;
 	if (!ticks)
 		ticks = 1;
+	mc->view_task[s->view] = (struct Task *)me;
 	while (s->sockbase && !mc->sender_quit) {
 		if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 			break;
+		if (mc->nviews > 1 && !s->view) {
+			/* the first part starts the pass for all of them */
+			UWORD v;
+
+			Forbid();
+			mc->tick++;
+			mc->tick_head = mc->ring_head;
+			for (v = 1; v < mc->nviews; v++)
+				if (mc->view_task[v])
+					Signal(mc->view_task[v], SIGBREAKF_CTRL_F);
+			Permit();
+		}
 		pass(s);
-		Delay(ticks);
+		if (mc->nviews > 1 && s->view && !mc->lead_gone) {
+			if (Wait(SIGBREAKF_CTRL_F | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+				break;
+		} else {
+			Delay(ticks);
+		}
 	}
+	Forbid();
+	mc->view_task[s->view] = NULL;
+	if (!s->view && mc->nviews > 1) {
+		UWORD v;
+
+		mc->lead_gone = 1;
+		for (v = 1; v < mc->nviews; v++)
+			if (mc->view_task[v])
+				Signal(mc->view_task[v], SIGBREAKF_CTRL_F);
+	}
+	Permit();
 
 	if (s->sockbase) {
 		struct Library *SocketBase = s->sockbase;
@@ -1353,6 +1394,8 @@ BOOL mc_sender_start(struct McCard *mc)
 	if (n < 1 || n > MC_MAXVIEWS)
 		n = 1;
 	mc->nviews = n;
+	mc->tick_head = mc->ring_head;
+	mc->lead_gone = 0;
 	for (v = 0; v < n; v++) {
 		char *name = names[mc->boardnum][v];
 
