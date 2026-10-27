@@ -49,7 +49,7 @@
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.0"
+#define MD_VERSION "1.1"
 #define PORTNAME "MulticastDesktop"
 
 static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE ")";

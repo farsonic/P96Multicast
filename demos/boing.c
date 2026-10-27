@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char version[] = "$VER: Boing 1.0 (26.10.2026)";
+static const char version[] = "$VER: Boing 1.1 (27.10.2026)";
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
