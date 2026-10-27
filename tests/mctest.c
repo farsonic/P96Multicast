@@ -55,6 +55,9 @@
 #include <proto/dos.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <devices/input.h>
+#include <devices/inputevent.h>
+#include <intuition/intuitionbase.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -84,9 +87,9 @@ void __UnLockBitMap(__reg("a6") void *, __reg("a0") APTR lock) = "\tjsr\t-174(a6
 #define LBMI_BYTESPERROW  0x84001006UL
 #define LBMI_BASEADDRESS  0x84001007UL
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K";
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S";
 enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_COUNT };
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_COUNT };
 
 static const char *blit_names[MC_BLIT_KINDS + 1] = {
 	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
@@ -751,6 +754,64 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, int co
 	return RETURN_OK;
 }
 
+/*
+ * MOUSE=dx,dy,n: n moves of the mouse by dx, dy, as from the Amiga's own
+ * mouse (relative), a frame apart: for MulticastDesktop's crossing over.
+ */
+static int mouse_moves(const char *v)
+{
+	struct MsgPort *port = CreateMsgPort();
+	struct IOStdReq *io = port ? (struct IOStdReq *)CreateIORequest(port, sizeof(*io)) : NULL;
+	struct InputEvent ie;
+	int dx = 0, dy = 0, n = 1, i;
+
+	if (sscanf(v, "%d,%d,%d", &dx, &dy, &n) < 2 || !io ||
+	    OpenDevice("input.device", 0, (struct IORequest *)io, 0)) {
+		printf("mctest: MOUSE=dx,dy,count, and input.device\n");
+		if (io)
+			DeleteIORequest((struct IORequest *)io);
+		if (port)
+			DeleteMsgPort(port);
+		return RETURN_FAIL;
+	}
+	for (i = 0; i < n; i++) {
+		memset(&ie, 0, sizeof(ie));
+		ie.ie_Class = IECLASS_RAWMOUSE;
+		ie.ie_Code = IECODE_NOBUTTON;
+		ie.ie_Qualifier = IEQUALIFIER_RELATIVEMOUSE;
+		ie.ie_X = dx;
+		ie.ie_Y = dy;
+		io->io_Command = IND_WRITEEVENT;
+		io->io_Data = &ie;
+		io->io_Length = sizeof(ie);
+		DoIO((struct IORequest *)io);
+		Delay(1);
+	}
+	CloseDevice((struct IORequest *)io);
+	DeleteIORequest((struct IORequest *)io);
+	DeleteMsgPort(port);
+	return RETURN_OK;
+}
+
+/* WHERE: the screen in front, the mouse on it, and the active window */
+static void where(void)
+{
+	struct IntuitionBase *ib = (struct IntuitionBase *)IntuitionBase;
+	struct Screen *scr = ib->FirstScreen;
+	struct Window *w = ib->ActiveWindow;
+	const char *name = "?";
+
+	if (scr && (scr->Flags & SCREENTYPE) == WBENCHSCREEN)
+		name = "Workbench";
+	else if (scr && scr->Title)
+		name = (const char *)scr->Title;
+	else if (scr && scr->DefaultTitle)
+		name = (const char *)scr->DefaultTitle;
+	printf("front %s %dx%d mouse %d %d active %s\n", name, scr ? scr->Width : 0,
+	       scr ? scr->Height : 0, scr ? scr->MouseX : 0, scr ? scr->MouseY : 0,
+	       w && w->Title ? (const char *)w->Title : "-");
+}
+
 int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
@@ -776,6 +837,17 @@ int main(void)
 	if (args[A_SECS])
 		secs = *(LONG *)args[A_SECS];
 
+	if (args[A_MOUSE]) {
+		int rc = mouse_moves((const char *)args[A_MOUSE]);
+
+		FreeArgs(rda);
+		return rc;
+	}
+	if (args[A_WHERE]) {
+		where();
+		FreeArgs(rda);
+		return RETURN_OK;
+	}
 	if (args[A_STATUS]) {
 		status();
 		FreeArgs(rda);

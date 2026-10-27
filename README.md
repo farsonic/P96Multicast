@@ -123,7 +123,11 @@ page sets it up with a picture of the monitors (layout, size, colours,
 open at boot). `MulticastDesktop` (prefs/desktop.c) opens the desktop as a
 public screen and is a commodity with hotkeys: ctrl alt + cursor keys
 moves the active window to the next monitor, ctrl alt 1-4 centres it on
-one, ctrl alt m swaps the desktop and the Workbench. `Boing`
+one, ctrl alt m swaps the desktop and the Workbench. `WORKBENCH=` (LEFT1,
+BELOW2, ...; the Desktop page's picture, click to move it) says where the
+Workbench sits next to the desktop: pushing the mouse over that edge
+brings the Workbench to the front with the pointer on its matching edge and
+its last active window active again, and back the same way. `Boing`
 (demos/boing.c) bounces the ball over all of it.
 
 ## Watching

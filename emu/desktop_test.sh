@@ -59,6 +59,7 @@ COLOURS=16
 PUBSCREEN=MULTICAST
 DEFAULTSCREEN=1
 INPUT=1
+WORKBENCH=LEFT1
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
@@ -126,6 +127,22 @@ EOF
 		echo 'EndIf'
 	done
 	echo 'Wait 2'
+	# WORKBENCH=LEFT1: the mouse over the desktop's left edge to the
+	# Workbench, and over the Workbench's right edge back
+	echo 'Work:MulticastDesktop'
+	echo 'Wait 2'
+	echo 'Work:mctest WHERE >Work:where0.log'
+	# to the edge in one move, then small pushes over it
+	echo 'Work:mctest MOUSE=-1000,0,1'
+	echo 'Wait 1'
+	echo 'Work:mctest MOUSE=-1,0,2'
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:where1.log'
+	echo 'Work:mctest MOUSE=1000,0,1'
+	echo 'Wait 1'
+	echo 'Work:mctest MOUSE=1,0,2'
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:where2.log'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	echo 'Copy RAM:Multicast.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
@@ -215,6 +232,30 @@ if [ $# -ge 3 ] && [ $(( ($2 - 100) * ($2 - 100) + ($3 - 100) * ($3 - 100) )) -l
 	echo "PASS: INPUT: the pointer where the viewer put it ($2,$3 on monitor 2)"
 else
 	echo "FAIL: INPUT: the pointer where the viewer put it ('$ptr')"
+	status=1
+fi
+echo "---- crossing over (WORKBENCH=LEFT1)"
+for n in 0 1 2; do tr -d '\r' < "$work/where$n.log" 2>/dev/null; done
+w0=$(tr -d '\r' < "$work/where0.log" 2>/dev/null)
+w1=$(tr -d '\r' < "$work/where1.log" 2>/dev/null)
+w2=$(tr -d '\r' < "$work/where2.log" 2>/dev/null)
+# "front NAME WxH mouse X Y active TITLE"
+front() { echo "$1" | sed -n 's/^front \(.*\) [0-9]*x[0-9]* mouse .*/\1/p'; }
+width() { echo "$1" | sed -n 's/.* \([0-9]*\)x[0-9]* mouse .*/\1/p'; }
+mousex() { echo "$1" | sed -n 's/.* mouse \([0-9-]*\) .*/\1/p'; }
+x1=$(mousex "$w1")
+if [ "$(front "$w1")" = Workbench ] && [ -n "$x1" ] && [ "$x1" -ge $(( $(width "$w1") - 12 )) ]; then
+	echo "PASS: the mouse over the desktop's left edge: the Workbench, at its right edge"
+else
+	echo "FAIL: the mouse over the desktop's left edge: the Workbench, at its right edge ('$w1')"
+	status=1
+fi
+x2=$(mousex "$w2")
+if [ "$(front "$w2")" = "$(front "$w0")" ] && [ -n "$x2" ] && [ "$x2" -le 12 ] &&
+   [ "${w2#* active }" = "${w0#* active }" ]; then
+	echo "PASS: ... and back: the desktop, at its left edge, the same window active"
+else
+	echo "FAIL: ... and back: the desktop, at its left edge, the same window active ('$w0' / '$w2')"
 	status=1
 fi
 python3 tests/check_desktop.py "$OUT" || status=1

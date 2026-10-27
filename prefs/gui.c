@@ -49,6 +49,7 @@ static const char *page_names[] = { "Desktop", "Network", "Display", "Wrap.card"
 #define F_COLOURS 11    /* COLOURS */
 #define F_OPEN    12    /* open the desktop now */
 #define F_CLOSE   13
+#define F_WBPOS   14    /* where the Workbench is: WORKBENCH */
 
 struct Field {
 	UBYTE page;
@@ -61,8 +62,9 @@ struct Field {
 };
 
 static const struct Field fields[] = {
-	{ 0, F_MAP,     0,             "",                 NULL, 10 },
+	{ 0, F_MAP,     0,             "",                 NULL, 12 },
 	{ 0, F_LAYOUT,  CYCLE_KIND,    "Monitors",         NULL },
+	{ 0, F_WBPOS,   CYCLE_KIND,    "Workbench is",     NULL },
 	{ 0, F_MONSIZE, CYCLE_KIND,    "Each monitor",     NULL },
 	{ 0, F_COLOURS, CYCLE_KIND,    "Colours",          NULL },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Programs open on it", "DEFAULTSCREEN" },
@@ -127,6 +129,12 @@ static const char *colour_names[] = { "256 (8 bit)", "65536 (16 bit)", "16 milli
                                       NULL };
 static const char *colour_value[] = { "8", "16", "32" };
 static int layout_sel, size_sel, colour_sel;
+
+/* where the Workbench can be: next to an outer edge of a monitor, or nowhere */
+#define MAXWBPOS 13
+static int wb_npos, wb_sel, wb_side[MAXWBPOS], wb_mon[MAXWBPOS];
+static char wb_text[MAXWBPOS][24];
+static const char *wb_labels[MAXWBPOS + 1];
 static WORD map_x, map_y, map_w, map_h;
 static struct DrawInfo *dri;
 
@@ -287,8 +295,54 @@ static int pick(const char **values, int n, const char *v)
 	return -1;
 }
 
+static int layout_cols(void)
+{
+	return layout_split[layout_sel][0] - '0';
+}
+
+static int layout_rows(void)
+{
+	return layout_split[layout_sel][2] - '0';
+}
+
+/* the places for the Workbench around this layout; the one nearest side, mon */
+static void wb_positions(int side, int mon)
+{
+	static const char *names[] = { "", "Left of", "Right of", "Above", "Below" };
+	int c = layout_cols(), r = layout_rows(), i, n = 0, sd;
+
+	for (sd = WB_LEFT; sd <= WB_BELOW; sd++) {
+		int count = sd <= WB_RIGHT ? r : c;
+
+		for (i = 0; i < count && n < MAXWBPOS - 1; i++, n++) {
+			wb_side[n] = sd;
+			wb_mon[n] = sd == WB_LEFT ? i * c : sd == WB_RIGHT ? i * c + c - 1 :
+			            sd == WB_ABOVE ? i : (r - 1) * c + i;
+			snprintf(wb_text[n], sizeof(wb_text[n]), "%s monitor %d", names[sd],
+			         wb_mon[n] + 1);
+		}
+	}
+	wb_side[n] = WB_NONE;
+	wb_mon[n] = 0;
+	snprintf(wb_text[n], sizeof(wb_text[n]), "Nowhere (hotkey only)");
+	n++;
+	wb_npos = n;
+	for (i = 0; i < n; i++)
+		wb_labels[i] = wb_text[i];
+	wb_labels[n] = NULL;
+
+	if (side != WB_NONE)
+		wb_fit(&side, &mon, c, r);
+	wb_sel = 0;
+	for (i = 0; i < n; i++)
+		if (wb_side[i] == side && (side == WB_NONE || wb_mon[i] == mon))
+			wb_sel = i;
+}
+
 static void desktop_from_settings(void)
 {
+	int side, mon;
+
 	layout_sel = pick(layout_split, 6, prefs_value(find_setting("SPLIT")));
 	size_sel = pick(size_value, 6, prefs_value(find_setting("MONITOR")));
 	colour_sel = pick(colour_value, 3, prefs_value(find_setting("COLOURS")));
@@ -298,6 +352,103 @@ static void desktop_from_settings(void)
 		size_sel = 1;
 	if (colour_sel < 0)
 		colour_sel = 1;
+	if (!wb_place(prefs_value(find_setting("WORKBENCH")), &side, &mon)) {
+		side = WB_LEFT;
+		mon = 0;
+	}
+	wb_positions(side, mon);
+}
+
+/* the monitor size MONITOR= stands for */
+static void monitor_size(UWORD *mw, UWORD *mh)
+{
+	const char *sz = size_value[size_sel];
+
+	*mw = 0;
+	while (*sz >= '0' && *sz <= '9')
+		*mw = *mw * 10 + *sz++ - '0';
+	sz++;
+	*mh = 0;
+	while (*sz >= '0' && *sz <= '9')
+		*mh = *mh * 10 + *sz++ - '0';
+}
+
+/*
+ * Where the map puts the monitors: top left, and one monitor's size; room
+ * is left around them for the Workbench.
+ */
+static void map_geometry(WORD *ox, WORD *oy, WORD *cw, WORD *ch)
+{
+	UWORD c = layout_cols(), r = layout_rows(), mw, mh;
+	WORD avail_h = map_h - win->RPort->TxHeight - 6;
+
+	monitor_size(&mw, &mh);
+	*cw = (LONG)(map_w - 8) * 10 / (c * 10 + 13);
+	*ch = (LONG)*cw * mh / mw;
+	if ((LONG)*ch * (r * 10 + 13) > avail_h * 10L) {
+		*ch = (LONG)avail_h * 10 / (r * 10 + 13);
+		*cw = (LONG)*ch * mw / mh;
+	}
+	*ox = map_x + (map_w - *cw * c) / 2;
+	*oy = map_y + 2 + (avail_h - *ch * r) / 2;
+}
+
+/* the Workbench's box on the map, at place n */
+static void wb_box(int n, WORD ox, WORD oy, WORD cw, WORD ch, WORD *bx, WORD *by, WORD *bw,
+                   WORD *bh)
+{
+	int c = layout_cols(), m = wb_mon[n];
+	WORD mx = ox + (m % c) * cw, my = oy + (m / c) * ch;
+
+	*bw = cw * 6 / 10;
+	*bh = ch * 6 / 10;
+	switch (wb_side[n]) {
+	case WB_LEFT:
+		*bx = ox - 3 - *bw;
+		*by = my + (ch - *bh) / 2;
+		break;
+	case WB_RIGHT:
+		*bx = ox + c * cw + 3;
+		*by = my + (ch - *bh) / 2;
+		break;
+	case WB_ABOVE:
+		*bx = mx + (cw - *bw) / 2;
+		*by = oy - 3 - *bh;
+		break;
+	default:
+		*bx = mx + (cw - *bw) / 2;
+		*by = oy + layout_rows() * ch + 3;
+		break;
+	}
+}
+
+/* a click on the map: the Workbench to the place nearest it */
+static BOOL wb_click(WORD x, WORD y)
+{
+	WORD ox, oy, cw, ch, bx, by, bw, bh;
+	LONG best = -1, d;
+	int i, pick = -1;
+
+	if (page != PAGE_DESKTOP || x < map_x || y < map_y || x >= map_x + map_w ||
+	    y >= map_y + map_h)
+		return FALSE;
+	map_geometry(&ox, &oy, &cw, &ch);
+	if (x >= ox && x < ox + layout_cols() * cw && y >= oy && y < oy + layout_rows() * ch)
+		return FALSE;   /* on the monitors */
+	for (i = 0; i < wb_npos; i++) {
+		if (wb_side[i] == WB_NONE)
+			continue;
+		wb_box(i, ox, oy, cw, ch, &bx, &by, &bw, &bh);
+		d = (LONG)(x - bx - bw / 2) * (x - bx - bw / 2) + (LONG)(y - by - bh / 2) * (y - by - bh / 2);
+		if (best < 0 || d < best) {
+			best = d;
+			pick = i;
+		}
+	}
+	if (pick < 0 || pick == wb_sel)
+		return FALSE;
+	wb_sel = pick;
+	return TRUE;
 }
 
 /*
@@ -309,10 +460,10 @@ static void draw_map(void)
 	struct RastPort *rp = win->RPort;
 	UWORD c = layout_split[layout_sel][0] - '0', r = layout_split[layout_sel][2] - '0';
 	UWORD mw = 640, mh = 480, i;
-	WORD fh = rp->TxHeight, cw, ch, ox, oy, avail_h = map_h - fh - 6;
+	WORD fh = rp->TxHeight, cw, ch, ox, oy;
 	UWORD fill = dri ? dri->dri_Pens[FILLPEN] : 3, text = dri ? dri->dri_Pens[FILLTEXTPEN] : 2;
 	UWORD back = dri ? dri->dri_Pens[BACKGROUNDPEN] : 0, plain = dri ? dri->dri_Pens[TEXTPEN] : 1;
-	const char *sz = size_value[size_sel], *pv = prefs_value(find_setting("PORT"));
+	const char *pv = prefs_value(find_setting("PORT"));
 	int port = 0;
 	char buf[80];
 
@@ -321,26 +472,33 @@ static void draw_map(void)
 
 	if (page != PAGE_DESKTOP)
 		return;
-	mw = 0;
-	while (*sz >= '0' && *sz <= '9')
-		mw = mw * 10 + *sz++ - '0';
-	sz++;
-	mh = 0;
-	while (*sz >= '0' && *sz <= '9')
-		mh = mh * 10 + *sz++ - '0';
+	monitor_size(&mw, &mh);
 
 	SetAPen(rp, back);
 	RectFill(rp, map_x, map_y, map_x + map_w - 1, map_y + map_h - 1);
-	/* each monitor as big as fits, keeping its shape, all of them centred */
-	cw = (map_w - 8) / c;
-	ch = (LONG)cw * mh / mw;
-	if (ch * r > avail_h) {
-		ch = avail_h / r;
-		cw = (LONG)ch * mw / mh;
-	}
-	ox = map_x + (map_w - cw * c) / 2;
-	oy = map_y + 2;
+	map_geometry(&ox, &oy, &cw, &ch);
 	SetDrMd(rp, JAM1);
+
+	/* the Workbench, where the mouse crosses over to it */
+	if (wb_side[wb_sel] != WB_NONE) {
+		WORD bx, by, bw, bh, l;
+		UWORD shine = dri ? dri->dri_Pens[SHINEPEN] : 2;
+
+		wb_box(wb_sel, ox, oy, cw, ch, &bx, &by, &bw, &bh);
+		SetAPen(rp, shine);
+		RectFill(rp, bx + 2, by + 2, bx + bw - 3, by + bh - 3);
+		DrawBevelBox(rp, bx, by, bw, bh, GT_VisualInfo, (ULONG)vi, GTBB_Recessed, TRUE,
+		             TAG_END);
+		SetAPen(rp, plain);
+		strcpy(buf, "Workbench");
+		l = TextLength(rp, (STRPTR)buf, strlen(buf));
+		if (l >= bw - 4) {
+			strcpy(buf, "WB");
+			l = TextLength(rp, (STRPTR)buf, strlen(buf));
+		}
+		Move(rp, bx + (bw - l) / 2, by + (bh - fh) / 2 + rp->TxBaseline);
+		Text(rp, (STRPTR)buf, strlen(buf));
+	}
 	for (i = 0; i < c * r; i++) {
 		WORD x = ox + (i % c) * cw, y = oy + (i / c) * ch;
 		WORD l;
@@ -526,6 +684,10 @@ static BOOL make_gadgets(struct Screen *scr)
 				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
 				                 (ULONG)layout_names, GTCY_Active, layout_sel, TAG_END);
 				break;
+			case F_WBPOS:
+				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
+				                 (ULONG)wb_labels, GTCY_Active, wb_sel, TAG_END);
+				break;
 			case F_MONSIZE:
 				g = CreateGadget(CYCLE_KIND, last[f->page], &ng, GTCY_Labels,
 				                 (ULONG)size_names, GTCY_Active, size_sel, TAG_END);
@@ -576,6 +738,16 @@ static BOOL make_gadgets(struct Screen *scr)
 		page_bottom += 6 + fh + 6 + 6 + scr->WBorBottom;
 	}
 	return TRUE;
+}
+
+/* the Workbench cycle, after the places changed */
+static void wb_show(void)
+{
+	int i = field_index(F_WBPOS);
+
+	if (i >= 0 && gad[i])
+		GT_SetGadgetAttrs(gad[i], win, NULL, GTCY_Labels, (ULONG)wb_labels,
+		                  GTCY_Active, wb_sel, TAG_END);
 }
 
 static void show_page(int n)
@@ -655,6 +827,8 @@ static BOOL collect(void)
 	prefs_set(find_setting("SPLIT"), layout_sel ? layout_split[layout_sel] : "");
 	prefs_set(find_setting("MONITOR"), size_value[size_sel]);
 	prefs_set(find_setting("COLOURS"), colour_value[colour_sel]);
+	wb_name(buf, sizeof(buf), wb_side[wb_sel], wb_mon[wb_sel]);
+	prefs_set(find_setting("WORKBENCH"), buf);
 	if (layout_sel && wrap) {
 		/* a desktop over several windows is one plain Multicast board */
 		wrap = 0;
@@ -824,6 +998,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 		                     WA_Gadgets, (ULONG)base, WA_AutoAdjust, TRUE,
 		                     WA_IDCMP, IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_GADGETUP |
 		                               IDCMP_GADGETDOWN | IDCMP_MOUSEMOVE | IDCMP_INTUITICKS |
+		                               IDCMP_MOUSEBUTTONS |
 		                               LISTVIEWIDCMP | CYCLEIDCMP,
 		                     TAG_END);
 	}
@@ -846,12 +1021,19 @@ int gui(int start_page, int timeout, const char *pubscreen)
 		while ((msg = GT_GetIMsg(win->UserPort)) != NULL) {
 			ULONG class = msg->Class;
 			UWORD code = msg->Code;
+			WORD msg_x = msg->MouseX, msg_y = msg->MouseY;
 			struct Gadget *g = (struct Gadget *)msg->IAddress;
 
 			GT_ReplyIMsg(msg);
 			switch (class) {
 			case IDCMP_CLOSEWINDOW:
 				done = TRUE;
+				break;
+			case IDCMP_MOUSEBUTTONS:
+				if (code == SELECTDOWN && wb_click(msg_x, msg_y)) {
+					wb_show();
+					draw_map();
+				}
 				break;
 			case IDCMP_REFRESHWINDOW:
 				GT_BeginRefresh(win);
@@ -928,7 +1110,14 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					i = g->GadgetID - ID_FIELD;
 					if (i >= 0 && i < NFIELDS) {
 						if (fields[i].what == F_LAYOUT) {
+							int sd = wb_side[wb_sel], mn = wb_mon[wb_sel];
+
 							layout_sel = code;
+							wb_positions(sd, mn);
+							wb_show();
+							draw_map();
+						} else if (fields[i].what == F_WBPOS) {
+							wb_sel = code;
 							draw_map();
 						} else if (fields[i].what == F_MONSIZE) {
 							size_sel = code;

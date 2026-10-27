@@ -99,7 +99,14 @@ MulticastDesktop (C:) opens the desktop and keeps it open; a commodity
                          place on it
   ctrl alt 1 ... 4       to the middle of monitor 1 ... 4
   ctrl alt m             the desktop in front, or the Workbench again
-HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers. From a Shell:
+HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers.
+The Workbench sits next to the desktop where WORKBENCH= says (LEFT1: left of
+monitor 1; RIGHT2, ABOVE1, BELOW2, ...; NONE: the hotkey only), as the
+Desktop page's picture shows: click around the monitors to move it. Push
+the mouse over that edge and the Workbench comes to the front with the
+pointer on its matching edge, and the window you last used there active;
+over the Workbench's edge back to the desktop the same way.
+From a Shell:
   MulticastDesktop MOVE=RIGHT       (LEFT, UP, DOWN)
   MulticastDesktop CENTRE=2
   MulticastDesktop SWAP

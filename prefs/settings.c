@@ -40,6 +40,7 @@ const struct Setting settings[] = {
 	{ "DEFAULTSCREEN", FILE_MC, T_BOOL, 0, 1,   "1",     "Programs open on the shared screen" },
 	{ "BEHIND",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen behind the Workbench" },
 	{ "ATBOOT",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen at every boot (WBStartup)" },
+	{ "WORKBENCH", FILE_MC, T_PLACE, 0, 0,      "LEFT1", "Where the Workbench is next to the desktop: LEFT1, RIGHT2, BELOW1, ... or NONE; the mouse crosses over there" },
 	{ "HOTKEYS",   FILE_MC, T_TEXT, 0, 31,      "ctrl+alt", "Qualifiers of MulticastDesktop's hotkeys, + between them" },
 	{ "VRAM",      FILE_MC, T_NUM,  1, 256,     "8",     "Video memory per board, MB (at boot)" },
 	{ "MAXWIDTH",  FILE_MC, T_NUM,  320, 4096,  "1920",  "Widest built-in mode" },
@@ -245,6 +246,58 @@ static BOOL parse_long(const char **p, LONG *out)
 }
 
 /* why the value won't do, or NULL */
+static const char *wb_sides[] = { "NONE", "LEFT", "RIGHT", "ABOVE", "BELOW" };
+
+BOOL wb_place(const char *v, int *side, int *mon)
+{
+	int i, j;
+
+	for (i = 0; i < 5; i++) {
+		for (j = 0; wb_sides[i][j]; j++)
+			if ((v[j] | 32) != (wb_sides[i][j] | 32))
+				break;
+		if (wb_sides[i][j])
+			continue;
+		*side = i;
+		*mon = 0;
+		if (!v[j])
+			return TRUE;
+		if (i && v[j] >= '1' && v[j] <= '4' && !v[j + 1]) {
+			*mon = v[j] - '1';
+			return TRUE;
+		}
+		return FALSE;
+	}
+	return FALSE;
+}
+
+void wb_fit(int *side, int *mon, int cols, int rows)
+{
+	int c, r;
+
+	if (*mon >= cols * rows)
+		*mon = 0;
+	c = *mon % cols;
+	r = *mon / cols;
+	if (*side == WB_LEFT)
+		c = 0;
+	else if (*side == WB_RIGHT)
+		c = cols - 1;
+	else if (*side == WB_ABOVE)
+		r = 0;
+	else if (*side == WB_BELOW)
+		r = rows - 1;
+	*mon = r * cols + c;
+}
+
+void wb_name(char *buf, int len, int side, int mon)
+{
+	if (side <= WB_NONE || side > WB_BELOW)
+		snprintf(buf, len, "NONE");
+	else
+		snprintf(buf, len, "%s%d", wb_sides[side], mon + 1);
+}
+
 const char *prefs_check(const struct Setting *s, const char *v)
 {
 	static char why[80];
@@ -273,6 +326,12 @@ const char *prefs_check(const struct Setting *s, const char *v)
 				return "must be an IPv4 address, like 239.255.96.1";
 		}
 		return *p ? "must be an IPv4 address, like 239.255.96.1" : NULL;
+	case T_PLACE: {
+		int side, mon;
+
+		return wb_place(v, &side, &mon) ? NULL :
+		       "must be LEFT, RIGHT, ABOVE or BELOW and a monitor (LEFT1, BELOW2), or NONE";
+	}
 	case T_TEXT:
 		for (i = 0; v[i]; i++)
 			if (v[i] == ' ' || v[i] == '\t')

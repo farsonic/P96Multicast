@@ -13,6 +13,13 @@
  *   ctrl alt 1 ... 4        to the middle of monitor 1 ... 4
  *   ctrl alt m              the desktop in front, or the Workbench again
  *
+ * WORKBENCH= says where the Workbench is, next to the desktop: LEFT1 is
+ * left of monitor 1, BELOW2 below monitor 2, and so on. Pushing the mouse
+ * over that edge crosses to the Workbench: it comes to the front, the
+ * pointer goes to the matching place on its edge, and the window last
+ * active there is active again; over the Workbench's edge back, the same
+ * for the desktop. WORKBENCH=NONE: the hotkey only.
+ *
  * Exchange can hide, disable and quit it. Quitting closes the desktop once
  * no windows are left on it.
  *
@@ -28,7 +35,7 @@
  *   ... WINDOW=title                    a window by its title, not the active one
  *
  * The settings are MulticastPrefs': SPLIT, MONITOR, COLOURS, PUBSCREEN,
- * DEFAULTSCREEN, BEHIND and HOTKEYS in ENV:Multicast.prefs.
+ * DEFAULTSCREEN, BEHIND, WORKBENCH and HOTKEYS in ENV:Multicast.prefs.
  */
 #include <exec/memory.h>
 #include <exec/ports.h>
@@ -38,18 +45,21 @@
 #include <intuition/intuitionbase.h>
 #include <intuition/screens.h>
 #include <graphics/displayinfo.h>
+#include <graphics/layers.h>
+#include <devices/inputevent.h>
 #include <libraries/commodities.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
+#include <proto/layers.h>
 #include <proto/commodities.h>
 #include <clib/alib_protos.h>
 #include <stdio.h>
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.1"
+#define MD_VERSION "1.2"
 #define PORTNAME "MulticastDesktop"
 
 static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE ")";
@@ -57,6 +67,7 @@ static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *CxBase;
+struct Library *LayersBase;
 
 static const char template[] = "MOVE/K,CENTRE=CENTER/K/N,SWAP/S,CLOSE/S,WINDOW/K,SHELL/S,WAIT/K/N,INFO/S";
 enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_COUNT };
@@ -64,6 +75,7 @@ enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_C
 /* the desktop: C x R monitors of MW x MH */
 static UWORD cols = 1, rows = 1, mw = 800, mh = 600, depth = 16;
 static char pubname[MAXPUBSCREENNAME + 1] = "MULTICAST";
+static int wb_side = WB_LEFT, wb_mon;     /* WORKBENCH=: where the Workbench is */
 static BOOL from_wb;
 
 /* ---------------------------------------------------------------- settings */
@@ -101,6 +113,9 @@ static void read_settings(void)
 		strncpy(pubname, v, MAXPUBSCREENNAME);
 		pubname[MAXPUBSCREENNAME] = 0;
 	}
+	if (!wb_place(prefs_value(find_setting("WORKBENCH")), &wb_side, &wb_mon))
+		wb_side = WB_NONE;
+	wb_fit(&wb_side, &wb_mon, cols, rows);
 }
 
 static BOOL setting_on(const char *key)
@@ -274,6 +289,138 @@ static void swap(struct Screen *scr)
 	}
 }
 
+/* ---------------------------------------------------------------- crossing over */
+
+/* the window last active on the desktop, and on the Workbench */
+static struct Window *last_desk, *last_wb;
+static int pushes;
+
+/* is w (still) a window on scr? */
+static BOOL window_on(struct Screen *scr, struct Window *w)
+{
+	struct Window *x;
+	ULONG lock = LockIBase(0);
+
+	for (x = scr->FirstWindow; x && x != w; x = x->NextWindow)
+		;
+	UnlockIBase(lock);
+	return x != NULL;
+}
+
+/*
+ * To the Workbench (to_wb) or the desktop: in front, the pointer at frac
+ * (0-65535) along the edge they share, and a window there active again.
+ */
+static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
+{
+	static struct IEPointerPixel pp;
+	static struct InputEvent ie;
+	struct Screen *wb = LockPubScreen((STRPTR)"Workbench"), *to;
+	struct Window *act = IntuitionBase->ActiveWindow, *w;
+	WORD mwid = desk->Width / cols, mhei = desk->Height / rows;
+	WORD mx0 = (wb_mon % cols) * mwid, my0 = (wb_mon / cols) * mhei;
+	WORD x, y;
+
+	if (!wb)
+		return;
+	to = to_wb ? wb : desk;
+	if (act && act->WScreen == (to_wb ? desk : wb)) {
+		if (to_wb)
+			last_desk = act;
+		else
+			last_wb = act;
+	}
+	if (to_wb) {
+		x = wb_side == WB_LEFT ? wb->Width - 3 : wb_side == WB_RIGHT ? 2 :
+		    (WORD)((frac * wb->Width) >> 16);
+		y = wb_side == WB_ABOVE ? wb->Height - 3 : wb_side == WB_BELOW ? 2 :
+		    (WORD)((frac * wb->Height) >> 16);
+	} else {
+		x = wb_side == WB_LEFT ? 2 : wb_side == WB_RIGHT ? desk->Width - 3 :
+		    mx0 + (WORD)((frac * mwid) >> 16);
+		y = wb_side == WB_ABOVE ? 2 : wb_side == WB_BELOW ? desk->Height - 3 :
+		    my0 + (WORD)((frac * mhei) >> 16);
+	}
+	ScreenToFront(to);
+
+	/* the pointer across, as an event, as a tablet would */
+	pp.iepp_Screen = to;
+	pp.iepp_Position.X = x;
+	pp.iepp_Position.Y = y;
+	memset(&ie, 0, sizeof(ie));
+	ie.ie_Class = IECLASS_NEWPOINTERPOS;
+	ie.ie_SubClass = IESUBCLASS_PIXEL;
+	ie.ie_Code = IECODE_NOBUTTON;
+	ie.ie_EventAddress = (APTR)&pp;
+	AddIEvents(&ie);
+
+	/* the window last active there, else the one under the pointer */
+	w = to_wb ? last_wb : last_desk;
+	if (!w || !window_on(to, w)) {
+		struct Layer *l;
+
+		w = NULL;
+		LockLayerInfo(&to->LayerInfo);
+		l = WhichLayer(&to->LayerInfo, x, y);
+		if (l && l->Window && ((struct Window *)l->Window)->WScreen == to)
+			w = (struct Window *)l->Window;
+		UnlockLayerInfo(&to->LayerInfo);
+	}
+	if (w)
+		ActivateWindow(w);
+	UnlockPubScreen(NULL, wb);
+}
+
+/*
+ * A mouse move (dx, dy): pushing over the edge the desktop shares with the
+ * Workbench, twice in a row, crosses over.
+ */
+static void edge(struct Screen *desk, WORD dx, WORD dy)
+{
+	struct Screen *front = IntuitionBase->FirstScreen;
+	WORD mwid = desk->Width / cols, mhei = desk->Height / rows;
+	WORD mx0 = (wb_mon % cols) * mwid, my0 = (wb_mon / cols) * mhei;
+	WORD mx, my;
+	BOOL over = FALSE, to_wb;
+	ULONG frac = 0;
+
+	if (wb_side == WB_NONE || !front || (!dx && !dy))
+		return;
+	mx = front->MouseX;
+	my = front->MouseY;
+	if (front == desk) {
+		to_wb = TRUE;
+		if (wb_side == WB_LEFT || wb_side == WB_RIGHT) {
+			over = (wb_side == WB_LEFT ? mx <= 0 && dx < 0 : mx >= desk->Width - 1 && dx > 0) &&
+			       my >= my0 && my < my0 + mhei;
+			frac = ((ULONG)(my - my0) << 16) / mhei;
+		} else {
+			over = (wb_side == WB_ABOVE ? my <= 0 && dy < 0 : my >= desk->Height - 1 && dy > 0) &&
+			       mx >= mx0 && mx < mx0 + mwid;
+			frac = ((ULONG)(mx - mx0) << 16) / mwid;
+		}
+	} else if ((front->Flags & SCREENTYPE) == WBENCHSCREEN) {
+		to_wb = FALSE;
+		if (wb_side == WB_LEFT || wb_side == WB_RIGHT) {
+			over = wb_side == WB_LEFT ? mx >= front->Width - 1 && dx > 0 : mx <= 0 && dx < 0;
+			frac = my >= 0 ? ((ULONG)my << 16) / front->Height : 0;
+		} else {
+			over = wb_side == WB_ABOVE ? my >= front->Height - 1 && dy > 0 : my <= 0 && dy < 0;
+			frac = mx >= 0 ? ((ULONG)mx << 16) / front->Width : 0;
+		}
+	}
+	if (!over) {
+		pushes = 0;
+		return;
+	}
+	if (++pushes < 2)
+		return;
+	pushes = 0;
+	if (frac > 65535)
+		frac = 65535;
+	cross(desk, to_wb, frac);
+}
+
 /* ---------------------------------------------------------------- the commodity */
 
 #define HK_LEFT   1
@@ -281,6 +428,7 @@ static void swap(struct Screen *scr)
 #define HK_UP     3
 #define HK_DOWN   4
 #define HK_SWAP   5
+#define HK_EDGE   6     /* a mouse move: over an edge? */
 #define HK_MON    10    /* + n: monitor n */
 
 static BOOL add_hotkey(CxObj *broker, struct MsgPort *port, const char *quals, const char *key,
@@ -385,6 +533,20 @@ static int commodity(void)
 
 		add_hotkey(broker, port, quals, key, HK_MON + i);
 	}
+	if (wb_side != WB_NONE) {
+		/* every mouse move, copied to us: is it over the Workbench's edge? */
+		static struct InputXpression ix = {
+			IX_VERSION, IECLASS_RAWMOUSE, 0, 0, 0, 0, 0
+		};
+		CxObj *f = CxFilter(NULL);
+
+		if (f) {
+			SetFilterIX(f, &ix);
+			AttachCxObj(f, CxSender(port, HK_EDGE));
+			AttachCxObj(broker, f);
+		}
+		LayersBase = OpenLibrary("layers.library", 37);
+	}
 
 	scr = open_desktop(&ours);
 	if (!scr) {
@@ -411,6 +573,15 @@ static int commodity(void)
 			ULONG type = CxMsgType(msg);
 			LONG id = CxMsgID(msg);
 
+			if (type == CXM_IEVENT && id == HK_EDGE) {
+				struct InputEvent *ie = (struct InputEvent *)CxMsgData(msg);
+				WORD dx = ie->ie_X, dy = ie->ie_Y;
+
+				ReplyMsg((struct Message *)msg);
+				if (LayersBase)
+					edge(scr, dx, dy);
+				continue;
+			}
 			ReplyMsg((struct Message *)msg);
 			if (type == CXM_IEVENT) {
 				struct Window *w = target(scr, NULL);
@@ -458,6 +629,8 @@ static int commodity(void)
 	}
 	RemPort(port);
 	DeleteMsgPort(port);
+	if (LayersBase)
+		CloseLibrary(LayersBase);
 	CloseLibrary(CxBase);
 	return RETURN_OK;
 }
