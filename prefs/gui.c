@@ -178,6 +178,7 @@ static void tell(const char *title, const char *text)
 {
 	struct EasyStruct es = { sizeof(struct EasyStruct), 0, NULL, "%s", "OK" };
 
+	mp_trace("requester: %s", title);
 	es.es_Title = (UBYTE *)title;
 	EasyRequest(win, &es, NULL, (ULONG)text);
 }
@@ -186,6 +187,7 @@ static BOOL ask(const char *title, const char *text, const char *buttons)
 {
 	struct EasyStruct es = { sizeof(struct EasyStruct), 0, NULL, "%s", NULL };
 
+	mp_trace("asking: %s", title);
 	es.es_Title = (UBYTE *)title;
 	es.es_GadgetFormat = (UBYTE *)buttons;
 	return EasyRequest(win, &es, NULL, (ULONG)text) == 1;
@@ -534,8 +536,10 @@ static void draw_map(void)
 	monitor_size(&mw, &mh);
 
 	SetAPen(rp, back);
+	mp_trace("map: background %d,%d %dx%d", map_x, map_y, map_w, map_h);
 	map_fill(rp, map_x, map_y, map_x + map_w - 1, map_y + map_h - 1);
 	map_geometry(&ox, &oy, &cw, &ch);
+	mp_trace("map: monitors at %d,%d, each %dx%d", ox, oy, cw, ch);
 	SetDrMd(rp, JAM1);
 
 	/* the Workbench, where the mouse crosses over to it */
@@ -544,6 +548,7 @@ static void draw_map(void)
 		UWORD shine = dri ? dri->dri_Pens[SHINEPEN] : 2;
 
 		wb_box(wb_sel, ox, oy, cw, ch, &bx, &by, &bw, &bh);
+		mp_trace("map: Workbench box %d,%d %dx%d", bx, by, bw, bh);
 		SetAPen(rp, shine);
 		map_fill(rp, bx + 2, by + 2, bx + bw - 3, by + bh - 3);
 		map_bevel(rp, bx, by, bw, bh, TRUE);
@@ -562,6 +567,7 @@ static void draw_map(void)
 		WORD l;
 
 		SetAPen(rp, fill);
+		mp_trace("map: monitor %d", (int)i + 1);
 		map_fill(rp, x + 3, y + 3, x + cw - 4, y + ch - 4);
 		map_bevel(rp, x + 1, y + 1, cw - 2, ch - 2, FALSE);
 		SetAPen(rp, text);
@@ -590,6 +596,7 @@ static void draw_map(void)
 			}
 		}
 	}
+	mp_trace("map: the text under it");
 	SetAPen(rp, plain);
 	snprintf(buf, sizeof(buf), "Desktop %d x %d%s", (int)c * mw, (int)r * mh,
 	         c * r > 1 ? ": windows move across" : ": one Multicast screen");
@@ -856,6 +863,7 @@ static BOOL collect(void)
 
 		if (!gad[i])
 			continue;
+		mp_trace("collect: field %d (%s)", i, f->label);
 		if (f->what == F_WRAP) {
 			GT_GetGadgetAttrs(gad[i], win, NULL, GTCY_Active, (ULONG)&v, TAG_END);
 			wrap = v;
@@ -881,6 +889,7 @@ static BOOL collect(void)
 	}
 
 	/* the Desktop page */
+	mp_trace("collect: the Desktop page");
 	prefs_set(find_setting("SPLIT"), layout_sel ? layout_split[layout_sel] : "");
 	prefs_set(find_setting("MONITOR"), size_value[size_sel]);
 	prefs_set(find_setting("COLOURS"), colour_value[colour_sel]);
@@ -1082,6 +1091,10 @@ int gui(int start_page, int timeout, const char *pubscreen)
 			struct Gadget *g = (struct Gadget *)msg->IAddress;
 
 			GT_ReplyIMsg(msg);
+			if (class != IDCMP_INTUITICKS && class != IDCMP_MOUSEMOVE)
+				mp_trace("event %08lx code %d gadget %d", class, (int)code,
+				         class == IDCMP_GADGETUP || class == IDCMP_GADGETDOWN ?
+				         (int)g->GadgetID : -1);
 			switch (class) {
 			case IDCMP_CLOSEWINDOW:
 				done = TRUE;
@@ -1111,14 +1124,17 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					break;
 				case ID_SAVE:
 				case ID_USE:
+					mp_trace("save/use: collect");
 					if (!collect())
 						break;
 					report[0] = 0;
 					prefs_fix(note);
+					mp_trace("save/use: write");
 					if (!prefs_write(g->GadgetID == ID_SAVE)) {
 						tell("MulticastPrefs", "Could not write the settings to ENV: or ENVARC:");
 						break;
 					}
+					mp_trace("save/use: written, %d bytes of report", (int)strlen(report));
 					if (report[0]) {
 						/* changes that the card only takes at boot: offer it */
 						if (strstr(report, "reboot") && g->GadgetID == ID_SAVE) {
@@ -1169,10 +1185,14 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						if (fields[i].what == F_LAYOUT) {
 							int sd = wb_side[wb_sel], mn = wb_mon[wb_sel];
 
+							mp_trace("layout %d", (int)code);
 							layout_sel = code;
 							wb_positions(sd, mn);
+							mp_trace("layout: Workbench place %d", wb_sel);
 							wb_show();
+							mp_trace("layout: cycle set, drawing");
 							draw_map();
+							mp_trace("layout: done");
 						} else if (fields[i].what == F_WBPOS) {
 							int n = wb_step(code);
 

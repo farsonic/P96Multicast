@@ -39,9 +39,9 @@
 
 static const char version[] = "$VER: MulticastPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
-       A_REBOOT, A_NOREBOOT,
+       A_REBOOT, A_NOREBOOT, A_TRACE,
        A_COUNT };
 
 static void print_note(const char *s)
@@ -63,6 +63,10 @@ int main(int argc, char **argv)
 	if (!rda) {
 		PrintFault(IoErr(), (STRPTR)"MulticastPrefs");
 		return RETURN_FAIL;
+	}
+	if (args[A_TRACE]) {
+		mp_trace_file = (const char *)args[A_TRACE];
+		mp_trace("MulticastPrefs " MP_VERSION ": tracing");
 	}
 	if (args[A_SET]) {
 		STRPTR *kv;

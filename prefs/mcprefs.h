@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "1.8"
+#define MP_VERSION "1.9"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
@@ -67,6 +67,10 @@ const char *prefs_set_line(const char *keyvalue);     /* "KEY=VALUE" */
 void prefs_fix(void (*note)(const char *));          /* consistent settings */
 void prefs_show(void);
 int  mp_stricmp(const char *a, const char *b);
+
+/* TRACE=file: each step to that file, written at once (to find a hang) */
+extern const char *mp_trace_file;
+void mp_trace(const char *fmt, ...);
 
 /*
  * WORKBENCH=: where the Workbench screen is, next to the desktop: on the

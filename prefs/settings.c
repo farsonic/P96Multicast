@@ -12,8 +12,40 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include "mcprefs.h"
+
+const char *mp_trace_file;
+
+/*
+ * A line to the TRACE= file, opened and closed each time so that it is on
+ * the disk even if the machine stops right after.
+ */
+void mp_trace(const char *fmt, ...)
+{
+	char line[160];
+	va_list ap;
+	BPTR f;
+	int n;
+
+	if (!mp_trace_file)
+		return;
+	va_start(ap, fmt);
+	n = vsnprintf(line, sizeof(line) - 1, fmt, ap);
+	va_end(ap);
+	if (n < 0)
+		return;
+	if (n > (int)sizeof(line) - 2)
+		n = sizeof(line) - 2;
+	line[n++] = '\n';
+	f = Open((STRPTR)mp_trace_file, MODE_READWRITE);
+	if (!f)
+		return;
+	Seek(f, 0, OFFSET_END);
+	Write(f, line, n);
+	Close(f);
+}
 
 const struct Setting settings[] = {
 	/* Multicast.prefs: see README.md */
@@ -199,6 +231,7 @@ BOOL prefs_write(BOOL envarc)
 	BOOL ok = TRUE;
 	int i;
 
+	mp_trace("prefs_write(%d)", (int)envarc);
 	for (i = 0; i < NFILES; i++) {
 		if (!files[i].nlines && !files[i].loaded)
 			continue;
@@ -506,6 +539,7 @@ static void desktop_fix(void (*note)(const char *))
 
 void prefs_fix(void (*note)(const char *))
 {
+	mp_trace("prefs_fix");
 	const struct Setting *bs = find_setting("BOARDS");
 	const char *card = prefs_value(find_setting("CARD"));
 	const char *span = prefs_get(find_setting("SPAN"));
