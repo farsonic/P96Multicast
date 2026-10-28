@@ -39,9 +39,9 @@
 
 static const char version[] = "$VER: MulticastPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K,NOMUI/S";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
-       A_REBOOT, A_NOREBOOT, A_TRACE,
+       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI,
        A_COUNT };
 
 /*
@@ -207,7 +207,8 @@ static int prefs_main(int argc)
 		int page = args[A_PAGE] ? *(LONG *)args[A_PAGE] : 0;
 		int timeout = args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0;
 
-		rc = mui_gui(page, timeout, (const char *)args[A_PUBSCREEN]);
+		mp_trace("window: %s", args[A_NOMUI] ? "GadTools (NOMUI)" : "MUI");
+		rc = args[A_NOMUI] ? -1 : mui_gui(page, timeout, (const char *)args[A_PUBSCREEN]);
 		if (rc < 0)
 			rc = gui(page, timeout, (const char *)args[A_PUBSCREEN]);
 	}

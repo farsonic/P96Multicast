@@ -277,11 +277,31 @@ static LONG nav_rowh(Object *obj)
 	return _font(obj)->tf_YSize + 14;
 }
 
+/* the first of each method a class gets, traced (TRACE=) */
+static void trace_first(const char *cls, ULONG id)
+{
+	static ULONG seen[64];
+	static int n;
+	int i;
+
+	if (!mp_trace_file || (id != MUIM_Setup && id != MUIM_AskMinMax && id != MUIM_Draw &&
+	                       id != MUIM_Cleanup && id != OM_NEW))
+		return;
+	for (i = 0; i < n; i++)
+		if (seen[i] == (((ULONG)cls[0] << 24) ^ id))
+			return;
+	if (n < 64)
+		seen[n++] = ((ULONG)cls[0] << 24) ^ id;
+	mp_trace("mui: %s gets %s", cls, id == MUIM_Setup ? "Setup" : id == MUIM_AskMinMax ?
+	         "AskMinMax" : id == MUIM_Draw ? "Draw" : id == OM_NEW ? "New" : "Cleanup");
+}
+
 static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj,
                           __reg("a1") Msg msg)
 {
 	struct NavData *d;
 
+	trace_first("nav", msg->MethodID);
 	switch (msg->MethodID) {
 	case OM_NEW:
 		if (!(obj = (Object *)DoSuperMethodA(cl, obj, msg)))
@@ -515,6 +535,8 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 {
 	struct MapData *d;
 
+	trace_first("map", msg->MethodID);
+
 	switch (msg->MethodID) {
 	case MUIM_Setup:
 		if (!DoSuperMethodA(cl, obj, msg))
@@ -582,6 +604,8 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
                              __reg("a1") Msg msg)
 {
 	struct ChoiceData *d;
+
+	trace_first("choice", msg->MethodID);
 
 	switch (msg->MethodID) {
 	case OM_NEW: {
@@ -713,6 +737,8 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 {
 	struct SwitchData *d;
 
+	trace_first("switch", msg->MethodID);
+
 	switch (msg->MethodID) {
 	case OM_NEW: {
 		struct TagItem *tags = ((struct opSet *)msg)->ops_AttrList;
@@ -821,6 +847,8 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
                              __reg("a1") Msg msg)
 {
 	struct ButtonData *d;
+
+	trace_first("button", msg->MethodID);
 
 	switch (msg->MethodID) {
 	case OM_NEW: {
@@ -967,6 +995,8 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
                            __reg("a1") Msg msg)
 {
 	struct RowsData *d;
+
+	trace_first("rows", msg->MethodID);
 
 	switch (msg->MethodID) {
 	case OM_NEW: {
@@ -1542,6 +1572,7 @@ static Object *make_window(int start, const char *pubscreen)
 	                             "display on works then). Mirror: the same screen on another "
 	                             "card. Span: one screen over 2-4 heads."));
 
+	mp_trace("mui: making the controls");
 	nav = NewObject(nav_cl->mcc_Class, NULL, MUIA_Nav_Active, start, MUIA_Background,
 	                (ULONG)theme_panel_back(), TAG_DONE);
 	map = NewObject(map_cl->mcc_Class, NULL, MUIA_ShortHelp, (ULONG)lb_help, TAG_DONE);
@@ -1562,6 +1593,9 @@ static Object *make_window(int start, const char *pubscreen)
 	mode_entry = StringObject, StringFrame, MUIA_String_MaxLen, 12, MUIA_CycleChain, 1,
 	             MUIA_String_Accept, (ULONG)"0123456789xX", End;
 
+	mp_trace("mui: controls %s; making the pages", nav && map && ch_layout && ch_size &&
+	         ch_colours && ch_wb && ch_modesrc && ch_wrap && modes_rows && status_rows &&
+	         mode_entry ? "made" : "NOT all made");
 	pages = VGroup, MUIA_Group_PageMode, TRUE, MUIA_Group_ActivePage, start,
 		/* Desktop */
 		Child, VGroup,
@@ -1627,6 +1661,7 @@ static Object *make_window(int start, const char *pubscreen)
 		End,
 	End;
 
+	mp_trace("mui: pages %s; making the window", pages ? "made" : "NOT made");
 	w = WindowObject,
 		MUIA_Window_Title, (ULONG)"MulticastPrefs " MP_VERSION,
 		MUIA_Window_ID, MAKE_ID('M', 'C', 'P', 'R'),
@@ -1713,6 +1748,7 @@ int mui_gui(int start, int timeout, const char *pubscreen)
 	g.start = start;
 	g.timeout = timeout;
 	g.pubscreen = pubscreen;
+	mp_trace("mui: stack %lu bytes", have);
 	if (have >= 32768 || !(stack = AllocVec(65536, MEMF_ANY)))
 		return window_loop(start, timeout, pubscreen);
 	ss.stk_Lower = stack;
@@ -1732,6 +1768,7 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	int rc = 0;
 
 	MUIMasterBase = OpenLibrary(MUIMASTER_NAME, 19);
+	mp_trace("mui: muimaster.library %ld", MUIMasterBase ? (LONG)MUIMasterBase->lib_Version : 0L);
 	if (!MUIMasterBase)
 		return -1;
 	if (!IntuitionBase)
@@ -1743,6 +1780,7 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	if (start < 0 || start >= NPAGES)
 		start = 0;
 	from_settings();
+	mp_trace("mui: settings read");
 	if (!classes_make()) {
 		printf("MulticastPrefs: MUI couldn't make its classes\n");
 		rc = -1;
@@ -1754,13 +1792,16 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 		MUIA_Application_Description, (ULONG)"Settings for Multicast.card",
 		MUIA_Application_Base, (ULONG)"MCPREFS",
 	End;
+	mp_trace("mui: classes made, application %s", app ? "made" : "NOT made");
 	if (!app || !(win = make_window(start, pubscreen))) {
 		printf("MulticastPrefs: the window could not be made\n");
 		rc = RETURN_FAIL;
 		goto out;
 	}
+	mp_trace("mui: window made");
 	DoMethod(app, OM_ADDMEMBER, (ULONG)win);
 	set(win, MUIA_Window_Open, TRUE);
+	mp_trace("mui: window %s", xget(win, MUIA_Window_Open) ? "open" : "NOT open");
 	if (!xget(win, MUIA_Window_Open)) {
 		printf("MulticastPrefs: the window could not be opened\n");
 		rc = RETURN_FAIL;
