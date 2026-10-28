@@ -82,6 +82,12 @@
 #define CU_IN_BUTTON  2        /* a: 1 left, 2 right, 3 middle; | 0x80 released */
 #define CU_IN_KEY     3        /* a: Amiga raw key code; | 0x80 released */
 #define CU_IN_LEAVE   4        /* the pointer has left the viewer's windows */
+/*
+ * Not on the wire: the ie_SubClass of the RAWMOUSE events Panorama.card
+ * writes for the viewers, so commodities (PanoramaDesk) can tell them from
+ * the Amiga's own mouse. Intuition doesn't look at a RAWMOUSE's SubClass.
+ */
+#define CU_IN_TAG     0x50
 
 #define CU_CTRL_MAX   1024
 

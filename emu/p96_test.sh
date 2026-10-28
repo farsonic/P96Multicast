@@ -158,6 +158,11 @@ C:mctest WHERE >Work:where-boot.txt
 Echo >Work:mark-wb x
 Work:pkg/PanoramaPrefs OPEN >Work:open.txt
 Wait 10
+C:mctest WHERE >Work:where-open.txt
+C:mctest MOUSE=3,0,1
+Wait 2
+C:mctest WHERE >Work:where-local.txt
+Echo >Work:mark-local x
 C:wrapstat >Work:wrapstat3.txt
 C:mctest STATUS >Work:status3.txt
 Status >Work:tasks3.txt
@@ -185,8 +190,8 @@ EOF
 [ $status -eq 0 ] && boot boot3.done
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-for f in install.txt show1.txt monitors1.txt wrapstat2.txt where-boot.txt open.txt wrapstat3.txt \
-         status3.txt where0.txt where1.txt where2.txt; do
+for f in install.txt show1.txt monitors1.txt wrapstat2.txt where-boot.txt open.txt where-open.txt \
+         where-local.txt wrapstat3.txt status3.txt where0.txt where1.txt where2.txt; do
 	echo "---- $f"
 	tr -d '\r' < "$work/$f" 2>/dev/null
 done
@@ -206,7 +211,10 @@ check() {
 }
 check '[ "$(front where-boot.txt)" = Workbench ] && [ "$(width where-boot.txt)" = 640 ]' \
 	"the Workbench on the uaegfx board, 640 wide"
-check '[ "$(front where0.txt)" = "Panorama desktop" ]' "PanoramaPrefs OPEN: the desktop opens, PanoramaDesk brings it to the front"
+check '[ "$(front where-open.txt)" = "Panorama desktop" ]' "PanoramaPrefs OPEN: the desktop opens in front"
+check '[ "$(front where-local.txt)" = Workbench ]' \
+	"... the Amiga's own mouse (the emulator's, in its window) moves: the Workbench in front again"
+check '[ "$(front where0.txt)" = "Panorama desktop" ]' "PanoramaDesk brings the desktop to the front"
 active() { tr -d '\r' < "$work/$1" 2>/dev/null | sed -n 's/.* active \(.*\)/\1/p'; }
 check '[ "$(active where0.txt)" = DeskShell ]' "a Shell on the desktop, active"
 check '[ -f "$OUT/shot-desktop.png" ] && [ "$(convert "$OUT/shot-desktop.png" -colorspace gray -format "%[fx:mean>0.1]" info:)" = 1 ]' \

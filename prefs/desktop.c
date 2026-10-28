@@ -58,8 +58,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "mcprefs.h"
+#include "copper.h"
 
-#define MD_VERSION "1.6"
+#define MD_VERSION "1.7"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
@@ -295,45 +296,45 @@ static void swap(struct Screen *scr)
 static struct Window *last_desk, *last_wb;
 static int pushes;
 
-/* is w (still) a window on scr? */
-static BOOL window_on(struct Screen *scr, struct Window *w)
-{
-	struct Window *x;
-	ULONG lock = LockIBase(0);
-
-	for (x = scr->FirstWindow; x && x != w; x = x->NextWindow)
-		;
-	UnlockIBase(lock);
-	return x != NULL;
-}
+/*
+ * Whose the desktop in front is. The Amiga's own display never shows it
+ * (the viewers do), but shows the Workbench beside it: the Amiga's own
+ * mouse (an emulator's, in its window) works the Workbench, unless it
+ * crossed over to the desktop itself (here, with P96ScreenCx, or the
+ * hotkey). The viewers' mouse (Panorama.card's events) works the desktop.
+ */
+enum { OWN_VIEWERS, OWN_LOCAL };
+static int desk_owner = OWN_VIEWERS;
+static struct Screen *seen_front;
+static int own_moves;             /* NEWPOINTERPOS events of our own (cross()) still to come */
 
 /*
- * A window on scr made active: w if it is still there, else the one at x, y,
- * else the frontmost.
+ * A window on scr made active: w if it is still there, else one at x, y,
+ * else one that isn't a backdrop, else the first. From Intuition's list of
+ * the screen's windows, under its lock: not from the layers, some of which
+ * (the title bar's, menus') belong to no window.
  */
 static void activate_on(struct Screen *scr, struct Window *w, WORD x, WORD y)
 {
-	struct Layer *l;
+	struct Window *x1, *at = NULL, *front = NULL, *found = NULL;
+	ULONG lock = LockIBase(0);
 
-	if (w && window_on(scr, w)) {
-		ActivateWindow(w);
-		return;
+	for (x1 = scr->FirstWindow; x1; x1 = x1->NextWindow) {
+		if (x1 == w)
+			found = w;
+		if (x1->Flags & WFLG_BACKDROP)
+			continue;
+		if (!front)
+			front = x1;
+		if (!at && x >= x1->LeftEdge && x < x1->LeftEdge + x1->Width &&
+		    y >= x1->TopEdge && y < x1->TopEdge + x1->Height)
+			at = x1;
 	}
-	w = NULL;
-	LockLayerInfo(&scr->LayerInfo);
-	l = WhichLayer(&scr->LayerInfo, x, y);
-	if (!l || !l->Window || ((struct Window *)l->Window)->WScreen != scr)
-		for (l = scr->LayerInfo.top_layer; l; l = l->back)
-			if (l->Window && ((struct Window *)l->Window)->WScreen == scr &&
-			    !(((struct Window *)l->Window)->Flags & WFLG_BACKDROP))
-				break;
-	if (l && l->Window)
-		w = (struct Window *)l->Window;
-	UnlockLayerInfo(&scr->LayerInfo);
-	if (!w)
-		w = scr->FirstWindow;     /* the Workbench's backdrop window, say */
-	if (w)
-		ActivateWindow(w);
+	if (!found)
+		found = at ? at : front ? front : scr->FirstWindow;
+	UnlockIBase(lock);
+	if (found)
+		ActivateWindow(found);
 }
 
 /*
@@ -411,6 +412,9 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 	ie.ie_SubClass = IESUBCLASS_PIXEL;
 	ie.ie_Code = IECODE_NOBUTTON;
 	ie.ie_EventAddress = (APTR)&pp;
+	own_moves++;
+	if (!to_wb)
+		desk_owner = OWN_LOCAL;
 	AddIEvents(&ie);
 
 	/* the window last active there, else the one under the pointer, else the frontmost */
@@ -496,6 +500,49 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
 	if (frac > 65535)
 		frac = 65535;
 	cross(desk, to_wb, frac);
+}
+
+/*
+ * A mouse event, copied to us: from the viewers (Panorama.card's) or the
+ * Amiga's own? The Amiga's own moving while the desktop is in front, and
+ * the desktop not its own: the Workbench to the front, and its window
+ * active, before a click lands on the desktop nobody here sees.
+ */
+static void whose_mouse(struct Screen *desk, struct InputEvent *ie)
+{
+	struct Screen *front = IntuitionBase->FirstScreen, *wb;
+	BOOL local, moving;
+
+	if (ie->ie_Class == IECLASS_NEWPOINTERPOS) {
+		if (own_moves > 0) {
+			own_moves--;
+			seen_front = front;
+			return;
+		}
+		local = ie->ie_SubClass != IESUBCLASS_PIXEL;
+		moving = TRUE;
+	} else {
+		local = ie->ie_SubClass != CU_IN_TAG;
+		moving = ie->ie_X || ie->ie_Y ||
+		         (ie->ie_Code != IECODE_NOBUTTON && !(ie->ie_Code & IECODE_UP_PREFIX));
+	}
+	if (front != seen_front) {
+		/* the front changed: by whose mouse? */
+		seen_front = front;
+		if (front == desk)
+			desk_owner = local ? OWN_LOCAL : OWN_VIEWERS;
+	} else if (!local) {
+		desk_owner = OWN_VIEWERS;
+	}
+	if (!local || !moving || front != desk || desk_owner == OWN_LOCAL)
+		return;
+	wb = LockPubScreen((STRPTR)"Workbench");
+	if (!wb)
+		return;
+	ScreenToFront(wb);
+	seen_front = wb;
+	activate_on(wb, last_wb, wb->MouseX, wb->MouseY);
+	UnlockPubScreen(NULL, wb);
 }
 
 /* ---------------------------------------------------------------- the commodity */
@@ -639,6 +686,7 @@ static int commodity(void)
 	}
 
 	scr = open_desktop(&ours);
+	seen_front = IntuitionBase->FirstScreen;
 	if (!scr) {
 		DeleteCxObjAll(broker);
 		RemPort(port);
@@ -664,12 +712,13 @@ static int commodity(void)
 			LONG id = CxMsgID(msg);
 
 			if (type == CXM_IEVENT && (id == HK_EDGE || id == HK_PTR)) {
-				struct InputEvent *ie = (struct InputEvent *)CxMsgData(msg);
-				WORD dx = ie->ie_X, dy = ie->ie_Y;
-				UWORD qual = ie->ie_Qualifier;
+				struct InputEvent ie = *(struct InputEvent *)CxMsgData(msg);
+				WORD dx = ie.ie_X, dy = ie.ie_Y;
+				UWORD qual = ie.ie_Qualifier;
 
 				ReplyMsg((struct Message *)msg);
 				if (LayersBase) {
+					whose_mouse(scr, &ie);
 					if (id == HK_EDGE)
 						edge(scr, dx, dy);
 					follow_focus(scr, qual);
@@ -680,8 +729,10 @@ static int commodity(void)
 			if (type == CXM_IEVENT) {
 				struct Window *w = target(scr, NULL);
 
-				if (id == HK_SWAP)
+				if (id == HK_SWAP) {
 					swap(scr);
+					desk_owner = OWN_LOCAL;
+				}
 				else if (!w)
 					;
 				else if (id == HK_LEFT)

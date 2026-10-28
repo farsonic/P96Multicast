@@ -1180,7 +1180,7 @@ static void leave(struct Sender *s, struct Screen *scr)
 		if (mc->in_qual & bit[b]) {
 			mc->in_qual &= ~bit[b];
 			ie.ie_Class = IECLASS_RAWMOUSE;
-			ie.ie_SubClass = 0;
+			ie.ie_SubClass = CU_IN_TAG;
 			ie.ie_Code = code[b] | IECODE_UP_PREFIX;
 			ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
 			ie.ie_X = ie.ie_Y = 0;
@@ -1188,16 +1188,32 @@ static void leave(struct Sender *s, struct Screen *scr)
 			write_event(s, &ie);
 		}
 	mc->in_prev = NULL;
-	if (!prev || prev == scr)
-		return;
+	/*
+	 * The screen the viewers' mouse took the front from, else (ours was in
+	 * front already, opened there, say) the Workbench: the one the Amiga's
+	 * own display shows.
+	 */
 	Forbid();
 	for (x = IntuitionBase->FirstScreen; x && x != prev; x = x->NextScreen)
 		;
-	if (IntuitionBase->FirstScreen != scr)
+	if (!x || x == scr)
+		for (x = IntuitionBase->FirstScreen; x; x = x->NextScreen)
+			if ((x->Flags & SCREENTYPE) == WBENCHSCREEN)
+				break;
+	if (IntuitionBase->FirstScreen != scr || x == scr)
 		x = NULL;
 	Permit();
-	if (x)
-		ScreenToFront(prev);
+	if (!x)
+		return;
+	ScreenToFront(x);
+	/* a mouse event that moves nothing: commodities (PanoramaDesk) see the screen changed */
+	ie.ie_Class = IECLASS_RAWMOUSE;
+	ie.ie_SubClass = CU_IN_TAG;
+	ie.ie_Code = IECODE_NOBUTTON;
+	ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
+	ie.ie_X = ie.ie_Y = 0;
+	ie.ie_EventAddress = NULL;
+	write_event(s, &ie);
 }
 
 /* one event from a viewer, as if from this Amiga's own mouse or keyboard */
@@ -1259,6 +1275,7 @@ static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 		else
 			mc->in_qual |= bit[b];
 		ie.ie_Class = IECLASS_RAWMOUSE;
+		ie.ie_SubClass = CU_IN_TAG;
 		ie.ie_Code = code[b] | (a & 0x80 ? IECODE_UP_PREFIX : 0);
 		ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
 		break;

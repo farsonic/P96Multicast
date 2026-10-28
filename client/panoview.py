@@ -1072,7 +1072,6 @@ def run_window(heads, args):  # pragma: no cover - interactive
             ev.append((kind, a, x, y))
 
     def on_motion(e):
-        state["inside"] = True
         i, x, y = head_at(e.widget, e.x, e.y)
         if i is not None:
             state["keys"] = i
@@ -1115,40 +1114,39 @@ def run_window(heads, args):  # pragma: no cover - interactive
 
     canvases = [canvas for _, canvas in windows]
     state["inside"] = False
+    state["pointer"] = None
 
-    def taking():
-        return not args.no_input and any(h.screen.takes_input for h in heads)
-
-    def on_enter(e):
-        # the keys follow the mouse: no click to make this window take them
-        # (on a Mac, that also makes this program the active one)
-        state["inside"] = True
-        if taking():
-            try:
-                e.widget.winfo_toplevel().focus_force()
-            except tk.TclError:
-                pass
-
-    def on_leave(e):
-        def gone():
-            # out of every window of ours, not just into the next: the Amiga's
-            # own screen (the Workbench, in its window beside these) in front again
-            try:
-                w = root.winfo_containing(*root.winfo_pointerxy())
-            except (tk.TclError, KeyError):
-                w = None
-            if w in canvases or not state["inside"]:
-                return
+    def track_pointer():
+        """Where the computer's pointer is, asked for, not waited for: a
+        window that isn't the active one (on a Mac, while the emulator is)
+        gets no motion events, and the Amiga's pointer should follow anyway.
+        The keys stay with whatever program has them: the emulator sends
+        them to the Amiga too, and they go to the window made active there.
+        Out of every window here: LEAVE, the Workbench to the front."""
+        if args.no_input or not any(h.screen.takes_input for h in heads):
+            return
+        try:
+            px, py = root.winfo_pointerxy()
+            w = root.winfo_containing(px, py)
+        except (tk.TclError, KeyError):
+            return
+        if (px, py) == state["pointer"]:
+            return
+        state["pointer"] = (px, py)
+        if w in canvases:
+            state["inside"] = True
+            i, x, y = head_at(w, px - w.winfo_rootx(), py - w.winfo_rooty())
+            if i is not None:
+                state["keys"] = i
+            add(i, IN_MOVE, 0, x, y)
+        elif state["inside"]:
             state["inside"] = False
             for i, h in enumerate(heads):
-                if h.screen.takes_input and not args.no_input:
+                if h.screen.takes_input:
                     pending[i].append((IN_LEAVE, 0, 0, 0))
                     break
-        root.after(150, gone)
 
     for win, canvas in windows:
-        canvas.bind("<Enter>", on_enter)
-        canvas.bind("<Leave>", on_leave)
         canvas.bind("<Motion>", on_motion)
         canvas.bind("<ButtonPress>", lambda e: on_button(e, False))
         canvas.bind("<ButtonRelease>", lambda e: on_button(e, True))
@@ -1173,6 +1171,10 @@ def run_window(heads, args):  # pragma: no cover - interactive
     def poll():
         # show only whole updates: when the card says one is complete (FRAME),
         # all parts of the screen at the same moment, or now and then anyway
+        now = time.monotonic()
+        if now - state.get("tracked", 0) > 0.03:
+            state["tracked"] = now
+            track_pointer()
         flush_input()
         ready = step.receive()
         now = time.monotonic()

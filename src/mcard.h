@@ -22,8 +22,8 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Panorama.card"
-#define MC_VERSION_STR "3.0"
-#define MC_REVISION    0      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_VERSION_STR "3.1"
+#define MC_REVISION    1      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;

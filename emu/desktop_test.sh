@@ -151,6 +151,19 @@ EOF
 	done
 	echo 'Wait 1'
 	echo 'Work:mctest WHERE >Work:whereleave2.log'
+	# the viewer's mouse brings the desktop again; then the Amiga's own mouse
+	# moves (in an emulator's window, showing the Workbench): the Workbench
+	echo "Echo >Work:mark-leave3 x"
+	for i in $(seq 1 20); do
+		echo 'If NOT EXISTS Work:moved3'
+		echo 'Wait 1'
+		echo 'EndIf'
+	done
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:whereleave3.log'
+	echo 'Work:mctest MOUSE=3,0,1'
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:whereleave4.log'
 	# WORKBENCH=LEFT1: the mouse over the desktop's left edge to the
 	# Workbench, and over the Workbench's right edge back
 	echo 'Work:PanoramaDesk'
@@ -196,6 +209,16 @@ base_dir = $(cd "$OUT" && pwd)/fsuae
 EOF
 
 xpid=
+# a Python with tkinter, for real viewer windows worked with xdotool
+TKPY=
+if command -v xdotool >/dev/null 2>&1; then
+	for p in python3 python3.12 python3.11; do
+		if command -v $p >/dev/null 2>&1 && $p -c "import tkinter" 2>/dev/null; then
+			TKPY=$p
+			break
+		fi
+	done
+fi
 if [ -z "${DISPLAY:-}" ]; then
 	Xvfb :94 -screen 0 1280x1024x24 >/dev/null 2>&1 &
 	xpid=$!
@@ -224,6 +247,7 @@ while [ ! -f "$work/autorun.done" ]; do
 		if [ ! -f "$OUT/at-$n.png" ]; then
 			sleep 1
 			cp "$OUT/last.png" "$OUT/at-$n.png" 2>/dev/null
+			import -window root "$OUT/screen-$n.png" 2>/dev/null
 			if [ "$n" = input ]; then
 				# on monitor 2: click into the Shell, type, then point somewhere
 				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
@@ -232,22 +256,57 @@ while [ ! -f "$work/autorun.done" ]; do
 					>"$OUT/input.log" 2>&1 &
 			fi
 			if [ "$n" = leave ]; then
-				# the viewer's mouse in its window: the desktop comes to the front
-				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
-					--iface $HOST_IP move:50,50 >"$OUT/leave.log" 2>&1
+				# the viewer's windows, with the real pointer moved into the
+				# second (xdotool): the desktop comes to the front
+				if [ -n "$TKPY" ]; then
+					$TKPY client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP \
+						--span 2x1 >"$OUT/windows.log" 2>&1 &
+					wpid=$!
+					sleep 5
+					n2=0
+					for w in $(xdotool search --name "^Panorama screen" 2>/dev/null); do
+						xdotool windowmove $w $((700 + n2 * 300)) 0
+						n2=$((n2 + 1))
+					done
+					sleep 1
+					w2=$(xdotool search --name "^Panorama screen 2" 2>/dev/null | head -1)
+					eval $(xdotool getwindowgeometry --shell "$w2")
+					xdotool mousemove $((X + 50)) $((Y + 50))
+					echo "windows: $n2, pointer into screen 2 at $X,$Y" >"$OUT/leave.log"
+				else
+					python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+						--iface $HOST_IP move:50,50 >"$OUT/leave.log" 2>&1
+				fi
+				sleep 2
 				touch "$work/moved"
 			fi
 			if [ "$n" = leave2 ]; then
-				# ... and out of its windows: the Workbench again
-				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
-					--iface $HOST_IP leave >>"$OUT/leave.log" 2>&1
+				# ... and out of them: the Workbench again
+				if [ -n "$TKPY" ]; then
+					xdotool mousemove 20 1000
+				else
+					python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+						--iface $HOST_IP leave >>"$OUT/leave.log" 2>&1
+				fi
+				sleep 2
 				touch "$work/left"
+			fi
+			if [ "$n" = leave3 ]; then
+				# in again, and left there
+				if [ -n "$TKPY" ]; then
+					xdotool mousemove $((X + 60)) $((Y + 60))
+				else
+					python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+						--iface $HOST_IP move:60,60 >>"$OUT/leave.log" 2>&1
+				fi
+				sleep 2
+				touch "$work/moved3"
 			fi
 		fi
 	done
 	sleep 0.5
 done
-kill $upid $vpid 2>/dev/null
+kill $upid $vpid ${wpid:-} 2>/dev/null
 wait $upid $vpid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
@@ -292,23 +351,31 @@ else
 fi
 x2=$(mousex "$w2")
 if [ "$(front "$w2")" = "$(front "$w0")" ] && [ -n "$x2" ] && [ "$x2" -le 12 ] &&
-   [ "${w2#* active }" = "${w0#* active }" ]; then
-	echo "PASS: ... and back: the desktop, at its left edge, the same window active"
+   [ "${w2#* active }" != "-" ] && [ "${w2#* active }" != "$w2" ]; then
+	echo "PASS: ... and back: the desktop, at its left edge, a window there active (${w2#* active })"
 else
-	echo "FAIL: ... and back: the desktop, at its left edge, the same window active ('$w0' / '$w2')"
+	echo "FAIL: ... and back: the desktop, at its left edge, a window there active ('$w0' / '$w2')"
 	status=1
 fi
 echo "---- the viewer's mouse in and out (LEAVE)"
-for n in 0 1 2; do tr -d '\r' < "$work/whereleave$n.log" 2>/dev/null; done
+for n in 0 1 2 3 4; do tr -d '\r' < "$work/whereleave$n.log" 2>/dev/null; done
 cat "$OUT/leave.log" 2>/dev/null
 l0=$(tr -d '\r' < "$work/whereleave0.log" 2>/dev/null)
 l1=$(tr -d '\r' < "$work/whereleave1.log" 2>/dev/null)
 l2=$(tr -d '\r' < "$work/whereleave2.log" 2>/dev/null)
 if [ "$(front "$l0")" = Workbench ] && [ "$(front "$l1")" != Workbench ] && [ -n "$(front "$l1")" ] &&
    [ "$(front "$l2")" = Workbench ]; then
-	echo "PASS: the viewer's mouse brings the desktop to the front, leaving its windows the Workbench"
+	echo "PASS: the viewer's mouse brings the desktop to the front, leaving its windows the Workbench${TKPY:+ (real windows, xdotool)}"
 else
 	echo "FAIL: the viewer's mouse brings the desktop to the front, leaving its windows the Workbench ('$l0' / '$l1' / '$l2')"
+	status=1
+fi
+l3=$(tr -d '\r' < "$work/whereleave3.log" 2>/dev/null)
+l4=$(tr -d '\r' < "$work/whereleave4.log" 2>/dev/null)
+if [ "$(front "$l3")" != Workbench ] && [ -n "$(front "$l3")" ] && [ "$(front "$l4")" = Workbench ]; then
+	echo "PASS: the Amiga's own mouse after the viewer's: the Workbench to the front"
+else
+	echo "FAIL: the Amiga's own mouse after the viewer's: the Workbench to the front ('$l3' / '$l4')"
 	status=1
 fi
 python3 tests/check_desktop.py "$OUT" || status=1
