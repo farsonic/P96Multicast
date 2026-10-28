@@ -1452,7 +1452,8 @@ static Object *desktop_page(void)
 	btns = HGroup, MUIA_Group_SameSize, TRUE, MUIA_Group_Spacing, 8, Child, b_open, Child, b_close, End;
 	with_help(b_open, "Open desktop", "Uses the settings, then opens the desktop (PanoramaDesk): the viewers' "
 	          "mouse and keys on, and P96ScreenCx started when it is installed.");
-	with_help(b_close, "Close desktop", "Closes the desktop, once no windows are left on it.");
+	with_help(b_close, "Close desktop", "Closes the desktop. Programs on it move to the Workbench if they can (MUI "
+	          "programs can); others' windows must be closed first.");
 	return VGroup, MUIA_Group_VertSpacing, theme_compact() ? 2 : 4,
 	       Child, map, Child, cols, Child, bools, Child, btns, End;
 }
@@ -2484,7 +2485,7 @@ static int window_loop(int start, int timeout, const char *pubscreen, ULONG cmd,
 		MUIA_Application_Version, (ULONG)"$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")",
 		MUIA_Application_Description, (ULONG)tr("Preferences for Panorama"),
 		MUIA_Application_Base, (ULONG)"PANORAMAPREFS",
-		MUIA_Application_UseCommodities, FALSE,
+		MUIA_Application_UseCommodities, TRUE,
 		MUIA_Application_UseRexx, FALSE,
 	End;
 	if (!app || !build_window(pubscreen)) {

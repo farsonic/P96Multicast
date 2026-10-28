@@ -123,7 +123,12 @@ From a Shell:
   PanoramaDesk MOVE=RIGHT       (LEFT, UP, DOWN)
   PanoramaDesk CENTRE=2
   PanoramaDesk SWAP
-  PanoramaDesk CLOSE            quits it (once no windows are left)
+  PanoramaDesk CLOSE            quits it, closing the desktop
+Closing the desktop moves the programs on it to the Workbench, if they
+can: commodities (MUI programs are, unless they say otherwise) close their
+windows and open them again on the Workbench, as on Exchange's Hide and
+Show. Any other window (a Shell) has to be closed first: PanoramaDesk says
+whose windows are left, and the desktop stays open until then.
   PanoramaDesk SHELL            a Shell in the middle of the desktop
   PanoramaDesk INFO             the desktop's size and display mode
 

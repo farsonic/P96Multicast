@@ -61,7 +61,7 @@
 #include "copper.h"
 #include "lang.h"
 
-#define MD_VERSION "1.7"
+#define MD_VERSION "1.8"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
@@ -579,22 +579,191 @@ static BOOL add_hotkey(CxObj *broker, struct MsgPort *port, const char *quals, c
 	return CxObjError(h) == 0;
 }
 
-/* close the desktop, if it is ours and nobody is on it; FALSE: windows are left */
+/*
+ * ---------------------------------------------------------------- moving programs to the Workbench
+ *
+ * A window cannot change screens, but a commodity closes its windows on
+ * Exchange's Hide and opens them again on Show: on the default public
+ * screen, which is the Workbench again by then. Every MUI program with
+ * MUIA_Application_UseCommodities (the default) does this. Exchange's own
+ * calls of commodities.library, private but in its SFD since V36:
+ */
+struct BrokerCopy {
+	struct Node bc_Node;
+	char bc_Name[CBD_NAMELEN];
+	char bc_Title[CBD_TITLELEN];
+	char bc_Descr[CBD_DESCRLEN];
+	struct Task *bc_Task;
+	struct MsgPort *bc_Port;
+	UWORD bc_Dummy;
+	ULONG bc_Flags;
+};
+static LONG __CopyBrokerList(__reg("a6") struct Library *, __reg("a0") struct List *) =
+	"\tjsr\t-186(a6)";
+static void __FreeBrokerList(__reg("a6") struct Library *, __reg("a0") struct List *) =
+	"\tjsr\t-192(a6)";
+static LONG __BrokerCommand(__reg("a6") struct Library *, __reg("a0") STRPTR name,
+                            __reg("d0") LONG id) = "\tjsr\t-198(a6)";
+
+#define MAXMOVE 16
+
+/* the programs (tasks) with windows on scr, but not this one: how many */
+static int owners(struct Screen *scr, struct Task **task, int max)
+{
+	struct Task *me = FindTask(NULL);
+	struct Window *w;
+	ULONG lock = LockIBase(0);
+	int n = 0, i;
+
+	for (w = scr->FirstWindow; w; w = w->NextWindow) {
+		struct Task *t = w->UserPort ? w->UserPort->mp_SigTask : NULL;
+
+		if (!t || t == me)
+			continue;
+		for (i = 0; i < n && task[i] != t; i++)
+			;
+		if (i == n && n < max)
+			task[n++] = t;
+	}
+	UnlockIBase(lock);
+	return n;
+}
+
+/* does t have a window on scr? */
+static BOOL has_window(struct Screen *scr, struct Task *t)
+{
+	struct Window *w;
+	ULONG lock = LockIBase(0);
+	BOOL yes = FALSE;
+
+	for (w = scr->FirstWindow; w && !yes; w = w->NextWindow)
+		yes = w->UserPort && w->UserPort->mp_SigTask == t;
+	UnlockIBase(lock);
+	return yes;
+}
+
+/*
+ * Every program on scr that is a commodity: Hide, Show again on the
+ * Workbench. The default public screen must be the Workbench already.
+ * Leaves scr private if it can be. How many were moved.
+ */
+static int move_to_wb(struct Screen *scr)
+{
+	struct Task *task[MAXMOVE];
+	char name[MAXMOVE][CBD_NAMELEN];
+	struct List bl;
+	struct BrokerCopy *bc;
+	int n, i, moved = 0, wait;
+	BOOL hidden[MAXMOVE];
+
+	if (CxBase->lib_Version < 37)
+		return 0;
+	n = owners(scr, task, MAXMOVE);
+	if (!n)
+		return 0;
+	NewList(&bl);
+	__CopyBrokerList(CxBase, &bl);
+	for (i = 0; i < n; i++) {
+		name[i][0] = 0;
+		for (bc = (struct BrokerCopy *)bl.lh_Head; bc->bc_Node.ln_Succ;
+		     bc = (struct BrokerCopy *)bc->bc_Node.ln_Succ)
+			if (bc->bc_Task == task[i]) {
+				memcpy(name[i], bc->bc_Name, CBD_NAMELEN - 1);
+				name[i][CBD_NAMELEN - 1] = 0;
+				break;
+			}
+	}
+	__FreeBrokerList(CxBase, &bl);
+
+	/*
+	 * Hide all, wait (up to 10 s) until their windows have gone, then make
+	 * the desktop private, then Show: MUI opens its windows again on the
+	 * screen it still holds, while it holds it. (Only now can it be
+	 * private: MUI lets go of the screen a moment after its windows have
+	 * gone.) And not Show while a Hide is still waiting: the two undo
+	 * each other. One still there after 10 s is left (if it hides later,
+	 * its icon is on the Workbench).
+	 * (What BrokerCommand() returns for done is not documented: not checked.)
+	 */
+	for (i = 0; i < n; i++) {
+		hidden[i] = name[i][0] != 0;
+		if (hidden[i])
+			__BrokerCommand(CxBase, (STRPTR)name[i], CXCMD_DISAPPEAR);
+	}
+	for (wait = 0; wait < 10 * TICKS_PER_SECOND / 5; wait++) {
+		BOOL left = FALSE;
+
+		for (i = 0; i < n; i++)
+			if (hidden[i] && has_window(scr, task[i]))
+				left = TRUE;
+		if (!left)
+			break;
+		Delay(5);
+	}
+	/* their locks on it go a moment after their windows */
+	for (wait = 0; wait < 3 * TICKS_PER_SECOND / 5; wait++) {
+		if (PubScreenStatus(scr, PSNF_PRIVATE) & 1)
+			break;
+		Delay(5);
+	}
+	for (i = 0; i < n; i++)
+		if (hidden[i] && !has_window(scr, task[i])) {
+			__BrokerCommand(CxBase, (STRPTR)name[i], CXCMD_APPEAR);
+			moved++;
+		}
+	return moved;
+}
+
+/* "Close these first: Shell, Ed." for the windows still on scr */
+static void what_is_left(struct Screen *scr, char *buf, int len)
+{
+	struct Task *task[MAXMOVE];
+	int n = owners(scr, task, MAXMOVE), i, at;
+
+	snprintf(buf, len, "%s", tr("Close the windows on the desktop first."));
+	at = strlen(buf);
+	for (i = 0; i < n && at < len - 40; i++) {
+		const char *nm = task[i]->tc_Node.ln_Name;
+
+		/* a Shell's window belongs to its console, called "CON" or so */
+		snprintf(buf + at, len - at, "%s%.28s", i ? ", " : "\n", nm && nm[0] ? nm : "?");
+		at = strlen(buf);
+	}
+}
+
+/*
+ * Close the desktop, if it is ours. Programs that can (commodities) are
+ * moved to the Workbench first; FALSE: windows are left. Not by the
+ * screen's visitors: MUI unlocks the screen once its windows are open.
+ */
 static BOOL close_desktop(struct Screen *scr, BOOL ours, const char *olddefault)
 {
 	if (!ours) {
 		UnlockPubScreen(NULL, scr);
 		return TRUE;
 	}
-	if (!(PubScreenStatus(scr, PSNF_PRIVATE) & 1)) {
-		PubScreenStatus(scr, 0);
-		ScreenToFront(scr);
-		say("Close the windows on the desktop first.");
-		return FALSE;
-	}
 	if (olddefault)
 		SetDefaultPubScreen(olddefault[0] ? (UBYTE *)olddefault : NULL);
-	CloseScreen(scr);
+	/* nothing new opens on it, by its name either (unless it has visitors) */
+	PubScreenStatus(scr, PSNF_PRIVATE);
+	if (scr->FirstWindow && move_to_wb(scr) > 0) {
+		/* the last of them may take a moment to go */
+		int t;
+
+		for (t = 0; t < 10 && scr->FirstWindow; t++)
+			Delay(10);
+	}
+	if (scr->FirstWindow || !CloseScreen(scr)) {
+		char buf[200];
+
+		PubScreenStatus(scr, 0);
+		if (olddefault)
+			SetDefaultPubScreen((UBYTE *)pubname);
+		ScreenToFront(scr);
+		what_is_left(scr, buf, sizeof(buf));
+		say(buf);
+		return FALSE;
+	}
 	return TRUE;
 }
 

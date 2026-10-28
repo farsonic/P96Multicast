@@ -11,6 +11,10 @@
 #   boot 3  the Workbench on uaegfx; PanoramaPrefs OPEN; the mouse pushed
 #           over the Workbench's edge to the desktop and back
 #
+#   boot 4  FS-UAE grabbing the mouse: crossing with the Amiga's own mouse
+#   boot 5  (with MUI 3.8, MUI38=) PanoramaPrefs on the desktop; PanoramaDesk
+#           CLOSE moves it to the Workbench and closes the desktop
+#
 #   emu/p96_test.sh [TIMEOUT]
 set -u
 cd "$(dirname "$0")/.."
@@ -20,6 +24,7 @@ OS3SYS=${OS3SYS:-/home/user/toolchain/os32/sys}
 P96=${P96:-/home/user/toolchain/os32/p96/Picasso96Install}
 P96CX=${P96CX:-/home/user/toolchain/os32/p96cx}
 MKICON=${MKICON:-/home/user/Riptide/tools/mkicon.py}
+MUI38=${MUI38:-/home/user/toolchain/mui/usr/MUI}
 OUT=${OUT:-build/emu-p96}
 
 for f in build/package/Panorama/PanoramaPrefs "$KICK" "$OS3SYS/C/LoadWB" \
@@ -53,7 +58,19 @@ EOF
 cp "$P96CX/P96ScreenCx" "$P96CX/P96ScreenCx.info" "$sys/WBStartup/"
 
 cp -r build/package/Panorama "$work/pkg"
-cat > "$sys/S/User-Startup" <<'EOF'
+: > "$sys/S/User-Startup"
+mui=
+if [ -e "$MUI38/Libs/muimaster.library" ]; then
+	mui=1
+	cp -r "$MUI38" "$sys/MUI"
+	cat > "$sys/S/User-Startup" <<'EOF'
+Assign MUI: SYS:MUI
+Assign LIBS: MUI:Libs ADD
+Assign LOCALE: MUI:Locale ADD
+Assign IMAGES: MUI:Images
+EOF
+fi
+cat >> "$sys/S/User-Startup" <<'EOF'
 Lab waitwork
 If NOT EXISTS Work:
     Wait 1
@@ -69,6 +86,7 @@ cat > "$OUT/test.fs-uae" <<EOF
 amiga_model = A1200/020
 kickstart_file = $KICK
 fast_memory = 4096
+slow_memory = 1792
 graphics_card = uaegfx-z2
 graphics_memory = 2048
 hard_drive_0 = $sys
@@ -246,6 +264,30 @@ if command -v xdotool >/dev/null 2>&1; then
 	kill $upid 2>/dev/null
 	wait $upid 2>/dev/null
 fi
+
+# ---- boot 5: a MUI program on the desktop (the default public screen) goes
+# to the Workbench when the desktop closes: Exchange's Hide, then Show
+if [ -n "$mui" ] && [ $status -eq 0 ]; then
+	cat > "$work/autorun" <<'EOF'
+FailAt 21
+Wait 10
+Work:pkg/PanoramaPrefs OPEN >NIL:
+Wait 8
+Run >NIL: Work:pkg/PanoramaPrefs
+Wait 10
+C:mctest WINDOWS >Work:move0.txt
+C:mctest BROKERS >Work:brokers0.txt
+Echo >Work:mark-move0 x
+C:PanoramaDesk CLOSE
+Wait 10
+C:mctest WINDOWS >Work:move1.txt
+C:PanoramaDesk INFO >Work:move1-info.txt
+Echo >Work:mark-move1 x
+Wait 2
+Echo >Work:boot5.done done
+EOF
+	boot boot5.done
+fi
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
 for f in install.txt show1.txt monitors1.txt wrapstat2.txt where-boot.txt open.txt where-open.txt \
@@ -292,6 +334,14 @@ if [ -n "$grab" ]; then
 	check '[ "$(front grab1.txt)" = Workbench ]' "... its mouse moves: the Workbench in front"
 	check '[ "$(front grab2.txt)" = "Panorama desktop" ]' "... pushed right, over the Workbench's edge: the desktop"
 	check '[ "$(front grab3.txt)" = Workbench ]' "... pushed left, over the desktop's edge: the Workbench"
+fi
+if [ -n "$mui" ]; then
+	for f in move0.txt brokers0.txt move1.txt move1-info.txt; do echo "---- $f"; tr -d '\r' < "$work/$f" 2>/dev/null; done
+	check 'tr -d "\r" < "$work/move0.txt" | grep -q "^screen Panorama desktop:.*Panorama Preferences"' \
+		"PanoramaPrefs opens on the desktop (the default public screen)"
+	check 'tr -d "\r" < "$work/move1.txt" | grep -q "^screen Workbench:.*Panorama Preferences" &&
+	       ! tr -d "\r" < "$work/move1.txt" | grep -q "^screen Panorama desktop"' \
+		"PanoramaDesk CLOSE: PanoramaPrefs moved to the Workbench, the desktop closed"
 fi
 echo "screens: $OUT/shot-*.png"
 exit $status

@@ -57,6 +57,8 @@
 #include <proto/intuition.h>
 #include <devices/input.h>
 #include <devices/inputevent.h>
+#include <libraries/commodities.h>
+#include <clib/alib_protos.h>
 #include <intuition/intuitionbase.h>
 #include <string.h>
 #include <stdio.h>
@@ -87,9 +89,9 @@ void __UnLockBitMap(__reg("a6") void *, __reg("a0") APTR lock) = "\tjsr\t-174(a6
 #define LBMI_BYTESPERROW  0x84001006UL
 #define LBMI_BASEADDRESS  0x84001007UL
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S";
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S,WINDOWS/S,BROKERS/S";
 enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_COUNT };
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_WINDOWS, A_BROKERS, A_COUNT };
 
 static const char *blit_names[MC_BLIT_KINDS + 1] = {
 	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
@@ -815,6 +817,69 @@ static void where(void)
 	       w && w->Title ? (const char *)w->Title : "-");
 }
 
+/* WINDOWS: every screen, a line each: "screen NAME: TITLE|TITLE|" */
+static void windows(void)
+{
+	struct IntuitionBase *ib = (struct IntuitionBase *)IntuitionBase;
+	struct Screen *scr;
+	struct Window *w;
+	char buf[400];
+	ULONG lock = LockIBase(0);
+	int at;
+
+	/* gathered under the lock, printed after it (printing may need Intuition) */
+	buf[0] = 0;
+	at = 0;
+	for (scr = ib->FirstScreen; scr && at < (int)sizeof(buf) - 80; scr = scr->NextScreen) {
+		const char *name = (scr->Flags & SCREENTYPE) == WBENCHSCREEN ? "Workbench" :
+		                   scr->Title ? (const char *)scr->Title :
+		                   scr->DefaultTitle ? (const char *)scr->DefaultTitle : "?";
+
+		at += snprintf(buf + at, sizeof(buf) - at, "screen %.30s:", name);
+		for (w = scr->FirstWindow; w && at < (int)sizeof(buf) - 40; w = w->NextWindow)
+			at += snprintf(buf + at, sizeof(buf) - at, " %.30s (%08lx)|", w->Title ? (const char *)w->Title : "-",
+			               w->UserPort ? (ULONG)w->UserPort->mp_SigTask : 0UL);
+		at += snprintf(buf + at, sizeof(buf) - at, "\n");
+	}
+	UnlockIBase(lock);
+	printf("%s", buf);
+}
+
+/* BROKERS: the commodities, as Exchange sees them, and their tasks */
+struct BrokerCopy {
+	struct Node bc_Node;
+	char bc_Name[CBD_NAMELEN];
+	char bc_Title[CBD_TITLELEN];
+	char bc_Descr[CBD_DESCRLEN];
+	struct Task *bc_Task;
+	struct MsgPort *bc_Port;
+	UWORD bc_Dummy;
+	ULONG bc_Flags;
+};
+static LONG __CopyBrokerList(__reg("a6") struct Library *, __reg("a0") struct List *) =
+	"\tjsr\t-186(a6)";
+static void __FreeBrokerList(__reg("a6") struct Library *, __reg("a0") struct List *) =
+	"\tjsr\t-192(a6)";
+
+static void brokers(void)
+{
+	struct Library *cx = OpenLibrary("commodities.library", 37);
+	struct List bl;
+	struct BrokerCopy *bc;
+
+	if (!cx)
+		return;
+	NewList(&bl);
+	printf("%ld brokers\n", __CopyBrokerList(cx, &bl));
+	for (bc = (struct BrokerCopy *)bl.lh_Head; bc->bc_Node.ln_Succ;
+	     bc = (struct BrokerCopy *)bc->bc_Node.ln_Succ)
+		printf("broker %.24s task %08lx %s port %08lx flags %lx\n", bc->bc_Name, (ULONG)bc->bc_Task,
+		       bc->bc_Task && bc->bc_Task->tc_Node.ln_Name ? bc->bc_Task->tc_Node.ln_Name : "-",
+		       (ULONG)bc->bc_Port, bc->bc_Flags);
+	__FreeBrokerList(cx, &bl);
+	CloseLibrary(cx);
+}
+
 int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
@@ -845,6 +910,16 @@ int main(void)
 
 		FreeArgs(rda);
 		return rc;
+	}
+	if (args[A_BROKERS]) {
+		brokers();
+		FreeArgs(rda);
+		return RETURN_OK;
+	}
+	if (args[A_WINDOWS]) {
+		windows();
+		FreeArgs(rda);
+		return RETURN_OK;
 	}
 	if (args[A_WHERE]) {
 		where();
