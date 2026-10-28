@@ -565,7 +565,16 @@ static void install_program(void)
  * Wrap.card, is in LIBS:Picasso96. Its board is the icon's BOARDTYPE, or
  * the monitor's name (AROS).
  */
+static BOOL find_display_card_at(char *card, int len, char *monpath, int mlen, char *board,
+                                 int blen);
+
 static BOOL find_display_card(char *card, int len)
+{
+	return find_display_card_at(card, len, NULL, 0, NULL, 0);
+}
+
+static BOOL find_display_card_at(char *card, int len, char *monpath, int mlen, char *board,
+                                 int blen)
 {
 	static const char *dirs[] = { "DEVS:Monitors", "SYS:Storage/Monitors" };
 	int d;
@@ -592,6 +601,10 @@ static BOOL find_display_card(char *card, int len)
 				snprintf(lib, sizeof(lib), "LIBS:Picasso96/%s.card", b);
 				if (exists(lib)) {
 					snprintf(card, len, "%s.card", b);
+					if (monpath)
+						snprintf(monpath, mlen, "%s", path);
+					if (board)
+						snprintf(board, blen, "%s", b);
 					found = TRUE;
 				}
 			}
@@ -716,9 +729,13 @@ static BOOL apply_setup(const char *setup)
 		    "1280x960,1600x1200,2048x1536,640x480,800x600" :
 		    "640x480,800x600,1024x768,1280x1024");
 		set("INPUT", "1");
+		set("WBSTREAM", "1");
+		set("WBMONITOR", "1");
+		set("P96SCREENCX", "1");
 		notef("Setup: one Multicast screen split %s, a window for each part%s", size,
 		      ", one desktop; the Workbench stays where it is");
-		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who)");
+		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who),");
+		say("       the Workbench goes to them too (WBSTREAM=1, p96view.py --workbench)");
 		return TRUE;
 	}
 	say("SETUP must be SINGLE, TWO, MIRROR, SPAN (SPAN2x2) or DESKTOP (DESKTOP2x2)");
@@ -856,6 +873,105 @@ void mp_reboot(void)
 	ColdReboot();
 }
 
+/*
+ * The monitor's icon with its tool types changed: each "KEY=VALUE" of set
+ * replaces the KEY's line (or is added), each KEY of drop goes. The others
+ * stay as they were.
+ */
+static BOOL set_tooltypes(const char *monitor, const char **set, int nset, const char **drop,
+                          int ndrop)
+{
+	struct DiskObject *dob;
+	STRPTR *old, types[40];
+	int n = 0, i, j;
+	BOOL ok;
+
+	if (!IconBase || !(dob = GetDiskObject((STRPTR)monitor)))
+		return FALSE;
+	old = dob->do_ToolTypes;
+	for (i = 0; old && old[i] && n < 30; i++) {
+		const char *t = (const char *)old[i];
+		BOOL keep = TRUE;
+
+		for (j = 0; j < nset + ndrop && keep; j++) {
+			const char *k = j < nset ? set[j] : drop[j - nset];
+			int l = 0;
+
+			while (k[l] && k[l] != '=')
+				l++;
+			if (!strncmp(t, k, l) && (t[l] == '=' || t[l] == 0))
+				keep = FALSE;
+		}
+		if (keep)
+			types[n++] = old[i];
+	}
+	for (j = 0; j < nset && n < 39; j++)
+		types[n++] = (STRPTR)set[j];
+	types[n] = NULL;
+	ok = TRUE;
+	if (!dry) {
+		dob->do_ToolTypes = types;
+		ok = PutDiskObject((STRPTR)monitor, dob);
+		dob->do_ToolTypes = old;
+	}
+	FreeDiskObject(dob);
+	return ok;
+}
+
+/*
+ * The monitors' places for P96ScreenCx (Aminet util/cdity/P96ScreenCx),
+ * which moves the mouse between boards as between monitors side by side:
+ * the Multicast monitor is a monitor of its own (DISPLAYCHAIN=NO) next to
+ * the Workbench's board, on the side WORKBENCH= says. WBMONITOR=1: the
+ * Workbench's board is one of its own too, so it keeps its screen shown
+ * while the desktop is in front, instead of going blank.
+ */
+void place_monitors(void (*note)(const char *))
+{
+	static const char *drop[] = { "LEFT_OF", "RIGHT_OF", "ABOVE", "BELOW" };
+	static const char *opposite[] = { "", "RIGHT_OF", "LEFT_OF", "BELOW", "ABOVE" };
+	static char place[48];
+	const char *set[2];
+	char card[40], wbmon[80], wbboard[32];
+	int side = WB_NONE, mon = 0, nset = 0;
+	BOOL wbmonitor = prefs_value(find_setting("WBMONITOR"))[0] == '1';
+	BOOL cx = prefs_value(find_setting("P96SCREENCX"))[0] == '1';
+	BOOL opened = FALSE;
+
+	say = note;
+	if (!IconBase) {
+		IconBase = OpenLibrary("icon.library", 37);
+		opened = TRUE;
+	}
+	if (!IconBase || !exists("DEVS:Monitors/Multicast") ||
+	    *prefs_value(find_setting("CARD")))
+		goto out;
+	if (!find_display_card_at(card, sizeof(card), wbmon, sizeof(wbmon), wbboard,
+	                          sizeof(wbboard)))
+		wbmon[0] = wbboard[0] = 0;
+	if (wbmonitor && wbmon[0]) {
+		static const char *own[] = { "DISPLAYCHAIN=NO" };
+
+		if (set_tooltypes(wbmon, own, 1, NULL, 0))
+			notef("%s: DISPLAYCHAIN=NO (the Workbench keeps its screen shown)", wbmon, "");
+	}
+	wb_place(prefs_value(find_setting("WORKBENCH")), &side, &mon);
+	set[nset++] = "DISPLAYCHAIN=NO";
+	if (cx && side != WB_NONE) {
+		snprintf(place, sizeof(place), "%s=%s", opposite[side],
+		         wbmonitor && wbboard[0] ? wbboard : "Native");
+		set[nset++] = place;
+	}
+	if (set_tooltypes("DEVS:Monitors/Multicast", set, nset, drop, 4))
+		notef("DEVS:Monitors/Multicast: %s%s", nset > 1 ? place : "DISPLAYCHAIN=NO",
+		      nset > 1 ? " (for P96ScreenCx: the mouse crosses to the Workbench)" : "");
+out:
+	if (opened && IconBase) {
+		CloseLibrary(IconBase);
+		IconBase = NULL;
+	}
+}
+
 BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const char *setup)
 {
 	const char *card, *monitor_name;
@@ -942,6 +1058,8 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 
 	for (i = 0; i < nretire; i++)
 		retire_monitors(retire[i], monitor_name);
+	if (!wrap)
+		place_monitors(note);
 	save_moved();
 	if (!failed)
 		summary();

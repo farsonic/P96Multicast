@@ -59,7 +59,7 @@
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.2"
+#define MD_VERSION "1.3"
 #define PORTNAME "MulticastDesktop"
 
 static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE ")";
@@ -372,6 +372,32 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 }
 
 /*
+ * P96ScreenCx (Aminet util/cdity/P96ScreenCx) moves the mouse between the
+ * boards itself, from the monitors' tool types MulticastPrefs writes: if it
+ * runs, it crosses over, not this. A commodity of that name can't be made
+ * twice, which tells.
+ */
+static BOOL p96screencx_runs(void)
+{
+	struct NewBroker nb;
+	CxObj *b;
+	LONG err = 0;
+
+	memset(&nb, 0, sizeof(nb));
+	nb.nb_Version = NB_VERSION;
+	nb.nb_Name = (STRPTR)"P96ScreenCx";
+	nb.nb_Title = (STRPTR)"P96ScreenCx";
+	nb.nb_Descr = (STRPTR)"(MulticastDesktop checking)";
+	nb.nb_Unique = NBU_UNIQUE;
+	b = CxBroker(&nb, &err);
+	if (b) {
+		DeleteCxObj(b);
+		return FALSE;
+	}
+	return err == CBERR_DUP;
+}
+
+/*
  * A mouse move (dx, dy): pushing over the edge the desktop shares with the
  * Workbench, twice in a row, crosses over.
  */
@@ -418,6 +444,8 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
 	pushes = 0;
 	if (frac > 65535)
 		frac = 65535;
+	if (p96screencx_runs())
+		return;
 	cross(desk, to_wb, frac);
 }
 

@@ -71,6 +71,8 @@ static const struct Field fields[] = {
 	{ 0, F_SETTING, CHECKBOX_KIND, "Open at boot",     "ATBOOT" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Behind Workbench", "BEHIND" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Viewers control it", "INPUT" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Workbench to viewers", "WBSTREAM" },
+	{ 0, F_SETTING, CHECKBOX_KIND, "Workbench own monitor", "WBMONITOR" },
 	{ 0, F_OPEN,    BUTTON_KIND,   "Open now",         NULL, 1, 1 },
 	{ 0, F_CLOSE,   BUTTON_KIND,   "Close",            NULL, 1, 2 },
 
@@ -1135,6 +1137,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						break;
 					}
 					mp_trace("save/use: written, %d bytes of report", (int)strlen(report));
+					place_monitors(note);
 					if (report[0]) {
 						/* changes that the card only takes at boot: offer it */
 						if (strstr(report, "reboot") && g->GadgetID == ID_SAVE) {

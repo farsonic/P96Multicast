@@ -210,6 +210,11 @@ has "$work/install.txt" "Made DEVS:Monitors/Multicast from DEVS:Monitors/P96" "m
 	&& pass "LIBS:Picasso96/Multicast.card in place" || fail "LIBS:Picasso96/Multicast.card in place"
 grep -q "BOARDTYPE=Multicast" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null \
 	&& pass "monitor icon says BOARDTYPE=Multicast" || fail "monitor icon says BOARDTYPE=Multicast"
+grep -q "DISPLAYCHAIN=NO" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null &&
+	grep -q "RIGHT_OF=Native" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null &&
+	grep -q "BOARDTYPE=Multicast" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null \
+	&& pass "monitor icon for P96ScreenCx: DISPLAYCHAIN=NO, RIGHT_OF=Native (the Workbench left)" \
+	|| fail "monitor icon for P96ScreenCx: DISPLAYCHAIN=NO, RIGHT_OF=Native (the Workbench left)"
 has "$work/status2.txt" "boards set up: 1" "second boot: Multicast.card set up from the installed files"
 has "$work/prefsstatus2.txt" "Multicast.card [0-9]\.[0-9]*: 1 board" "MulticastPrefs STATUS sees it"
 if [ $NET = 1 ]; then

@@ -41,6 +41,7 @@ RAW, SOLID, RLE = 0, 1, 2
 HELLO, NAK, WANT, INPUT = 1, 2, 3, 4
 IN_MOVE, IN_BUTTON, IN_KEY = 1, 2, 3
 SF_INPUT = 1                    # SURFACE: the card takes our mouse and keys
+SF_BEHIND = 2                   # SURFACE: another screen is in front on the Amiga
 
 # P96 RGBFTYPE numbers
 CLUT, R8G8B8, B8G8R8, R5G6B5PC, R5G5B5PC = 1, 2, 3, 4, 5
@@ -106,6 +107,7 @@ class Screen:
         self.fmt = self.bpp = 0
         self.display = 0
         self.takes_input = False     # the card works the Amiga with our mouse and keys
+        self.behind = False          # not on the Amiga's display now: the last picture
         self.tw = self.th = 16
         self.tcols = self.trows = 0
         self.pixels = bytearray()
@@ -134,6 +136,7 @@ class Screen:
     def _surface(self, b):
         w, h, fmt, bpp, display, flags, tw, th = struct.unpack(">HHBBBBHH", b[:12])
         self.takes_input = bool(flags & SF_INPUT)
+        self.behind = bool(flags & SF_BEHIND)
         self.stats["modes"].add((w, h, FORMAT_NAMES.get(fmt, str(fmt))))
         if display != self.display:
             self.all_dirty = True
@@ -433,8 +436,6 @@ class Screen:
 
     def rgb_rect(self, x, y, w, h):
         """A rectangle of the screen as packed 8 bit RGB."""
-        if not self.display:
-            return bytes(w * h * 3)
         if self.arr is not None:
             return self._rgb_numpy(self.arr[y:y + h, x:x + w])
         fmt, n = self.fmt, self.bpp
@@ -736,11 +737,16 @@ def print_stats(viewer, out=sys.stderr):
 
 
 class Head:
-    """One stream: a socket and its viewer, at a place on the wall."""
+    """One stream: a socket and its viewer, at a place on the wall.
 
-    def __init__(self, sock, viewer, col=0, row=0):
+    solo: a stream of its own (the Workbench, WBSTREAM=1), not a part of the
+    split screen kept in step with the others.
+    """
+
+    def __init__(self, sock, viewer, col=0, row=0, port=0, solo=False, name=None):
         self.sock, self.viewer, self.screen = sock, viewer, viewer.screen
         self.col, self.row = col, row
+        self.port, self.solo, self.name = port, solo, name
 
 
 def wall(heads):
@@ -857,18 +863,19 @@ class InStep:
     WAIT = 0.025
 
     def __init__(self, heads):
-        self.heads = heads
+        self.all = heads
+        self.heads = [h for h in heads if not h.solo]
         self.since = None
-        for h in heads:
-            h.viewer.in_step = len(heads) > 1
+        for h in self.heads:
+            h.viewer.in_step = len(self.heads) > 1
 
     def receive(self):
         """Take what arrived. True when a picture is ready to show."""
         framed = False
-        for h in self.heads:
-            if FRAME in receive_some(h.sock, h.viewer):
+        for h in self.all:
+            if FRAME in receive_some(h.sock, h.viewer) and (h.solo or len(self.heads) == 1):
                 framed = True
-        if len(self.heads) == 1:
+        if len(self.heads) <= 1 or framed:
             return framed
         stopped = [h for h in self.heads if h.viewer.stopped]
         if not stopped:
@@ -971,8 +978,8 @@ def run_window(heads, args):  # pragma: no cover - interactive
             if not screen.width:
                 # say what is (not) arriving, in the title
                 n = h.viewer.stats["datagrams"]
-                text = ("P96Multicast screen %d (port %d): %s" % (
-                    i + 1, args.port + i,
+                text = ("P96Multicast %s (port %d): %s" % (
+                    h.name or "screen %d" % (i + 1), h.port,
                     "nothing from the Amiga yet" if not n else
                     "%d datagrams, but no screen shown on this board yet" % n))
                 if st.get("wait") != text and (separate or i == 0):
@@ -998,9 +1005,10 @@ def run_window(heads, args):  # pragma: no cover - interactive
                 st["size"], st["at"] = size, at
                 st["ptr_serial"] = -1
             if separate:
-                text = "P96Multicast screen %d of %d (port %d) %dx%d %s%s" % (
-                    i + 1, len(heads), args.port + i, size[0], size[1],
-                    FORMAT_NAMES.get(screen.fmt, "?"),
+                text = "P96Multicast %s (port %d) %dx%d %s%s" % (
+                    h.name or "screen %d of %d" % (i + 1, sum(not x.solo for x in heads)),
+                    h.port, size[0], size[1], FORMAT_NAMES.get(screen.fmt, "?"),
+                    " (behind: another screen is in front on the Amiga)" if screen.behind else
                     "" if screen.display else ": display off (its screen is not shown)")
                 if st.get("wait") != text:
                     st["wait"] = text
@@ -1292,6 +1300,10 @@ def main(argv=None):
                          "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
+    ap.add_argument("--workbench", nargs="?", const="left", default=None,
+                    choices=("left", "right", "above", "below"),
+                    help="the Workbench screen too (the card's WBSTREAM=1: PORT+4, DEST+4), in "
+                         "a window of its own, left of the others (or right, above, below)")
     ap.add_argument("--no-input", action="store_true",
                     help="don't send the mouse and keys to the Amiga (the card does that only "
                          "with INPUT=1 in Multicast.prefs)")
@@ -1313,10 +1325,21 @@ def main(argv=None):
     cols, rows = args.span or (1, 1)
     first = args.part - 1 if args.part else 0
     heads = []
+    wb = args.workbench
+    dc = 1 if wb == "left" else 0
+    dr = 1 if wb == "above" else 0
     for i in range(cols * rows):
         n = first + i
         sock = open_socket(part_group(args.group, n), args.port + n, args.iface)
-        heads.append(Head(sock, make_viewer(sock, Screen()), i % cols, i // cols))
+        heads.append(Head(sock, make_viewer(sock, Screen()), i % cols + dc, i // cols + dr,
+                          port=args.port + n))
+    if wb:
+        # the Workbench (WBSTREAM=1): PORT + 4, DEST + 4, next to the desktop
+        sock = open_socket(part_group(args.group, 4), args.port + 4, args.iface)
+        col = 0 if wb in ("left", "above", "below") else cols
+        row = 0 if wb in ("left", "right", "above") else rows
+        heads.insert(0, Head(sock, make_viewer(sock, Screen()), col, row, port=args.port + 4,
+                             solo=True, name="Workbench"))
     args.port += first
     try:
         if args.snapshot:

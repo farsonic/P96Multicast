@@ -118,11 +118,16 @@ class RecordTests(unittest.TestCase):
         self.assertFalse(tile(s, 0, 0, 2, 1, bytes((3, 0)), enc=pv.RLE))
         self.assertEqual(s.stats["bad"], 3)
 
-    def test_display_off_is_black(self):
+    def test_display_off_keeps_the_picture(self):
+        # another screen in front on the Amiga: the last picture stays, not black
         s = pv.Screen()
-        mode(s, 2, 1, pv.R8G8B8, 3, display=0)
+        mode(s, 2, 1, pv.R8G8B8, 3)
         tile(s, 0, 0, 2, 1, b"\xff" * 6)
-        self.assertEqual(s.rgb(), b"\0" * 6)
+        s.apply(pv.SURFACE, struct.pack(">HHBBBBHH", 2, 1, pv.R8G8B8, 3, 1, pv.SF_BEHIND, 16, 16))
+        self.assertTrue(s.behind)
+        self.assertEqual(s.rgb(), b"\xff" * 6)
+        mode(s, 2, 1, pv.R8G8B8, 3, display=0)
+        self.assertEqual(s.rgb(), b"\xff" * 6)
 
     def test_png_roundtrip(self):
         sys.path.insert(0, os.path.dirname(__file__))

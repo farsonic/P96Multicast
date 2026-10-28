@@ -71,6 +71,8 @@
 
 /* SURFACE flags (the byte after display on) */
 #define CU_SF_INPUT   1        /* the card takes the viewers' mouse and keys (INPUT=1) */
+#define CU_SF_BEHIND  2        /* not on the Amiga's display now (another screen is in
+                                  front); what was there last, still sent */
 
 #define CU_INPUT      4        /* ULONG stream, then up to 128 * (kind u8, a u8, x u16, y u16):
                                   the viewer's mouse and keys, with INPUT=1 */

@@ -99,6 +99,8 @@ int main(int argc, char **argv)
 			if (!prefs_write(!args[A_USE])) {
 				printf("MulticastPrefs: could not write the settings\n");
 				rc = RETURN_FAIL;
+			} else {
+				place_monitors(print_note);
 			}
 		}
 	}
