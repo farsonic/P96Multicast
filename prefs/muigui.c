@@ -60,11 +60,11 @@ enum { PG_DESKTOP, PG_NETWORK, PG_DISPLAY, PG_WRAP, PG_STATUS, NPAGES };
 static const char *const page_names[NPAGES] = { "Desktop", "Network", "Display", "Wrap.card",
                                                  "Status" };
 static const char *const page_subtitles[NPAGES] = {
-	"One screen over several viewer windows, beside the Workbench",
-	"Where the screen goes, and how fast",
-	"The card's boards, video memory and screen modes",
-	"Wrap another card: mirror it, span it, keep it shown",
-	"What the card is doing now"
+	"One screen over viewer windows",
+	"Where it goes, how fast",
+	"Boards, memory, screen modes",
+	"Wrap another card",
+	"What the card is doing"
 };
 static const int page_icons[NPAGES] = { IC_DESKTOP, IC_NETWORK, IC_DISPLAY, IC_WRAP, IC_STATUS };
 
@@ -137,6 +137,7 @@ static LONG measure(Object *obj, const char *s, BOOL bold)
 	struct TextFont *tf = ofont(obj);
 	const WORD *space = (const WORD *)tf->tf_CharSpace, *kern = (const WORD *)tf->tf_CharKern;
 	LONG w = 0, n = 0;
+
 
 	for (; *s; s++, n++) {
 		UBYTE c = *s;
@@ -400,13 +401,16 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG w = 0, i;
 
 		DoSuperMethodA(cl, obj, msg);
-		mp_trace("mui: nav AskMinMax: super done, font %ld", (LONG)ofont(obj)->tf_YSize);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		for (i = 0; i < NPAGES; i++) {
-			LONG l = measure(obj, page_names[i], TRUE);
+			LONG l;
+
+			l = measure(obj, page_names[i], TRUE);
 
 			if (l > w)
 				w = l;
@@ -415,7 +419,6 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		mm->MinWidth += w;
 		mm->DefWidth += w;
 		mm->MaxWidth += w;
-		mp_trace("mui: nav AskMinMax: %ld wide", w);
 		mm->MinHeight += NPAGES * nav_rowh(obj) + 16;
 		mm->DefHeight += NPAGES * nav_rowh(obj) + 16;
 		mm->MaxHeight = MUI_MAXMAX;
@@ -613,14 +616,16 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		mm->MinWidth += 260;
 		mm->DefWidth += 380;
 		mm->MaxWidth = MUI_MAXMAX;
-		mm->MinHeight += 9 * fh + 10;
+		mm->MinHeight += 4 * fh + 10;
 		mm->DefHeight += 12 * fh + 10;
 		mm->MaxHeight += 16 * fh + 10;
 		trace_sized("map", mm);
@@ -715,10 +720,12 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG w = 0, i, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		d = INST_DATA(cl, obj);
 		for (i = 0; i < d->n; i++) {
 			LONG l = measure(obj, d->labels[i], FALSE);
@@ -841,10 +848,12 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG h = ofont(obj)->tf_YSize + 6;
 
 		DoSuperMethodA(cl, obj, msg);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		mm->MinWidth += 2 * h;
 		mm->DefWidth += 2 * h;
 		mm->MaxWidth += 2 * h;
@@ -895,6 +904,7 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 #define LB_LEFT  1
 #define LB_TITLE 2      /* a page's heading: bold */
 #define LB_DIM   4      /* help under it */
+#define LB_FIT   8      /* as wide as its text, no wider */
 struct ButtonData {
 	char label[64];
 	LONG key, icon;
@@ -960,10 +970,12 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG w, h, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		d = INST_DATA(cl, obj);
 		w = measure(obj, d->label, (d->flags & LB_TITLE) != 0) + 2;
 		if (d->flags == ~0UL) {
@@ -975,7 +987,8 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		}
 		mm->MinWidth += w;
 		mm->DefWidth += w;
-		if (d->flags == ~0UL || (d->flags & (LB_LEFT | LB_TITLE | LB_DIM)))
+		if (d->flags == ~0UL ||
+		    ((d->flags & (LB_LEFT | LB_TITLE | LB_DIM)) && !(d->flags & LB_FIT)))
 			mm->MaxWidth = MUI_MAXMAX;
 		else
 			mm->MaxWidth += w;
@@ -1109,10 +1122,12 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 		theme_cleanup(obj);
 		break;
 	case MUIM_AskMinMax: {
-		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
+		struct MUI_MinMax *mm;
 		LONG rh = ofont(obj)->tf_YSize + 3;
 
 		DoSuperMethodA(cl, obj, msg);
+		/* MUI 3.8 fills MinMaxInfo in during the superclass's method: read it after */
+		mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		d = INST_DATA(cl, obj);
 		mm->MinWidth += 160;
 		mm->DefWidth += 300;
@@ -1241,10 +1256,10 @@ struct Field {
 static struct Field fields[] = {
 	{ PG_DESKTOP, K_BOOL, "DEFAULTSCREEN", "Programs open on it" },
 	{ PG_DESKTOP, K_BOOL, "ATBOOT", "Open at boot" },
-	{ PG_DESKTOP, K_BOOL, "BEHIND", "Open behind the Workbench" },
+	{ PG_DESKTOP, K_BOOL, "BEHIND", "Open behind Workbench" },
 	{ PG_DESKTOP, K_BOOL, "INPUT", "Viewers control it" },
-	{ PG_DESKTOP, K_BOOL, "WBMONITOR", "Workbench keeps its display" },
-	{ PG_DESKTOP, K_BOOL, "P96SCREENCX", "Tool types for P96ScreenCx" },
+	{ PG_DESKTOP, K_BOOL, "WBMONITOR", "Workbench keeps display" },
+	{ PG_DESKTOP, K_BOOL, "P96SCREENCX", "P96ScreenCx tool types" },
 
 	{ PG_NETWORK, K_TEXT, "DEST", "Send to" },
 	{ PG_NETWORK, K_NUM, "PORT", "UDP port" },
@@ -1297,7 +1312,7 @@ static Object *field_obj(struct Field *f)
 /* a page's text fields, two columns of label and field */
 static Object *form(int page)
 {
-	Object *g = ColGroup(2), MUIA_Group_VertSpacing, 4, MUIA_Group_HorizSpacing, 10, End;
+	Object *g = ColGroup(2), MUIA_Group_VertSpacing, 3, MUIA_Group_HorizSpacing, 10, End;
 	unsigned i;
 
 	for (i = 0; i < NFIELDS; i++)
@@ -1311,7 +1326,7 @@ static Object *form(int page)
 /* a page's switches, two to a row: switch, then its label */
 static Object *switches(int page)
 {
-	Object *g = ColGroup(4), MUIA_Group_VertSpacing, 6, MUIA_Group_HorizSpacing, 8, End;
+	Object *g = ColGroup(4), MUIA_Group_VertSpacing, 3, MUIA_Group_HorizSpacing, 8, End;
 	unsigned i, n = 0;
 
 	for (i = 0; i < NFIELDS; i++)
@@ -1329,10 +1344,10 @@ static Object *switches(int page)
 
 static Object *heading(int page)
 {
-	return VGroup, MUIA_Group_Spacing, 2,
-		Child, MpLabel(page_names[page], LB_TITLE),
+	/* one line: the title, and what the page is for */
+	return HGroup, MUIA_Group_Spacing, 12,
+		Child, MpLabel(page_names[page], LB_TITLE | LB_FIT),
 		Child, MpLabel(page_subtitles[page], LB_DIM),
-		Child, VSpace(4),
 	End;
 }
 
@@ -1658,26 +1673,19 @@ static Object *make_window(int start, const char *pubscreen)
 	         mode_entry ? "made" : "NOT all made");
 	pages = VGroup, MUIA_Group_PageMode, TRUE, MUIA_Group_ActivePage, start,
 		/* Desktop */
-		Child, VGroup,
+		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_DESKTOP),
 			Child, map,
-			Child, ColGroup(2), MUIA_Group_VertSpacing, 4, MUIA_Group_HorizSpacing, 10,
+			Child, ColGroup(2), MUIA_Group_VertSpacing, 3, MUIA_Group_HorizSpacing, 10,
 				Child, MpLabel("Monitors", 0), Child, ch_layout,
 				Child, MpLabel("Each monitor", 0), Child, ch_size,
 				Child, MpLabel("Colours", 0), Child, ch_colours,
 				Child, MpLabel("Workbench is", 0), Child, ch_wb,
 			End,
-			Child, VSpace(2),
 			Child, switches(PG_DESKTOP),
-			Child, VSpace(0),
-			Child, HGroup,
-				Child, HSpace(0),
-				Child, b_open = MpButton("_Open now", IC_OPEN, FALSE),
-				Child, b_close = MpButton("C_lose", IC_CLOSE, FALSE),
-			End,
 		End,
 		/* Network */
-		Child, VGroup,
+		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_NETWORK),
 			Child, form(PG_NETWORK),
 			Child, VSpace(2),
@@ -1685,7 +1693,7 @@ static Object *make_window(int start, const char *pubscreen)
 			Child, VSpace(0),
 		End,
 		/* Display */
-		Child, VGroup,
+		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_DISPLAY),
 			Child, form(PG_DISPLAY),
 			Child, ColGroup(2), MUIA_Group_HorizSpacing, 10,
@@ -1700,7 +1708,7 @@ static Object *make_window(int start, const char *pubscreen)
 			End,
 		End,
 		/* Wrap.card */
-		Child, VGroup,
+		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_WRAP),
 			Child, ColGroup(2), MUIA_Group_HorizSpacing, 10,
 				Child, MpLabel("Use Wrap.card", 0), Child, ch_wrap,
@@ -1711,7 +1719,7 @@ static Object *make_window(int start, const char *pubscreen)
 			Child, VSpace(0),
 		End,
 		/* Status */
-		Child, VGroup,
+		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_STATUS),
 			Child, status_rows,
 			Child, HGroup,
@@ -1731,14 +1739,16 @@ static Object *make_window(int start, const char *pubscreen)
 		                MUIA_Group_Spacing, 0,
 			Child, HGroup, MUIA_Group_Spacing, 0,
 				Child, nav,
-				Child, VGroup, MUIA_InnerLeft, 14, MUIA_InnerRight, 14, MUIA_InnerTop, 10,
-				               MUIA_InnerBottom, 10,
+				Child, VGroup, MUIA_InnerLeft, 12, MUIA_InnerRight, 12, MUIA_InnerTop, 6,
+				               MUIA_InnerBottom, 6,
 					Child, pages,
 				End,
 			End,
-			Child, HGroup, MUIA_Background, (ULONG)theme_panel_back(), MUIA_InnerLeft, 10,
-			               MUIA_InnerRight, 10, MUIA_InnerTop, 8, MUIA_InnerBottom, 8,
+			Child, HGroup, MUIA_Background, (ULONG)theme_panel_back(), MUIA_InnerLeft, 8,
+			               MUIA_InnerRight, 8, MUIA_InnerTop, 5, MUIA_InnerBottom, 5,
 				Child, b_install = MpButton("_Install", IC_INSTALL, FALSE),
+				Child, b_open = MpButton("_Open", IC_OPEN, FALSE),
+				Child, b_close = MpButton("C_lose", IC_CLOSE, FALSE),
 				Child, HSpace(0),
 				Child, b_cancel = MpButton("_Cancel", IC_NONE, FALSE),
 				Child, b_use = MpButton("_Use", IC_USE, FALSE),
@@ -1863,7 +1873,8 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	mp_trace("mui: window made");
 	DoMethod(app, OM_ADDMEMBER, (ULONG)win);
 	set(win, MUIA_Window_Open, TRUE);
-	mp_trace("mui: window %s", xget(win, MUIA_Window_Open) ? "open" : "NOT open");
+	mp_trace("mui: window %s (MUI_Error %ld)", xget(win, MUIA_Window_Open) ? "open" : "NOT open",
+	         MUI_Error());
 	if (!xget(win, MUIA_Window_Open)) {
 		printf("MulticastPrefs: the window could not be opened\n");
 		rc = RETURN_FAIL;
