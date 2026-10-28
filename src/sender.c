@@ -67,6 +67,7 @@ struct Sender {
 	struct DateStamp prefs_date;     /* ENV:Panorama.prefs when last read for INPUT= */
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
+	struct Library *cgxbase;         /* cybergraphics.library, to find our screen behind others */
 	struct MsgPort *inport;          /* INPUT=1: input.device, once a viewer types */
 	struct IOStdReq *inreq;
 	BOOL   in_failed;
@@ -249,7 +250,8 @@ static void finish(struct Sender *s)
 
 static void flush_solid(struct Sender *s);
 static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y);
-static struct Screen *our_screen(struct Sender *s);
+static void leave(struct Sender *s, struct Screen *scr);
+static struct Screen *our_screen(struct Sender *s, BOOL thorough);
 static void set_tail(struct Sender *s, ULONG tail);
 
 /* what a sender process is started with: its board, and its part of the screen */
@@ -1141,6 +1143,63 @@ static BOOL numeric_pad(UBYTE code)
 	       (code >= 0x5a && code <= 0x5e);
 }
 
+/* an event written to input.device, stamped now */
+static void write_event(struct Sender *s, struct InputEvent *ie)
+{
+	ie->ie_NextEvent = NULL;
+	if (s->timer)
+		GetSysTime(&ie->ie_TimeStamp);
+	else
+		ie->ie_TimeStamp.tv_secs = ie->ie_TimeStamp.tv_micro = 0;
+	s->inreq->io_Command = IND_WRITEEVENT;
+	s->inreq->io_Data = (APTR)ie;
+	s->inreq->io_Length = sizeof(*ie);
+	s->inreq->io_Flags = 0;
+	DoIO((struct IORequest *)s->inreq);
+}
+
+/*
+ * The viewer's pointer has left its windows (for the Workbench's, beside
+ * them on the same computer, say): the buttons it held let go, and the
+ * screen that was in front before the viewers' mouse brought ours is in
+ * front again, if it is still open and ours still in front.
+ */
+static void leave(struct Sender *s, struct Screen *scr)
+{
+	static const UWORD code[3] = { IECODE_LBUTTON, IECODE_RBUTTON, IECODE_MBUTTON };
+	static const UWORD bit[3] = {
+		IEQUALIFIER_LEFTBUTTON, IEQUALIFIER_RBUTTON, IEQUALIFIER_MIDBUTTON
+	};
+	struct McCard *mc = s->mc;
+	struct IntuitionBase *IntuitionBase = s->ibase;
+	struct Screen *prev = mc->in_prev, *x;
+	struct InputEvent ie;
+	int b;
+
+	for (b = 0; b < 3; b++)
+		if (mc->in_qual & bit[b]) {
+			mc->in_qual &= ~bit[b];
+			ie.ie_Class = IECLASS_RAWMOUSE;
+			ie.ie_SubClass = 0;
+			ie.ie_Code = code[b] | IECODE_UP_PREFIX;
+			ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
+			ie.ie_X = ie.ie_Y = 0;
+			ie.ie_EventAddress = NULL;
+			write_event(s, &ie);
+		}
+	mc->in_prev = NULL;
+	if (!prev || prev == scr)
+		return;
+	Forbid();
+	for (x = IntuitionBase->FirstScreen; x && x != prev; x = x->NextScreen)
+		;
+	if (IntuitionBase->FirstScreen != scr)
+		x = NULL;
+	Permit();
+	if (x)
+		ScreenToFront(prev);
+}
+
 /* one event from a viewer, as if from this Amiga's own mouse or keyboard */
 static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 {
@@ -1153,12 +1212,18 @@ static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 
 	if (!open_input(s) || !IntuitionBase)
 		return;
-	scr = our_screen(s);
+	scr = our_screen(s, TRUE);
 	if (!scr)
 		return;
+	if (kind == CU_IN_LEAVE) {
+		leave(s, scr);
+		return;
+	}
 	/* the viewers show this screen: it is the one to work */
-	if (IntuitionBase->FirstScreen != scr && (kind != CU_IN_KEY))
+	if (IntuitionBase->FirstScreen != scr && (kind != CU_IN_KEY)) {
+		mc->in_prev = IntuitionBase->FirstScreen;
 		ScreenToFront(scr);
+	}
 	ie.ie_NextEvent = NULL;
 	ie.ie_SubClass = 0;
 	ie.ie_X = 0;
@@ -1286,22 +1351,51 @@ static BOOL board_mode(struct BoardInfo *bi, struct Screen *scr)
 	return FALSE;
 }
 
+/* cybergraphics.library LockBitMapTagList() and UnLockBitMap(): where a bitmap's pixels are */
+static APTR __LockBitMapTagList(__reg("a6") struct Library *, __reg("a0") APTR bm,
+                                __reg("a1") ULONG *tags) = "\tjsr\t-168(a6)";
+static void __UnLockBitMap(__reg("a6") struct Library *, __reg("a0") APTR lock) =
+	"\tjsr\t-174(a6)";
+#define LBMI_BASEADDRESS 0x84001007UL
+
+/* are bm's pixels in this board's video memory? */
+static BOOL on_board(struct Sender *s, struct BitMap *bm)
+{
+	struct BoardInfo *bi = s->mc->bi;
+	ULONG base = 0;
+	ULONG tags[] = { LBMI_BASEADDRESS, (ULONG)&base, TAG_END };
+	APTR lock;
+
+	if (!s->cgxbase)
+		s->cgxbase = OpenLibrary("cybergraphics.library", 40);
+	if (!s->cgxbase || !bm || !(lock = __LockBitMapTagList(s->cgxbase, bm, tags)))
+		return FALSE;
+	__UnLockBitMap(s->cgxbase, lock);
+	return base >= (ULONG)bi->MemoryBase && base < (ULONG)bi->MemoryBase + bi->MemorySize;
+}
+
 /*
  * The screen shown on this board: the one whose viewport or bitmap P96 has
- * on it, else the frontmost in one of the board's modes (P96 need not keep
- * ViewPort and VisibleBitMap for a board with a monitor of its own), else
- * the one at the front.
+ * on it; else the one found there last, if it is still open; else the
+ * frontmost in one of the board's modes (P96 need not keep ViewPort and
+ * VisibleBitMap for a board with a monitor of its own); thorough (for the
+ * viewers' mouse, which brings it to the front): else the one whose pixels
+ * are in the board's memory (AROS gives its screens DisplayIDs of its own,
+ * and a screen behind the Workbench has neither); else the one at the front.
  *
  * The list is walked in Forbid(), not under LockIBase(): a sender runs at a
  * low priority, every pass, and holding Intuition's lock there kept
  * Intuition waiting while other tasks ran, which froze AmigaOS (PanoramaPrefs
  * stopped in the middle of a click). Forbid() is held only for the walk.
  */
-static struct Screen *our_screen(struct Sender *s)
+static struct Screen *our_screen(struct Sender *s, BOOL thorough)
 {
+	struct McCard *mc = s->mc;
 	struct IntuitionBase *IntuitionBase = s->ibase;
-	struct BoardInfo *bi = s->mc->bi;
-	struct Screen *scr, *found = NULL;
+	struct BoardInfo *bi = mc->bi;
+	struct Screen *scr, *found = NULL, *list[16];
+	struct BitMap *bms[16];
+	int n = 0, i;
 
 	if (!IntuitionBase)
 		return NULL;
@@ -1313,11 +1407,29 @@ static struct Screen *our_screen(struct Sender *s)
 			break;
 		}
 	for (scr = IntuitionBase->FirstScreen; scr && !found; scr = scr->NextScreen)
+		if (scr == mc->our_scr && scr->RastPort.BitMap == mc->our_bm)
+			found = scr;
+	for (scr = IntuitionBase->FirstScreen; scr && !found; scr = scr->NextScreen)
 		if (board_mode(bi, scr))
 			found = scr;
+	if (found) {
+		mc->our_scr = found;
+		mc->our_bm = found->RastPort.BitMap;
+	} else {
+		for (scr = IntuitionBase->FirstScreen; scr && n < 16; scr = scr->NextScreen) {
+			list[n] = scr;
+			bms[n++] = scr->RastPort.BitMap;
+		}
+	}
+	Permit();
+	for (i = 0; thorough && !found && i < n; i++)
+		if (on_board(s, bms[i])) {
+			found = list[i];
+			mc->our_scr = found;
+			mc->our_bm = bms[i];
+		}
 	if (!found)
 		found = IntuitionBase->FirstScreen;
-	Permit();
 	return found;
 }
 
@@ -1326,7 +1438,7 @@ static BOOL mouse(struct Sender *s, WORD *x, WORD *y)
 {
 	struct Screen *scr;
 
-	scr = our_screen(s);
+	scr = our_screen(s, FALSE);
 	if (!scr)
 		return FALSE;
 	*x = scr->MouseX - s->xoff - s->vx;
@@ -1756,6 +1868,8 @@ static void SenderMain(void)
 	close_input(s);
 	if (s->ibase)
 		CloseLibrary((struct Library *)s->ibase);
+	if (s->cgxbase)
+		CloseLibrary(s->cgxbase);
 	free_tiles(s);
 	if (s->hist)
 		FreeMem(s->hist, s->nhist * CU_MAX_DGRAM);

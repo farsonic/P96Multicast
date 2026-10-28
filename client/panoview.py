@@ -42,7 +42,7 @@ PIXELS, POINTER, POINTERPOS = 0x20, 0x30, 0x31
 JAM2, COMPLEMENT, INVERSVID = 1, 2, 4
 RAW, SOLID, RLE = 0, 1, 2
 HELLO, NAK, WANT, INPUT = 1, 2, 3, 4
-IN_MOVE, IN_BUTTON, IN_KEY = 1, 2, 3
+IN_MOVE, IN_BUTTON, IN_KEY, IN_LEAVE = 1, 2, 3, 4
 SF_INPUT = 1                    # SURFACE: the card takes our mouse and keys
 SF_BEHIND = 2                   # SURFACE: another screen is in front on the Amiga
 
@@ -1072,6 +1072,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
             ev.append((kind, a, x, y))
 
     def on_motion(e):
+        state["inside"] = True
         i, x, y = head_at(e.widget, e.x, e.y)
         if i is not None:
             state["keys"] = i
@@ -1112,7 +1113,42 @@ def run_window(heads, args):  # pragma: no cover - interactive
         add(state["keys"], IN_KEY, code | (0x80 if up else 0))
         return "break"
 
+    canvases = [canvas for _, canvas in windows]
+    state["inside"] = False
+
+    def taking():
+        return not args.no_input and any(h.screen.takes_input for h in heads)
+
+    def on_enter(e):
+        # the keys follow the mouse: no click to make this window take them
+        # (on a Mac, that also makes this program the active one)
+        state["inside"] = True
+        if taking():
+            try:
+                e.widget.winfo_toplevel().focus_force()
+            except tk.TclError:
+                pass
+
+    def on_leave(e):
+        def gone():
+            # out of every window of ours, not just into the next: the Amiga's
+            # own screen (the Workbench, in its window beside these) in front again
+            try:
+                w = root.winfo_containing(*root.winfo_pointerxy())
+            except (tk.TclError, KeyError):
+                w = None
+            if w in canvases or not state["inside"]:
+                return
+            state["inside"] = False
+            for i, h in enumerate(heads):
+                if h.screen.takes_input and not args.no_input:
+                    pending[i].append((IN_LEAVE, 0, 0, 0))
+                    break
+        root.after(150, gone)
+
     for win, canvas in windows:
+        canvas.bind("<Enter>", on_enter)
+        canvas.bind("<Leave>", on_leave)
         canvas.bind("<Motion>", on_motion)
         canvas.bind("<ButtonPress>", lambda e: on_button(e, False))
         canvas.bind("<ButtonRelease>", lambda e: on_button(e, True))

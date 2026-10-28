@@ -130,6 +130,27 @@ EOF
 		echo 'EndIf'
 	done
 	echo 'Wait 2'
+	# the viewer's mouse brings the desktop in front of the Workbench, and
+	# leaving the viewer's windows gives the Workbench the front again
+	echo 'Work:PanoramaDesk SWAP'
+	echo 'Wait 2'
+	echo 'Work:mctest WHERE >Work:whereleave0.log'
+	echo "Echo >Work:mark-leave x"
+	for i in $(seq 1 20); do
+		echo 'If NOT EXISTS Work:moved'
+		echo 'Wait 1'
+		echo 'EndIf'
+	done
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:whereleave1.log'
+	echo "Echo >Work:mark-leave2 x"
+	for i in $(seq 1 20); do
+		echo 'If NOT EXISTS Work:left'
+		echo 'Wait 1'
+		echo 'EndIf'
+	done
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:whereleave2.log'
 	# WORKBENCH=LEFT1: the mouse over the desktop's left edge to the
 	# Workbench, and over the Workbench's right edge back
 	echo 'Work:PanoramaDesk'
@@ -210,6 +231,18 @@ while [ ! -f "$work/autorun.done" ]; do
 					'type:echo >Work:typed "Hello from the viewer"\n' move:100,100 \
 					>"$OUT/input.log" 2>&1 &
 			fi
+			if [ "$n" = leave ]; then
+				# the viewer's mouse in its window: the desktop comes to the front
+				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+					--iface $HOST_IP move:50,50 >"$OUT/leave.log" 2>&1
+				touch "$work/moved"
+			fi
+			if [ "$n" = leave2 ]; then
+				# ... and out of its windows: the Workbench again
+				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
+					--iface $HOST_IP leave >>"$OUT/leave.log" 2>&1
+				touch "$work/left"
+			fi
 		fi
 	done
 	sleep 0.5
@@ -263,6 +296,19 @@ if [ "$(front "$w2")" = "$(front "$w0")" ] && [ -n "$x2" ] && [ "$x2" -le 12 ] &
 	echo "PASS: ... and back: the desktop, at its left edge, the same window active"
 else
 	echo "FAIL: ... and back: the desktop, at its left edge, the same window active ('$w0' / '$w2')"
+	status=1
+fi
+echo "---- the viewer's mouse in and out (LEAVE)"
+for n in 0 1 2; do tr -d '\r' < "$work/whereleave$n.log" 2>/dev/null; done
+cat "$OUT/leave.log" 2>/dev/null
+l0=$(tr -d '\r' < "$work/whereleave0.log" 2>/dev/null)
+l1=$(tr -d '\r' < "$work/whereleave1.log" 2>/dev/null)
+l2=$(tr -d '\r' < "$work/whereleave2.log" 2>/dev/null)
+if [ "$(front "$l0")" = Workbench ] && [ "$(front "$l1")" != Workbench ] && [ -n "$(front "$l1")" ] &&
+   [ "$(front "$l2")" = Workbench ]; then
+	echo "PASS: the viewer's mouse brings the desktop to the front, leaving its windows the Workbench"
+else
+	echo "FAIL: the viewer's mouse brings the desktop to the front, leaving its windows the Workbench ('$l0' / '$l1' / '$l2')"
 	status=1
 fi
 python3 tests/check_desktop.py "$OUT" || status=1

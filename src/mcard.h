@@ -22,8 +22,8 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Panorama.card"
-#define MC_VERSION_STR "2.9"
-#define MC_REVISION    9      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_VERSION_STR "3.0"
+#define MC_REVISION    0      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -161,6 +161,9 @@ struct McCard {
 
 	/* INPUT=1: the qualifiers (shift, buttons, ...) the viewers hold down */
 	volatile UWORD in_qual;
+	struct Screen *volatile in_prev; /* in front before the viewers' mouse brought ours */
+	struct Screen *volatile our_scr; /* the screen last found on the board ... */
+	struct BitMap *volatile our_bm;  /* ... and its bitmap, so a new one at the same address isn't taken for it */
 
 	/* POINTER=1: the hardware pointer */
 	volatile ULONG ptr_serial;   /* shape or colours changed */

@@ -183,6 +183,7 @@ INPUT kinds:
 | 1 | MOVE | the pointer to x, y on this part of the screen |
 | 2 | BUTTON | a: 1 left, 2 right, 3 middle; + 0x80 when released |
 | 3 | KEY | a: an Amiga raw key code; + 0x80 when released (0x7A/0x7B: the wheel, as NewMouse) |
+| 4 | LEAVE | the pointer has left all of the viewer's windows: buttons still held are released, and the screen that was in front before the viewer's mouse brought the card's (the Workbench, say) is in front again |
 
 With `INPUT=1` the card sets bit 0 of the byte after "display on" in SURFACE,
 so viewers know their mouse and keys are taken. It writes them to input.device

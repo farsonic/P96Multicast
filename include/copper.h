@@ -81,6 +81,7 @@
 #define CU_IN_MOVE    1        /* the pointer to x, y on this part of the screen */
 #define CU_IN_BUTTON  2        /* a: 1 left, 2 right, 3 middle; | 0x80 released */
 #define CU_IN_KEY     3        /* a: Amiga raw key code; | 0x80 released */
+#define CU_IN_LEAVE   4        /* the pointer has left the viewer's windows */
 
 #define CU_CTRL_MAX   1024
 

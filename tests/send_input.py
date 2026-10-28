@@ -9,6 +9,7 @@ address and stream), then sends each STEP:
     move:X,Y    the pointer to X,Y on this part of the screen
     click:B     button B (1 left, 2 right, 3 middle) pressed and released
     type:TEXT   the keys for TEXT (a US keyboard; \\n is Return)
+    leave       the pointer out of the viewer's windows
     wait:S      S seconds
 
 Then prints where the card says its pointer is (POINTERPOS), as
@@ -84,6 +85,8 @@ def main():
             send([(panoview.IN_BUTTON, b | 0x80, 0, 0)])
         elif kind == "type":
             send(keys_for(arg.replace("\\n", "\n")))
+        elif kind == "leave":
+            send([(panoview.IN_LEAVE, 0, 0, 0)])
         elif kind == "wait":
             time.sleep(float(arg))
         else:

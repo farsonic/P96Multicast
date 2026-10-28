@@ -55,7 +55,7 @@ struct Library *LibInit(__reg("d0") struct McBase *base, __reg("a0") BPTR seglis
 	base->lib.lib_Node.ln_Type = NT_LIBRARY;
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
-	base->lib.lib_Version = 2;
+	base->lib.lib_Version = 3;
 	base->lib.lib_Revision = MC_REVISION;
 	base->lib.lib_IdString = LibId;
 

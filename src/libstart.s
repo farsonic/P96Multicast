@@ -22,8 +22,8 @@
 	xdef	_LibName
 	xdef	_LibId
 
-VERSION		equ	2
-REVISION	equ	9
+VERSION		equ	3
+REVISION	equ	0
 LIBSIZE		equ	512		; struct McBase, MC_LIBSIZE in mc_status.h
 RTF_AUTOINIT	equ	$80
 NT_LIBRARY	equ	9
@@ -101,5 +101,5 @@ dmg_common:
 _LibName:
 	dc.b	"Panorama.card",0
 _LibId:
-	dc.b	"Panorama.card 2.9 (28.10.2026)",13,10,0
+	dc.b	"Panorama.card 3.0 (28.10.2026)",13,10,0
 	even
