@@ -126,6 +126,20 @@ static struct TextFont *ofont(Object *obj)
 	return GfxBase->DefaultFont;
 }
 
+/*
+ * Text's width in a font, for MUIM_AskMinMax: a RastPort of our own with
+ * only the font set, no soft style (bold is a pixel a character wider).
+ */
+static LONG measure(Object *obj, const char *s, BOOL bold)
+{
+	struct RastPort rp;
+	LONG n = strlen(s);
+
+	InitRastPort(&rp);
+	SetFont(&rp, ofont(obj));
+	return TextLength(&rp, (STRPTR)s, n) + (bold ? n : 0);
+}
+
 static ULONG xget(Object *obj, ULONG attr)
 {
 	ULONG v = 0;
@@ -314,6 +328,24 @@ static void trace_first(const char *cls, ULONG id)
 	         "AskMinMax" : id == MUIM_Draw ? "Draw" : id == OM_NEW ? "New" : "Cleanup");
 }
 
+/* the first time each class has answered MUIM_AskMinMax, traced */
+static void trace_sized(const char *cls, struct MUI_MinMax *mm)
+{
+	static const char *done[8];
+	static int n;
+	int i;
+
+	if (!mp_trace_file)
+		return;
+	for (i = 0; i < n; i++)
+		if (done[i] == cls)
+			return;
+	if (n < 8)
+		done[n++] = cls;
+	mp_trace("mui: %s sized: min %ld x %ld, max %ld x %ld", cls, (LONG)mm->MinWidth,
+	         (LONG)mm->MinHeight, (LONG)mm->MaxWidth, (LONG)mm->MaxHeight);
+}
+
 static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj,
                           __reg("a1") Msg msg)
 {
@@ -360,14 +392,12 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		struct RastPort rp;
 		LONG w = 0, i;
 
 		DoSuperMethodA(cl, obj, msg);
-		InitRastPort(&rp);
-		SetFont(&rp, ofont(obj));
+		mp_trace("mui: nav AskMinMax: super done, font %ld", (LONG)ofont(obj)->tf_YSize);
 		for (i = 0; i < NPAGES; i++) {
-			LONG l = theme_textlen(&rp, page_names[i], TRUE);
+			LONG l = measure(obj, page_names[i], TRUE);
 
 			if (l > w)
 				w = l;
@@ -376,9 +406,11 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		mm->MinWidth += w;
 		mm->DefWidth += w;
 		mm->MaxWidth += w;
+		mp_trace("mui: nav AskMinMax: %ld wide", w);
 		mm->MinHeight += NPAGES * nav_rowh(obj) + 16;
 		mm->DefHeight += NPAGES * nav_rowh(obj) + 16;
-		mm->MaxHeight += MUI_MAXMAX;
+		mm->MaxHeight = MUI_MAXMAX;
+		trace_sized("nav", mm);
 		return 0;
 	}
 	case MUIM_Draw: {
@@ -578,10 +610,11 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		DoSuperMethodA(cl, obj, msg);
 		mm->MinWidth += 260;
 		mm->DefWidth += 380;
-		mm->MaxWidth += MUI_MAXMAX;
+		mm->MaxWidth = MUI_MAXMAX;
 		mm->MinHeight += 9 * fh + 10;
 		mm->DefHeight += 12 * fh + 10;
 		mm->MaxHeight += 16 * fh + 10;
+		trace_sized("map", mm);
 		return 0;
 	}
 	case MUIM_Draw:
@@ -674,15 +707,12 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		struct RastPort rp;
 		LONG w = 0, i, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		d = INST_DATA(cl, obj);
-		InitRastPort(&rp);
-		SetFont(&rp, ofont(obj));
 		for (i = 0; i < d->n; i++) {
-			LONG l = theme_textlen(&rp, d->labels[i], FALSE);
+			LONG l = measure(obj, d->labels[i], FALSE);
 
 			if (l > w)
 				w = l;
@@ -690,10 +720,11 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		w += 2 * (fh + 8) + 12;
 		mm->MinWidth += w;
 		mm->DefWidth += w;
-		mm->MaxWidth += MUI_MAXMAX;
+		mm->MaxWidth = MUI_MAXMAX;
 		mm->MinHeight += fh + 8;
 		mm->DefHeight += fh + 8;
 		mm->MaxHeight += fh + 8;
+		trace_sized("choice", mm);
 		return 0;
 	}
 	case MUIM_Draw: {
@@ -811,6 +842,7 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		mm->MinHeight += h;
 		mm->DefHeight += h;
 		mm->MaxHeight += h;
+		trace_sized("switch", mm);
 		return 0;
 	}
 	case MUIM_Draw: {
@@ -920,14 +952,11 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		struct RastPort rp;
 		LONG w, h, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		d = INST_DATA(cl, obj);
-		InitRastPort(&rp);
-		SetFont(&rp, ofont(obj));
-		w = theme_textlen(&rp, d->label, (d->flags & LB_TITLE) != 0) + 2;
+		w = measure(obj, d->label, (d->flags & LB_TITLE) != 0) + 2;
 		if (d->flags == ~0UL) {
 			/* a button: room round the label, and the icon */
 			w += 28 + (d->icon ? fh + 6 : 0);
@@ -937,11 +966,14 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		}
 		mm->MinWidth += w;
 		mm->DefWidth += w;
-		mm->MaxWidth += d->flags == ~0UL || (d->flags & (LB_LEFT | LB_TITLE | LB_DIM)) ?
-		                MUI_MAXMAX : w;
+		if (d->flags == ~0UL || (d->flags & (LB_LEFT | LB_TITLE | LB_DIM)))
+			mm->MaxWidth = MUI_MAXMAX;
+		else
+			mm->MaxWidth += w;
 		mm->MinHeight += h;
 		mm->DefHeight += h;
 		mm->MaxHeight += h;
+		trace_sized("button", mm);
 		return 0;
 	}
 	case MUIM_Draw: {
@@ -1075,10 +1107,11 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 		d = INST_DATA(cl, obj);
 		mm->MinWidth += 160;
 		mm->DefWidth += 300;
-		mm->MaxWidth += MUI_MAXMAX;
+		mm->MaxWidth = MUI_MAXMAX;
 		mm->MinHeight += 3 * rh + 8;
 		mm->DefHeight += d->visible * rh + 8;
-		mm->MaxHeight += MUI_MAXMAX;
+		mm->MaxHeight = MUI_MAXMAX;
+		trace_sized("rows", mm);
 		return 0;
 	}
 	case MUIM_Draw: {
