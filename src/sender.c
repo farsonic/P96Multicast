@@ -1266,9 +1266,28 @@ static void read_viewers(struct Sender *s)
 
 /* ---------------------------------------------------------------- a pass */
 
+/* is the screen in one of this board's modes (its DisplayID one of the board's)? */
+static BOOL board_mode(struct BoardInfo *bi, struct Screen *scr)
+{
+	struct ColorMap *cm = scr->ViewPort.ColorMap;
+	struct LibResolution *r;
+	ULONG id;
+
+	if (!cm)
+		return FALSE;
+	id = cm->VPModeID & 0xffff0000UL;
+	for (r = (struct LibResolution *)bi->ResolutionsList.mlh_Head; r->Node.ln_Succ;
+	     r = (struct LibResolution *)r->Node.ln_Succ)
+		if ((r->DisplayID & 0xffff0000UL) == id)
+			return TRUE;
+	return FALSE;
+}
+
 /*
  * The screen shown on this board: the one whose viewport or bitmap P96 has
- * on it, else the one at the front.
+ * on it, else the frontmost in one of the board's modes (P96 need not keep
+ * ViewPort and VisibleBitMap for a board with a monitor of its own), else
+ * the one at the front.
  *
  * The list is walked in Forbid(), not under LockIBase(): a sender runs at a
  * low priority, every pass, and holding Intuition's lock there kept
@@ -1290,6 +1309,9 @@ static struct Screen *our_screen(struct Sender *s)
 			found = scr;
 			break;
 		}
+	for (scr = IntuitionBase->FirstScreen; scr && !found; scr = scr->NextScreen)
+		if (board_mode(bi, scr))
+			found = scr;
 	if (!found)
 		found = IntuitionBase->FirstScreen;
 	Permit();

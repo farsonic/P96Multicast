@@ -28,7 +28,9 @@ CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sende
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
-PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c
+PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c \
+             prefs/muigui.c prefs/theme.c prefs/bigstack.s
+MUI ?= /home/user/toolchain/mui/include
 
 all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
      $(BUILD)/MulticastDesktop $(BUILD)/Boing \
@@ -55,8 +57,8 @@ $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
 
 # libraries opened by hand (no -lauto): the command line runs without intuition
-$(BUILD)/MulticastPrefs: $(PREFS_SRC) prefs/mcprefs.h $(HDRS) | $(BUILD)
-	$(VC) $(CFLAGS) -Iprefs -o $@ $(PREFS_SRC) -lamiga
+$(BUILD)/MulticastPrefs: $(PREFS_SRC) prefs/mcprefs.h prefs/theme.h $(HDRS) | $(BUILD)
+	$(VC) $(CFLAGS) -Iprefs -I$(MUI) -o $@ $(PREFS_SRC) -lamiga
 
 # the desktop commodity: the settings code is MulticastPrefs'
 $(BUILD)/MulticastDesktop: prefs/desktop.c prefs/settings.c prefs/mcprefs.h | $(BUILD)

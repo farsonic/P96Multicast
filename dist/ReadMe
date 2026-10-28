@@ -18,7 +18,9 @@ with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
 
 Contents
 --------
-  MulticastPrefs                   settings and installation (see below)
+  MulticastPrefs                   settings and installation (see below);
+                                   its window needs MUI 3.8 or later
+                                   (else a plain GadTools one)
   Libs/Picasso96/Multicast.card    the driver
   Libs/Picasso96/Wrap.card         experimental: wraps another card driver
   Devs/Monitors/Multicast.info     monitor icon, ToolType BOARDTYPE=Multicast

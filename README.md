@@ -59,6 +59,11 @@ uaegfx.card or a real card streams orders too. See [docs/WRAP.md](docs/WRAP.md).
 
 The easy way is **MulticastPrefs** (`prefs/`), in the package's top
 drawer: a prefs editor for everything below, without P96's own tools. Its
+window is MUI (3.8 or later; AROS's Zune too), drawn in the dark, flat look
+of Easel (`prefs/muigui.c`, `prefs/theme.c`): pages for the desktop, the
+network, the display, Wrap.card and the status, a picture of the monitors
+where a click places the Workbench, and a help bubble on every control.
+Without MUI it opens a plain GadTools window (`prefs/gui.c`). Its
 Install button copies the cards to `LIBS:Picasso96`, makes the monitor and
 its icon from a P96 monitor already there, moves monitors that would set a
 card up twice to `SYS:Storage/Monitors`, and saves the settings. The card

@@ -129,13 +129,14 @@ boot() {
 			break
 		fi
 		if [ -f "$work/click" ] && [ ! -f "$OUT/clicked" ]; then
-			# work the Desktop page from here (INPUT=1): every layout, the
-			# Workbench's places, a click on the map
+			# work the Desktop page from here (INPUT=1): every layout (Monitors,
+			# the right of it steps on), the Workbench's places, a click beside
+			# the monitors
 			touch "$OUT/clicked"
 			python3 tests/send_input.py --group $GROUP --port 9696 --iface 192.168.96.1 \
-				move:330,184 click:1 wait:1 click:1 wait:1 click:1 wait:1 click:1 wait:1 \
-				click:1 wait:1 move:330,199 click:1 wait:1 click:1 wait:1 \
-				move:330,60 click:1 wait:1 move:330,184 click:1 wait:1 >"$OUT/click.log" 2>&1
+				move:520,200 click:1 wait:1 click:1 wait:1 click:1 wait:1 click:1 wait:1 \
+				click:1 wait:1 move:520,260 click:1 wait:1 click:1 wait:1 \
+				move:450,140 click:1 wait:1 move:520,200 click:1 wait:1 >"$OUT/click.log" 2>&1
 			python3 client/p96view.py --group $GROUP --port 9696 --iface 192.168.96.1 \
 				--snapshot "$OUT/gui-clicked.png" --duration 5 2>>"$OUT/click.log"
 			touch "$work/clicked"

@@ -88,7 +88,11 @@ int main(int argc, char **argv)
 
 	prefs_load();
 	if (argc == 0)
-		return gui(0, 0, NULL);     /* from Workbench */
+	{
+		int rc = mui_gui(0, 0, NULL);   /* from Workbench */
+
+		return rc >= 0 ? rc : gui(0, 0, NULL);
+	}
 
 	rda = ReadArgs((STRPTR)template, args, NULL);
 	if (!rda) {
@@ -165,8 +169,14 @@ int main(int argc, char **argv)
 			printf("%s\n", lines[i]);
 	}
 	if (!args[A_SET] && !args[A_INSTALL] && !args[A_SHOW] && !args[A_STATUS])
-		rc = gui(args[A_PAGE] ? *(LONG *)args[A_PAGE] : 0,
-		         args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0, (const char *)args[A_PUBSCREEN]);
+	{
+		int page = args[A_PAGE] ? *(LONG *)args[A_PAGE] : 0;
+		int timeout = args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0;
+
+		rc = mui_gui(page, timeout, (const char *)args[A_PUBSCREEN]);
+		if (rc < 0)
+			rc = gui(page, timeout, (const char *)args[A_PUBSCREEN]);
+	}
 	FreeArgs(rda);
 	return rc;
 }
