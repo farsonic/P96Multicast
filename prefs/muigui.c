@@ -1828,7 +1828,9 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	int rc = 0;
 
 	MUIMasterBase = OpenLibrary(MUIMASTER_NAME, 19);
-	mp_trace("mui: muimaster.library %ld", MUIMasterBase ? (LONG)MUIMasterBase->lib_Version : 0L);
+	mp_trace("mui: muimaster.library %ld.%ld (%s)", MUIMasterBase ? (LONG)MUIMasterBase->lib_Version : 0L,
+	         MUIMasterBase ? (LONG)MUIMasterBase->lib_Revision : 0L,
+	         MUIMasterBase && MUIMasterBase->lib_IdString ? (char *)MUIMasterBase->lib_IdString : "-");
 	if (!MUIMasterBase)
 		return -1;
 	if (!IntuitionBase)
