@@ -588,6 +588,15 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 		return FALSE;
 	}
 	status->inner_init++;
+	/*
+	 * KEEPDISPLAY: the Workbench's board beside the Panorama desktop is a
+	 * monitor of its own, whatever the card says (UAE's uaegfx can say it
+	 * is in the display chain). P96ScreenCx moves the mouse only between
+	 * boards out of the chain: in it, the board counts as "Native", and the
+	 * desktop's RIGHT_OF=Wrap would lead nowhere.
+	 */
+	if (status->keepdisplay)
+		bi->Flags &= ~BIF_INDISPLAYCHAIN;
 
 	/* the card works without the thunks, so a broken table only stops the wrapping */
 	if (WrapThunksEnd - WrapThunks != THUNK_SIZE * WRAP_NSLOTS) {

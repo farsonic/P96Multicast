@@ -167,6 +167,8 @@ make emu-mirror # ... mirroring it to a second Panorama board, over the network
 make emu-span   # ... one 1280x960 screen on four Panorama boards, a window moved between them
 make emu-copper # everyday work on AROS; the viewer must show exactly the card's screen
 make emu-prefs  # PanoramaPrefs: install on a clean AROS, its window, a second boot
+make emu-os3    # PanoramaPrefs' MUI window on AmigaOS 3.1.4 and MUI 3.8 (your ROM and OS)
+make emu-p96    # the desktop install with Picasso96 and uaegfx: the mouse across and back
 ```
 
 ## Layout

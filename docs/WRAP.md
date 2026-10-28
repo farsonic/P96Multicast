@@ -79,7 +79,7 @@ WaitBlitter) unwrapped, for speed.
 | `HEAD1`...`HEAD4` | `HEAD` | with `SPAN`: the card driver of one head (left to right, top to bottom) |
 | `MIRRORFPS` | 25 | head updates per second (1-50) |
 | `HEADSHARE` | 0 | 1: heads that can show any memory (Panorama.card) show the big screen's bitmap itself, no copy |
-| `KEEPDISPLAY` | 0 | 1: never switch the wrapped card's display off. P96 switches a board off when another board's screen comes to the front; for the Workbench's card beside a Panorama desktop that blanks it (FS-UAE's uaegfx goes to the empty native display). With this, it keeps showing its screen. `wrapstat` counts the "off" calls it turned into "on". PanoramaPrefs' `WBMONITOR=1` sets it up |
+| `KEEPDISPLAY` | 0 | 1: never switch the wrapped card's display off. P96 switches a board off when another board's screen comes to the front; for the Workbench's card beside a Panorama desktop that blanks it (FS-UAE's uaegfx goes to the empty native display). With this, it keeps showing its screen. `wrapstat` counts the "off" calls it turned into "on". The board also counts as out of the display chain (BIF_INDISPLAYCHAIN cleared), so P96ScreenCx moves the mouse between it and the desktop. PanoramaPrefs' `WBMONITOR=1` sets it up |
 
 The settings are read when FindCard runs, so only from `ENV:`/`ENVARC:`.
 The monitor's ToolTypes are passed on to the real card's InitCard untouched.

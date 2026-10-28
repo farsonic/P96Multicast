@@ -11,6 +11,10 @@
 #   make emu-span        ... and spanning one screen over four boards, over the network
 #   make emu-copper      the viewer shows exactly what the card has, after a workload
 #   make emu-prefs       PanoramaPrefs installs on a clean AROS; its window
+#   make emu-os3         PanoramaPrefs' window on AmigaOS 3.1.4 with MUI 3.8
+#   make emu-p96         the desktop install on AmigaOS with Picasso96 and
+#                        uaegfx: the mouse across to the Workbench and back
+#                        (these two: your own ROM, OS and P96, see the scripts)
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -124,7 +128,13 @@ emu-copper: all
 emu-prefs: all
 	emu/prefs_test.sh
 
+emu-os3: all
+	emu/os3_test.sh 400 0 1 2 3 4
+
+emu-p96: package
+	emu/p96_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 clean

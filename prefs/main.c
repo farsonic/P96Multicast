@@ -29,9 +29,13 @@
  *                                       Then it asks to reboot (REBOOT: without
  *                                       asking, NOREBOOT: not at all)
  *   PanoramaPrefs STATUS               what the running cards say
+ *   PanoramaPrefs OPEN                 the window's Open: the viewers' mouse
+ *                                       and keys on, P96ScreenCx started if
+ *                                       it is installed, the desktop opened
  */
 #include <exec/types.h>
 #include <dos/dos.h>
+#include <dos/dostags.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stdio.h>
@@ -39,9 +43,9 @@
 
 static const char version[] = "$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K,NOMUI/S";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K,NOMUI/S,OPEN/S";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
-       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI,
+       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI, A_OPEN,
        A_COUNT };
 
 /*
@@ -193,6 +197,26 @@ static int prefs_main(int argc)
 			}
 		}
 	}
+	if (args[A_OPEN] && rc == RETURN_OK) {
+		BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+
+		desktop_ready(print_note);
+		prefs_fix(print_note);
+		if (!prefs_write(FALSE)) {
+			printf("PanoramaPrefs: could not write the settings\n");
+			rc = RETURN_FAIL;
+		} else if (SystemTags((STRPTR)"C:PanoramaDesk", SYS_Input, in, SYS_Output, out,
+		                      SYS_Asynch, TRUE, TAG_END) != -1) {
+			in = out = 0;
+		} else {
+			printf("PanoramaPrefs: could not start C:PanoramaDesk\n");
+			rc = RETURN_FAIL;
+		}
+		if (in)
+			Close(in);
+		if (out)
+			Close(out);
+	}
 	if (args[A_SHOW])
 		prefs_show();
 	if (args[A_STATUS]) {
@@ -202,7 +226,7 @@ static int prefs_main(int argc)
 		for (i = 0; i < n; i++)
 			printf("%s\n", lines[i]);
 	}
-	if (!args[A_SET] && !args[A_INSTALL] && !args[A_SHOW] && !args[A_STATUS])
+	if (!args[A_SET] && !args[A_INSTALL] && !args[A_SHOW] && !args[A_STATUS] && !args[A_OPEN])
 	{
 		int page = args[A_PAGE] ? *(LONG *)args[A_PAGE] : 0;
 		int timeout = args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0;
