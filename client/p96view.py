@@ -7,6 +7,9 @@
     p96view.py --span 2x1                   two parts of a SPLIT=2x1 screen, a window each
                                             (groups 239.255.96.1 and .2, ports 9696, 9697)
     p96view.py --part 2                     only part 2 (group 239.255.96.2, port 9697)
+    p96view.py --span 2x1 --groups 239.1.1.1,239.2.2.2
+                                            each part from an address of its own
+                                            (the card's DEST= and DEST2= ...)
     p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
     p96view.py --web                        show it in a web browser instead
 
@@ -1270,6 +1273,13 @@ def part_group(group, n):
     return socket.inet_ntoa(struct.pack(">I", v))
 
 
+def head_group(group, groups, n):
+    """Part n's address (from 0): its own from --groups, else counted up from --group."""
+    if groups and n < len(groups) and groups[n]:
+        return groups[n]
+    return part_group(group, n)
+
+
 def parse_span(text):
     """'2x1' -> (2, 1)"""
     try:
@@ -1286,6 +1296,10 @@ def main(argv=None):
     ap.add_argument("--group", default="239.255.96.1",
                     help="multicast group to join (a unicast address just binds)")
     ap.add_argument("--port", type=int, default=9696)
+    ap.add_argument("--groups", type=lambda s: [g.strip() for g in s.split(",")],
+                    metavar="A,B,...",
+                    help="each part's own group or address, in order (the card's DEST=, "
+                         "DEST2=, ...); a part left out or empty counts up from --group")
     ap.add_argument("--span", type=parse_span, metavar="CxR",
                     help="several boards, a window each (like monitors), e.g. 2x1 for Wrap.card's "
                          "SPAN=2x1: ports PORT, PORT+1, ... left to right, top to bottom")
@@ -1317,7 +1331,7 @@ def main(argv=None):
     heads = []
     for i in range(cols * rows):
         n = first + i
-        sock = open_socket(part_group(args.group, n), args.port + n, args.iface)
+        sock = open_socket(head_group(args.group, args.groups, n), args.port + n, args.iface)
         heads.append(Head(sock, make_viewer(sock, Screen()), i % cols, i // cols,
                           port=args.port + n))
     args.port += first

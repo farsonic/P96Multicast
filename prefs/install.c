@@ -22,9 +22,12 @@
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <workbench/workbench.h>
+#include <dos/dostags.h>
+#include <libraries/commodities.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
+#include <proto/commodities.h>
 #include <proto/bsdsocket.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +35,7 @@
 
 struct Library *IconBase;
 struct Library *SocketBase;
+struct Library *CxBase;
 
 static void (*say)(const char *);
 static BOOL dry;
@@ -1132,4 +1136,76 @@ out:
 		CloseLibrary(IconBase);
 	IconBase = NULL;
 	return !failed;
+}
+
+/* ---------------------------------------------------------------- Open */
+
+/* is a commodity of that name running? (one can't be made twice) */
+static BOOL commodity_runs(const char *name)
+{
+	struct NewBroker nb;
+	CxObj *b;
+	LONG err = 0;
+
+	CxBase = OpenLibrary("commodities.library", 37);
+	if (!CxBase)
+		return FALSE;
+	memset(&nb, 0, sizeof(nb));
+	nb.nb_Version = NB_VERSION;
+	nb.nb_Name = (STRPTR)name;
+	nb.nb_Title = (STRPTR)name;
+	nb.nb_Descr = (STRPTR)"(MulticastPrefs checking)";
+	nb.nb_Unique = NBU_UNIQUE;
+	b = CxBroker(&nb, &err);
+	if (b)
+		DeleteCxObj(b);
+	CloseLibrary(CxBase);
+	CxBase = NULL;
+	return !b && err == CBERR_DUP;
+}
+
+/*
+ * Before Open starts MulticastDesktop: the viewers' mouse and keys on (the
+ * card takes INPUT= while it runs), and P96ScreenCx started if it is
+ * installed and not running. Without it, MulticastDesktop crosses to the
+ * Workbench itself.
+ */
+void desktop_ready(void (*note)(const char *))
+{
+	static const char *const where[] = {
+		"SYS:WBStartup/P96ScreenCx", "SYS:Tools/Commodities/P96ScreenCx",
+		"SYS:Utilities/P96ScreenCx", "C:P96ScreenCx", NULL
+	};
+	const struct Setting *in = find_setting("INPUT");
+	char cmd[80];
+	int i;
+
+	if (prefs_value(in)[0] != '1') {
+		prefs_set(in, "1");
+		note("INPUT=1: the mouse and keys in the viewer windows work the desktop");
+	}
+	if (prefs_value(find_setting("P96SCREENCX"))[0] != '1' || commodity_runs("P96ScreenCx"))
+		return;
+	for (i = 0; where[i]; i++) {
+		BPTR l = Lock((STRPTR)where[i], ACCESS_READ);
+
+		if (!l)
+			continue;
+		UnLock(l);
+		snprintf(cmd, sizeof(cmd), "\"%s\"", where[i]);
+		mp_trace("starting %s", where[i]);
+		{
+			BPTR nin = Open((STRPTR)"NIL:", MODE_OLDFILE);
+			BPTR nout = Open((STRPTR)"NIL:", MODE_NEWFILE);
+
+			if (SystemTags((STRPTR)cmd, SYS_Input, nin, SYS_Output, nout, SYS_Asynch, TRUE,
+			               TAG_END) == -1) {
+				if (nin)
+					Close(nin);
+				if (nout)
+					Close(nout);
+			}
+		}
+		return;
+	}
 }

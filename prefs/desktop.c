@@ -59,7 +59,7 @@
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.3"
+#define MD_VERSION "1.4"
 #define PORTNAME "MulticastDesktop"
 
 static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE ")";
@@ -374,8 +374,8 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 /*
  * P96ScreenCx (Aminet util/cdity/P96ScreenCx) moves the mouse between the
  * boards itself, from the monitors' tool types MulticastPrefs writes: if it
- * runs, it crosses over, not this. A commodity of that name can't be made
- * twice, which tells.
+ * runs, it crosses over first (this does if it hasn't by the fourth push).
+ * A commodity of that name can't be made twice, which tells.
  */
 static BOOL p96screencx_runs(void)
 {
@@ -441,11 +441,12 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
 	}
 	if (++pushes < 2)
 		return;
+	/* P96ScreenCx's to do, if it runs; if it hasn't by the fourth push, ours */
+	if (pushes < 4 && p96screencx_runs())
+		return;
 	pushes = 0;
 	if (frac > 65535)
 		frac = 65535;
-	if (p96screencx_runs())
-		return;
 	cross(desk, to_wb, frac);
 }
 

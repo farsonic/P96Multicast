@@ -63,6 +63,8 @@ struct Sender {
 	WORD   vx, vy;                   /* its top left on the screen */
 	ULONG  lost_seen;                /* mc->ring_lost, last handled */
 	struct McConfig *cfg;
+	UWORD  input_told;               /* INPUT= as the viewers were last told it */
+	struct DateStamp prefs_date;     /* ENV:Multicast.prefs when last read for INPUT= */
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
 	struct MsgPort *inport;          /* INPUT=1: input.device, once a viewer types */
@@ -407,6 +409,7 @@ static void send_surface(struct Sender *s)
 	p[4] = s->fmt;
 	p[5] = s->bpp;
 	p[6] = s->visible;
+	s->input_told = s->cfg->input;
 	p[7] = (s->cfg->input ? CU_SF_INPUT : 0) | (s->behind ? CU_SF_BEHIND : 0);
 	put16(p + 8, s->tw);
 	put16(p + 10, s->th);
@@ -1446,6 +1449,51 @@ static void pace(struct Sender *s, struct EClockVal *start)
 		mc_status->sweep_secs = s->ntiles / (s->sweep_n * s->cfg->fps) + 1;
 }
 
+/*
+ * MulticastPrefs' Use and Open change INPUT= and INPUTFROM= while the card
+ * runs: the first part's sender looks at ENV:Multicast.prefs every two
+ * seconds and takes those two from it when it has changed. The rest of the
+ * settings stay as they were at boot.
+ */
+static void live_settings(struct Sender *s)
+{
+	struct McConfig *cfg = s->cfg, *fresh;
+	struct FileInfoBlock *fib;
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR oldwin = me->pr_WindowPtr;
+	BPTR lock;
+	BOOL changed = FALSE;
+
+	if (s->view || s->pass % (2 * cfg->fps))
+		return;
+	me->pr_WindowPtr = (APTR)-1;
+	lock = Lock((STRPTR)"ENV:Multicast.prefs", ACCESS_READ);
+	me->pr_WindowPtr = oldwin;
+	if (!lock)
+		return;
+	fib = AllocDosObject(DOS_FIB, NULL);
+	if (fib && Examine(lock, fib) && CompareDates(&fib->fib_Date, &s->prefs_date)) {
+		changed = s->prefs_date.ds_Days || s->prefs_date.ds_Minute || s->prefs_date.ds_Tick;
+		s->prefs_date = fib->fib_Date;
+	}
+	if (fib)
+		FreeDosObject(DOS_FIB, fib);
+	UnLock(lock);
+	if (!changed)
+		return;
+	fresh = AllocMem(sizeof(*fresh), MEMF_PUBLIC | MEMF_CLEAR);
+	if (!fresh)
+		return;
+	mc_config_defaults(fresh);
+	if (mc_config_file(fresh, "ENV:Multicast.prefs") &&
+	    (fresh->input != cfg->input || fresh->input_from != cfg->input_from)) {
+		cfg->input_from = fresh->input_from;
+		cfg->input = fresh->input;
+		mc_log(s, "INPUT=%ld now\n", cfg->input, 0, 0, 0);
+	}
+	FreeMem(fresh, sizeof(*fresh));
+}
+
 static void pass(struct Sender *s)
 {
 	struct McCard *mc = s->mc;
@@ -1461,6 +1509,7 @@ static void pass(struct Sender *s)
 	if (s->budget > 2 * perpass)
 		s->budget = 2 * perpass;
 
+	live_settings(s);
 	if (snapshot(s)) {
 		read_viewers(s);
 		if (mc->pal_serial != s->pal_serial)
@@ -1485,7 +1534,7 @@ static void pass(struct Sender *s)
 		read_viewers(s);
 	}
 	/* a sign of life: viewers learn where to answer, and what they missed */
-	if (s->pass - s->last_emit >= cfg->fps / 4 + 1)
+	if (s->pass - s->last_emit >= cfg->fps / 4 + 1 || s->input_told != cfg->input)
 		send_surface(s);
 	if (s->emitted) {
 		UBYTE *p = rec(s, CU_FRAME, 4);

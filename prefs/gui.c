@@ -996,9 +996,17 @@ static void run_desktop(const char *cmd, BOOL async)
 /* the settings as they are in the window (Use), and MulticastDesktop started */
 static void open_desktop(void)
 {
+	int i;
+
 	if (!collect())
 		return;
 	report[0] = 0;
+	desktop_ready(note);
+	for (i = 0; i < NFIELDS; i++)
+		/* the check boxes as desktop_ready() left them (INPUT=) */
+		if (gad[i] && fields[i].kind == CHECKBOX_KIND && fields[i].key)
+			GT_SetGadgetAttrs(gad[i], win, NULL, GTCB_Checked,
+			                  prefs_value(find_setting(fields[i].key))[0] == '1', TAG_END);
 	prefs_fix(note);
 	if (!prefs_write(FALSE)) {
 		tell("MulticastPrefs", "Could not write the settings to ENV:");

@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "2.9"
+#define MP_VERSION "3.0"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
@@ -89,7 +89,8 @@ void wb_name(char *buf, int len, int side, int mon);
 /* install.c */
 BOOL install(void (*note)(const char *), BOOL dry, const char *from, const char *setup);
 void mp_reboot(void);
-void place_monitors(void (*note)(const char *));   /* tool types for P96ScreenCx */
+void place_monitors(void (*note)(const char *));
+void desktop_ready(void (*note)(const char *));    /* INPUT on, P96ScreenCx running */   /* tool types for P96ScreenCx */
 
 /* status.c */
 int status_lines(char lines[][80], int max);

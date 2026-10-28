@@ -94,6 +94,17 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(s.rgb()[3:6], bytes((9, 9, 9)))
 
 
+class GroupTests(unittest.TestCase):
+    def test_parts_count_up_or_have_their_own(self):
+        self.assertEqual(pv.head_group("239.255.96.1", None, 1), "239.255.96.2")
+        self.assertEqual(pv.head_group("10.0.2.2", None, 1), "10.0.2.2")
+        own = ["239.1.1.1", "", "239.3.3.3"]
+        self.assertEqual(pv.head_group("239.255.96.1", own, 0), "239.1.1.1")
+        self.assertEqual(pv.head_group("239.255.96.1", own, 1), "239.255.96.2")
+        self.assertEqual(pv.head_group("239.255.96.1", own, 2), "239.3.3.3")
+        self.assertEqual(pv.head_group("239.255.96.1", own, 3), "239.255.96.4")
+
+
 class RecordTests(unittest.TestCase):
     def test_solid_and_tiles(self):
         s = pv.Screen()

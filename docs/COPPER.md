@@ -191,7 +191,9 @@ comes to the front), at the part's position plus the part's place on the
 screen. Any part's sender takes them, so every window of a split screen works
 the same desktop, from the same device or different ones. `INPUTFROM=` limits
 input to one address. Anyone else who can reach the card can type on the Amiga,
-so INPUT is off unless set (`SETUP=DESKTOP` sets it).
+so INPUT is off unless set (`SETUP=DESKTOP` and MulticastPrefs' Open set it).
+The card reads `INPUT=` and `INPUTFROM=` from ENV:Multicast.prefs again
+when the file changes, and tells the viewers in its next SURFACE.
 
 ## Reliability
 
@@ -230,7 +232,7 @@ so INPUT is off unless set (`SETUP=DESKTOP` sets it).
 | `HISTORY` | 512 | KB of sent datagrams kept for repairs |
 | `REFRESH` | 10 | seconds between whole screens while no viewer talks back (0 = never) |
 | `SPLIT` | 1x1 | the screen in C×R parts, each a stream of its own on PORT, PORT+1, ... and, with a multicast DEST, in a group of its own, DEST, DEST+1, ... (a sender each, with its own shadow, history and ring position) |
-| `DEST2`-`DEST4` | | where parts 2-4 go instead of the next group |
+| `DEST2`-`DEST4` | | where parts 2-4 go instead of the next group (`p96view.py --groups`) |
 | `INPUT` | 0 | 1: the viewers' mouse and keys work the Amiga |
 | `INPUTFROM` | | with `INPUT=1`: only from this address |
 

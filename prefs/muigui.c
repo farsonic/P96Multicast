@@ -1262,6 +1262,9 @@ static struct Field fields[] = {
 	{ PG_DESKTOP, K_BOOL, "P96SCREENCX", "P96ScreenCx tool types" },
 
 	{ PG_NETWORK, K_TEXT, "DEST", "Send to" },
+	{ PG_NETWORK, K_TEXT, "DEST2", "Monitor 2 to" },
+	{ PG_NETWORK, K_TEXT, "DEST3", "Monitor 3 to" },
+	{ PG_NETWORK, K_TEXT, "DEST4", "Monitor 4 to" },
 	{ PG_NETWORK, K_NUM, "PORT", "UDP port" },
 	{ PG_NETWORK, K_NUM, "TTL", "Multicast hops" },
 	{ PG_NETWORK, K_NUM, "FPS", "Updates a second" },
@@ -1309,17 +1312,23 @@ static Object *field_obj(struct Field *f)
 	return f->obj;
 }
 
-/* a page's text fields, two columns of label and field */
-static Object *form(int page)
+/* a page's text fields, label and field, one or two (pairs) to a row */
+static Object *form(int page, int pairs)
 {
-	Object *g = ColGroup(2), MUIA_Group_VertSpacing, 3, MUIA_Group_HorizSpacing, 10, End;
-	unsigned i;
+	Object *g = ColGroup(2 * pairs), MUIA_Group_VertSpacing, 3, MUIA_Group_HorizSpacing, 10,
+	            End;
+	unsigned i, n = 0;
 
 	for (i = 0; i < NFIELDS; i++)
 		if (fields[i].page == page && fields[i].kind != K_BOOL) {
 			DoMethod(g, OM_ADDMEMBER, (ULONG)MpLabel(fields[i].label, 0));
 			DoMethod(g, OM_ADDMEMBER, (ULONG)field_obj(&fields[i]));
+			n++;
 		}
+	for (; n % pairs; n++) {
+		DoMethod(g, OM_ADDMEMBER, (ULONG)HSpace(0));
+		DoMethod(g, OM_ADDMEMBER, (ULONG)HSpace(0));
+	}
 	return g;
 }
 
@@ -1608,6 +1617,16 @@ static void open_desktop(void)
 	if (!collect())
 		return;
 	report[0] = 0;
+	desktop_ready(note);
+	{
+		unsigned i;
+
+		/* the switches as desktop_ready() left them (INPUT=) */
+		for (i = 0; i < NFIELDS; i++)
+			if (fields[i].kind == K_BOOL && fields[i].obj)
+				set(fields[i].obj, MUIA_Switch_On,
+				    prefs_value(find_setting(fields[i].key))[0] == '1');
+	}
 	prefs_fix(note);
 	if (!prefs_write(FALSE)) {
 		tell("MulticastPrefs", "Could not write the settings to ENV:");
@@ -1687,7 +1706,7 @@ static Object *make_window(int start, const char *pubscreen)
 		/* Network */
 		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_NETWORK),
-			Child, form(PG_NETWORK),
+			Child, form(PG_NETWORK, 2),
 			Child, VSpace(2),
 			Child, switches(PG_NETWORK),
 			Child, VSpace(0),
@@ -1695,7 +1714,7 @@ static Object *make_window(int start, const char *pubscreen)
 		/* Display */
 		Child, VGroup, MUIA_Group_VertSpacing, 3,
 			Child, heading(PG_DISPLAY),
-			Child, form(PG_DISPLAY),
+			Child, form(PG_DISPLAY, 1),
 			Child, ColGroup(2), MUIA_Group_HorizSpacing, 10,
 				Child, MpLabel("Screen modes", 0), Child, ch_modesrc,
 			End,
@@ -1713,7 +1732,7 @@ static Object *make_window(int start, const char *pubscreen)
 			Child, ColGroup(2), MUIA_Group_HorizSpacing, 10,
 				Child, MpLabel("Use Wrap.card", 0), Child, ch_wrap,
 			End,
-			Child, form(PG_WRAP),
+			Child, form(PG_WRAP, 1),
 			Child, VSpace(2),
 			Child, switches(PG_WRAP),
 			Child, VSpace(0),

@@ -58,7 +58,7 @@ MONITOR=320x480
 COLOURS=16
 PUBSCREEN=MULTICAST
 DEFAULTSCREEN=1
-INPUT=1
+INPUT=0
 WORKBENCH=LEFT1
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
@@ -119,7 +119,10 @@ EOF
 	echo 'Wait 5'
 	echo "Echo >Work:mark-shell x"
 	echo 'Wait 4'
-	# INPUT=1: the test types into the Shell from the viewer's side
+	# INPUT=1, as MulticastPrefs' Open sets it, while the card runs: then the
+	# test types into the Shell from the viewer's side
+	echo 'Echo >>ENV:Multicast.prefs "INPUT=1"'
+	echo 'Wait 4'
 	echo "Echo >Work:mark-input x"
 	for i in $(seq 1 40); do
 		echo 'If NOT EXISTS Work:typed'
