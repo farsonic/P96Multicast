@@ -3,8 +3,13 @@
  * and their installation, without P96's own tools.
  *
  *   PanoramaPrefs                      the window (also from Workbench)
- *   PanoramaPrefs PAGE=1               ... on a page: 0 Desktop, 1 Network,
- *                                       2 Display, 3 Wrap.card, 4 Status
+ *   PanoramaPrefs PAGE=Network         ... on a page, by name or number: 0
+ *                                       Desktop, 1 Network, 2 Display,
+ *                                       3 Wrap.card, 4 Status
+ *   PanoramaPrefs THEME=DARK           ... in the dark theme (or LIGHT;
+ *                                       else as Settings/Dark Theme left it)
+ *   PanoramaPrefs GADTOOLS             ... the GadTools window, not MUI's
+ *                                       (NOMUI too)
  *   PanoramaPrefs PUBSCREEN=name       ... on that public screen (e.g. one
  *                                       on the card itself, mctest PUBSCREEN)
  *   PanoramaPrefs TIMEOUT=10           ... closing after 10 seconds (tests)
@@ -30,7 +35,7 @@
  *                                       asking, NOREBOOT: not at all)
  *   PanoramaPrefs STATUS               what the running cards say
  *   PanoramaPrefs CMD=n                the window, then its command n (prefs/ids.h,
- *                                       for tests: CMD=420 the dark theme)
+ *                                       for tests: CMD=400 the dark theme)
  *   PanoramaPrefs DEBUG=file           (or TRACE=) each step written to file
  *   PanoramaPrefs OPEN                 the window's Open: the viewers' mouse
  *                                       and keys on, P96ScreenCx started if
@@ -42,14 +47,15 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "mcprefs.h"
 #include "lang.h"
 
 static const char version[] = "$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE=DEBUG/K,NOMUI/S,OPEN/S,CMD/N";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/K,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE=DEBUG/K,NOMUI=GADTOOLS/S,OPEN/S,CMD/N,THEME/K";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
-       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI, A_OPEN, A_CMD,
+       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI, A_OPEN, A_CMD, A_THEME,
        A_COUNT };
 
 /*
@@ -90,6 +96,22 @@ static void print_note(const char *s)
 }
 
 static int prefs_main(int argc);
+
+/* PAGE=: a page number, or its name (case does not matter); 0 when none */
+static int page_number(const char *s)
+{
+	static const char *const names[] = { "desktop", "network", "display", "wrap.card", "status" };
+	int i;
+
+	if (!s)
+		return 0;
+	if (*s >= '0' && *s <= '9')
+		return atoi(s) < 5 ? atoi(s) : 0;
+	for (i = 0; i < 5; i++)
+		if (!mp_stricmp(s, names[i]) || (i == 3 && !mp_stricmp(s, "wrap")))
+			return i;
+	return 0;
+}
 
 /* (bigstack.s) fn(arg) on the stack ss describes */
 long run_on_stack(struct StackSwapStruct *ss, long (*fn)(void *), void *arg);
@@ -133,7 +155,7 @@ static int prefs_main(int argc)
 	prefs_load();
 	if (argc == 0)
 	{
-		int rc = mui_gui(0, 0, NULL, 0);   /* from Workbench */
+		int rc = mui_gui(0, 0, NULL, 0, -1);   /* from Workbench */
 
 		return rc >= 0 ? rc : gui(0, 0, NULL);
 	}
@@ -234,12 +256,14 @@ static int prefs_main(int argc)
 	}
 	if (!args[A_SET] && !args[A_INSTALL] && !args[A_SHOW] && !args[A_STATUS] && !args[A_OPEN])
 	{
-		int page = args[A_PAGE] ? *(LONG *)args[A_PAGE] : 0;
+		int page = page_number((const char *)args[A_PAGE]);
 		int timeout = args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0;
+		const char *th = (const char *)args[A_THEME];
+		int dark = !th ? -1 : !mp_stricmp(th, "dark") ? 1 : 0;
 
-		mp_trace("window: %s", args[A_NOMUI] ? "GadTools (NOMUI)" : "MUI");
+		mp_trace("window: %s", args[A_NOMUI] ? "GadTools (GADTOOLS)" : "MUI");
 		rc = args[A_NOMUI] ? -1 : mui_gui(page, timeout, (const char *)args[A_PUBSCREEN],
-		                                  args[A_CMD] ? *(ULONG *)args[A_CMD] : 0);
+		                                  args[A_CMD] ? *(ULONG *)args[A_CMD] : 0, dark);
 		if (rc < 0)
 			rc = gui(page, timeout, (const char *)args[A_PUBSCREEN]);
 	}

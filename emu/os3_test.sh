@@ -54,12 +54,12 @@ EOF
 	echo '  Work:muitest >>Work:mui.txt'
 	echo 'EndIf'
 	for n in $PAGES; do
-		# 0d: page 0 in the dark theme (its menu command, CMD=420); 0:200: page 0, then
+		# 0d: page 0 in the dark theme (its menu command, CMD=400); 0:200: page 0, then
 		# command 200 (prefs/ids.h)
 		page=${n%%[d:]*}
 		extra=
 		case $n in
-		*d) extra="CMD=420" ;;
+		*d) extra="CMD=400" ;;
 		*:*) extra="CMD=${n#*:}" ;;
 		esac
 		echo "Run >Work:prefs-$n.log Work:PanoramaPrefs PAGE=$page $extra TIMEOUT=14 TRACE=Work:trace-$n.txt"

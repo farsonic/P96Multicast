@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "3.2"
+#define MP_VERSION "3.3"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
@@ -99,6 +99,6 @@ int status_lines(char lines[][80], int max);
 
 /* gui.c */
 int gui(int page, int timeout, const char *pubscreen);       /* GadTools, without MUI */
-int mui_gui(int page, int timeout, const char *pubscreen, ULONG cmd);  /* MUI; -1 if it isn't there */
+int mui_gui(int page, int timeout, const char *pubscreen, ULONG cmd, int dark);  /* MUI; -1 if it isn't there */
 
 #endif

@@ -1,7 +1,14 @@
 /*
- * Panorama - theme.h: PanoramaPrefs' look, as Easel's: a dark palette
- * obtained as pens on the window's screen, flat drawing, and icons drawn in
- * code from short vector descriptions (none copied from other programs).
+ * Panorama - theme.h: PanoramaPrefs' look, which is RiptidePrefs' (Riptide's
+ * src/amiga/prefs/mui_theme.h): every class draws through these functions
+ * and never picks a colour or font itself.
+ *
+ * Colours are tokens (C_*, Riptide's T_* in the same order and values) with
+ * one RGB value in a light and one in a dark table; theme_setup() obtains a
+ * pen for each on the window's screen (ObtainBestPen, so palette screens
+ * share or approximate them) and the last theme_cleanup() gives them back.
+ * Fonts: the screen's font. Icons are drawn in code from short vector
+ * descriptions on a 16 x 16 grid (theme_icon()).
  */
 #ifndef MP_THEME_H
 #define MP_THEME_H
@@ -11,51 +18,66 @@
 #include <graphics/text.h>
 #include <intuition/classusr.h>
 
-/* the colours */
 enum {
-	C_BACK,        /* the window */
-	C_PANEL,       /* the navigation pane, the button bar */
-	C_FIELD,       /* inputs, choices, switches off */
-	C_BORDER,      /* their outlines */
-	C_HOVER,       /* a pane row the pointer is on */
+	C_WINDOW,       /* the window's background */
+	C_PANEL,        /* the page list and the button bar */
+	C_HEAD,         /* the page head */
+	C_BORDER,       /* separator lines, button outlines */
 	C_TEXT,
-	C_DIM,         /* help text, units */
+	C_DIM,          /* secondary text */
 	C_DISABLED,
-	C_ICON,
-	C_ACCENT,      /* the page chosen, switches on, the main button */
-	C_ACCENTHOVER,
-	C_ONACCENT,    /* text on the accent */
-	C_MONITOR,     /* the monitors in the picture */
-	C_MONITOR2,
-	C_WB,          /* the Workbench in the picture */
-	C_RED, C_GREEN, C_ORANGE,
+	C_ICON,         /* the ink of icons */
+	C_HOVER,        /* under the pointer */
+	C_PRESSED,      /* chosen, or held down */
+	C_ACCENT,       /* the one thing that is on */
+	C_WHITE,        /* paper inside icons */
+	C_LIGHT,        /* light grey parts of icons */
+	C_RED, C_GREEN, C_ORANGE, C_YELLOW,
+	C_BUTTON,       /* button face */
 	C_NPENS
 };
 
-void theme_setup(Object *obj);      /* from MUIM_Setup: the pens on its screen (counted) */
-void theme_cleanup(Object *obj);    /* from MUIM_Cleanup: given back with the last */
-LONG tpen(int which);
-void theme_set_dark(BOOL on);      /* light (the default) or dark; redraw after */
-BOOL theme_dark(void);
-const char *theme_back(void);       /* the window's colour as an MUI image spec */
-const char *theme_panel_back(void); /* the pane's and the button bar's */
+/* the light or dark table: before the window opens, or between closing and reopening it */
+void theme_set_dark(int dark);
+int  theme_dark(void);
+/* the compact layout for short screens (under 400 lines) */
+void theme_set_compact(int on);
+int  theme_compact(void);
+/* help bubbles on or off (theme_bubble() returns NULL when off) */
+void theme_set_tips(int on);
+int  theme_tips(void);
 
-/* drawing: text (through tr()) with its top at y (bold: the soft style), outlines, fills */
-LONG theme_textlen(struct RastPort *rp, const char *s, BOOL bold);
-void theme_text(struct RastPort *rp, LONG x, LONG y, const char *s, LONG pen, BOOL bold);
+/* pens for obj's screen: call in MUIM_Setup / MUIM_Cleanup of every class
+ * (counts objects; MUI may send either twice) */
+void theme_setup(Object *obj);
+void theme_cleanup(Object *obj);
+LONG tpen(int token);
+/* "2:rrrrrrrr,gggggggg,bbbbbbbb", for MUIA_Background */
+const char *theme_spec(int token);
+
+struct TextFont *theme_font(void);
+int  theme_fh(void);                   /* the font's height */
+
+/* drawing; rectangles are inclusive, text is placed by its top edge and
+ * passes through tr() */
+LONG theme_textlen(struct RastPort *rp, const char *s);
+void theme_text(struct RastPort *rp, LONG x, LONG y, const char *s, LONG pen, int bold);
+/* text with the letter after '_' underlined (the '_' is not drawn) */
+void theme_keytext(struct RastPort *rp, LONG x, LONG y, const char *s, LONG pen);
+LONG theme_keytextlen(struct RastPort *rp, const char *s);
 void theme_rect(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, LONG pen);
 void theme_fill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, LONG pen);
-/* a filled box with its corners cut by r pixels: the switches, the main button */
-void theme_round(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, LONG r, LONG pen);
+void theme_line(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, LONG pen);
 
-/* icons, drawn in a size x size square at x, y */
-enum {
-	IC_NONE, IC_DESKTOP, IC_NETWORK, IC_DISPLAY, IC_WRAP, IC_STATUS, IC_SAVE, IC_USE,
-	IC_INSTALL, IC_OPEN, IC_CLOSE, IC_ADD, IC_REMOVE, IC_LEFT, IC_RIGHT, IC_REFRESH,
-	IC_N
-};
-void theme_icon(struct RastPort *rp, int icon, LONG x, LONG y, LONG size, LONG pen);
+/* icons: one per page */
+enum { IC_DESKTOP, IC_NETWORK, IC_DISPLAY, IC_WRAP, IC_STATUS, IC_NICONS };
+/* icon at x,y, size pixels square; dim: everything but white in C_DISABLED */
+void theme_icon(struct RastPort *rp, int icon, LONG x, LONG y, LONG size, int dim);
 
-/* a help bubble: the name in bold, then the text wrapped (both through tr(); a static buffer) */
+/* "\33bName\33n\nbody wrapped at 46" in a static buffer (one bubble at a
+ * time), or NULL with bubbles off */
 const char *theme_bubble(const char *name, const char *body);
+/* the same into buf, for texts that stay with an object */
+void theme_bubble_to(char *buf, int len, const char *name, const char *body);
+
 #endif
