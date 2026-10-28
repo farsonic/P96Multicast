@@ -87,7 +87,7 @@ struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR segl
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 0;
-	base->lib.lib_Revision = 4;
+	base->lib.lib_Revision = 5;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -183,6 +183,8 @@ static void config_line(const char *line)
 		copy_name(status->card, v);
 	} else if ((v = match_key(line, "draw")) != NULL) {
 		status->draw = *v != '0';
+	} else if ((v = match_key(line, "keepdisplay")) != NULL) {
+		status->keepdisplay = *v == '1';
 	} else if ((v = match_key(line, "mirror")) != NULL) {
 		copy_name(mirror_card, v);
 	} else if ((v = match_key(line, "mirrorfps")) != NULL) {
@@ -443,6 +445,18 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 		return (APTR)LibNull;
 	b->calls[slot]++;
 	d = &b->disp;
+
+	/*
+	 * KEEPDISPLAY=1: the wrapped card is a monitor of its own (the
+	 * Workbench's, beside a Multicast desktop): P96 switching it off when
+	 * another board's screen comes to the front would blank it, so it is
+	 * told "on" instead, and keeps showing its screen.
+	 */
+	if (status->keepdisplay && (slot == SLOT_SetSwitch || slot == SLOT_SetDisplay) &&
+	    !(regs[0] & 0xffff)) {
+		regs[0] |= 1;
+		status->kept_on++;
+	}
 
 	switch (slot) {
 	case SLOT_SetSwitch:

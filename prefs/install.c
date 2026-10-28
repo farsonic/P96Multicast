@@ -729,13 +729,11 @@ static BOOL apply_setup(const char *setup)
 		    "1280x960,1600x1200,2048x1536,640x480,800x600" :
 		    "640x480,800x600,1024x768,1280x1024");
 		set("INPUT", "1");
-		set("WBSTREAM", "1");
 		set("WBMONITOR", "1");
 		set("P96SCREENCX", "1");
 		notef("Setup: one Multicast screen split %s, a window for each part%s", size,
 		      ", one desktop; the Workbench stays where it is");
-		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who),");
-		say("       the Workbench goes to them too (WBSTREAM=1, p96view.py --workbench)");
+		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who)");
 		return TRUE;
 	}
 	say("SETUP must be SINGLE, TWO, MIRROR, SPAN (SPAN2x2) or DESKTOP (DESKTOP2x2)");
@@ -818,7 +816,14 @@ static void summary(void)
 	struct Library *mc;
 
 	say("After the reboot:");
-	if (!*card && *split && strcmp(split, "1x1")) {
+	BOOL keep = prefs_value(find_setting("KEEPDISPLAY"))[0] == '1' && !*mirror && !*span;
+
+	if ((!*card || keep) && *split && strcmp(split, "1x1")) {
+		if (keep)
+			notef("  the Workbench (%s, through Wrap.card) stays shown beside the desktop%s",
+			      card, "");
+		if (prefs_value(find_setting("P96SCREENCX"))[0] == '1')
+			say("  the mouse crosses to the Workbench with P96ScreenCx (Aminet util/cdity)");
 		if (prefs_value(find_setting("ATBOOT"))[0] != '1') {
 			say("  open the desktop: DesktopOpen (or Execute C:DesktopOpen, or");
 			say("  double-click Scripts/DesktopOpen): it opens a Shell in the middle too");
@@ -943,17 +948,26 @@ void place_monitors(void (*note)(const char *))
 		IconBase = OpenLibrary("icon.library", 37);
 		opened = TRUE;
 	}
-	if (!IconBase || !exists("DEVS:Monitors/Multicast") ||
-	    *prefs_value(find_setting("CARD")))
+	if (!IconBase || !exists("DEVS:Monitors/Multicast"))
 		goto out;
-	if (!find_display_card_at(card, sizeof(card), wbmon, sizeof(wbmon), wbboard,
-	                          sizeof(wbboard)))
+	if (*prefs_value(find_setting("CARD"))) {
+		/* Wrap.card: only when it wraps the Workbench's card beside the desktop */
+		const char *m = prefs_get(find_setting("MIRROR")), *sp = prefs_get(find_setting("SPAN"));
+
+		if ((m && *m) || (sp && *sp) || !exists("DEVS:Monitors/Wrap"))
+			goto out;
+		strcpy(wbmon, "DEVS:Monitors/Wrap");
+		strcpy(wbboard, "Wrap");
+	} else if (!find_display_card_at(card, sizeof(card), wbmon, sizeof(wbmon), wbboard,
+	                                 sizeof(wbboard))) {
 		wbmon[0] = wbboard[0] = 0;
-	if (wbmonitor && wbmon[0]) {
+	}
+	if (wbmon[0]) {
+		/* its own monitor for P96ScreenCx (and the Workbench kept shown with Wrap.card) */
 		static const char *own[] = { "DISPLAYCHAIN=NO" };
 
-		if (set_tooltypes(wbmon, own, 1, NULL, 0))
-			notef("%s: DISPLAYCHAIN=NO (the Workbench keeps its screen shown)", wbmon, "");
+		if (wbmonitor && set_tooltypes(wbmon, own, 1, NULL, 0))
+			notef("%s: DISPLAYCHAIN=NO (a monitor of its own)%s", wbmon, "");
 	}
 	wb_place(prefs_value(find_setting("WORKBENCH")), &side, &mon);
 	set[nset++] = "DISPLAYCHAIN=NO";
@@ -972,11 +986,80 @@ out:
 	}
 }
 
+/*
+ * WBMONITOR=1 with a desktop (SPLIT=, no MIRROR or SPAN): Wrap.card wraps
+ * the Workbench's card, only to keep its display on (KEEPDISPLAY=1), so the
+ * Workbench stays shown while the desktop's screen is in front; the
+ * Multicast board is set up beside it. WBMONITOR=0 undoes that. TRUE: the
+ * Workbench's card is wrapped so.
+ */
+static BOOL wb_wrap(void (*note)(const char *))
+{
+	const char *split = prefs_get(find_setting("SPLIT"));
+	const char *mirror = prefs_get(find_setting("MIRROR"));
+	const char *span = prefs_get(find_setting("SPAN"));
+	BOOL plain = (!mirror || !*mirror) && (!span || !*span);
+	char card[40];
+
+	if (!plain)
+		return FALSE;
+	if (prefs_value(find_setting("WBMONITOR"))[0] != '1' || !split || !*split) {
+		if (prefs_value(find_setting("KEEPDISPLAY"))[0] == '1') {
+			set("CARD", "");
+			set("KEEPDISPLAY", "0");
+			note("Wrap.card no longer wraps the Workbench's card (WBMONITOR=0)");
+		}
+		return FALSE;
+	}
+	if (!find_display_card(card, sizeof(card))) {
+		note("WBMONITOR=1: no display card found for the Workbench, left as it is");
+		return FALSE;
+	}
+	set("CARD", card);
+	set("KEEPDISPLAY", "1");
+	set("DRAW", "0");
+	set("BOARDS", "1");
+	notef("WBMONITOR=1: Wrap.card wraps %s and keeps its display on, so the Workbench%s",
+	      card, " stays shown beside the desktop");
+	return TRUE;
+}
+
+/* DEVS:Monitors/name, made from a P96 monitor there if missing, its icon BOARDTYPE=name */
+static void make_monitor(const char *monitor_name)
+{
+	char monitor[80], template[80], icon[90], board[32];
+
+	snprintf(monitor, sizeof(monitor), "DEVS:Monitors/%s", monitor_name);
+	snprintf(icon, sizeof(icon), "%s.info", monitor);
+	if (!exists(monitor)) {
+		if (!find_template(template, sizeof(template))) {
+			say("No P96 monitor in DEVS:Monitors to copy: is P96 installed?");
+			failed = TRUE;
+		} else if (copy_file(template, monitor)) {
+			notef("Made %s from %s", monitor, template);
+			if (!write_icon(monitor, template, monitor_name))
+				notef("Could not write %s%s", icon, "");
+			else
+				notef("Its icon says BOARDTYPE=%s%s", monitor_name, "");
+		} else {
+			notef("Could not make %s%s", monitor, "");
+			failed = TRUE;
+		}
+	} else {
+		icon_board(monitor, board, sizeof(board));
+		if (mp_stricmp(board, monitor_name)) {
+			if (write_icon(monitor, monitor, monitor_name))
+				notef("%s: icon set to BOARDTYPE=%s", monitor, monitor_name);
+		} else {
+			notef("%s is there%s", monitor, "");
+		}
+	}
+}
+
 BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const char *setup)
 {
 	const char *card, *monitor_name;
-	BOOL wrap;
-	char monitor[80], template[80], icon[90], board[32];
+	BOOL wrap, wbwrap;
 	int i;
 
 	say = note;
@@ -993,6 +1076,7 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	}
 	auto_modes();
 	auto_dest();
+	wbwrap = wb_wrap(note);
 	prefs_fix(note);
 	card = prefs_value(find_setting("CARD"));
 	wrap = card[0] != 0;
@@ -1023,42 +1107,21 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 		static const char *keys[] = { "MIRROR", "HEAD", "HEAD1", "HEAD2", "HEAD3", "HEAD4" };
 
 		add_retire(card);
-		for (i = 0; i < 6; i++)
+		/* only wrapping the Workbench's card: no heads, whatever HEAD= says */
+		for (i = 0; i < 6 && !wbwrap; i++)
 			add_retire(prefs_value(find_setting(keys[i])));
 	} else {
 		add_retire("Wrap");
 	}
 	restore_moved();
 
-	snprintf(monitor, sizeof(monitor), "DEVS:Monitors/%s", monitor_name);
-	snprintf(icon, sizeof(icon), "%s.info", monitor);
-	if (!exists(monitor)) {
-		if (!find_template(template, sizeof(template))) {
-			say("No P96 monitor in DEVS:Monitors to copy: is P96 installed?");
-			failed = TRUE;
-		} else if (copy_file(template, monitor)) {
-			notef("Made %s from %s", monitor, template);
-			if (!write_icon(monitor, template, monitor_name))
-				notef("Could not write %s%s", icon, "");
-			else
-				notef("Its icon says BOARDTYPE=%s%s", monitor_name, "");
-		} else {
-			notef("Could not make %s%s", monitor, "");
-			failed = TRUE;
-		}
-	} else {
-		icon_board(monitor, board, sizeof(board));
-		if (mp_stricmp(board, monitor_name)) {
-			if (write_icon(monitor, monitor, monitor_name))
-				notef("%s: icon set to BOARDTYPE=%s", monitor, monitor_name);
-		} else {
-			notef("%s is there%s", monitor, "");
-		}
-	}
+	make_monitor(monitor_name);
+	if (wbwrap)
+		make_monitor("Multicast");
 
 	for (i = 0; i < nretire; i++)
 		retire_monitors(retire[i], monitor_name);
-	if (!wrap)
+	if (!wrap || wbwrap)
 		place_monitors(note);
 	save_moved();
 	if (!failed)

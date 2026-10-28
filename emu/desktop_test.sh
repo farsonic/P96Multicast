@@ -60,7 +60,6 @@ PUBSCREEN=MULTICAST
 DEFAULTSCREEN=1
 INPUT=1
 WORKBENCH=LEFT1
-WBSTREAM=1
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
@@ -148,18 +147,8 @@ EOF
 	echo 'Work:mctest MOUSE=1,0,2'
 	echo 'Wait 1'
 	echo 'Work:mctest WHERE >Work:where2.log'
-	# moving into the Workbench's window (WBSTREAM=1, INPUT=1): it comes to the front
-	echo 'Echo >Work:mark-wbinput x'
-	for i in $(seq 1 20); do
-		echo 'If NOT EXISTS Work:wbinput.done'
-		echo 'Wait 1'
-		echo 'EndIf'
-	done
-	echo 'Wait 1'
-	echo 'Work:mctest WHERE >Work:where3.log'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	echo 'Copy RAM:Multicast.log Work:card.log'
-	echo 'Copy RAM:Multicast.log.5 Work:card-wb.log'
 	echo 'Echo >Work:autorun.done done'
 } > "$work/autorun"
 
@@ -197,10 +186,6 @@ upid=$!
 python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP --span 2x1 \
 	--snapshot "$OUT/last.png" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
 vpid=$!
-# the Workbench's own stream (WBSTREAM=1): PORT + 4, DEST + 4
-python3 client/p96view.py --group 239.255.96.5 --port 9700 --iface $HOST_IP \
-	--snapshot "$OUT/wb.png" --duration "$TIMEOUT" 2>"$OUT/p96view-wb.log" &
-wpid=$!
 start=$(date +%s)
 while [ ! -f "$work/autorun.done" ]; do
 	if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
@@ -215,11 +200,6 @@ while [ ! -f "$work/autorun.done" ]; do
 		if [ ! -f "$OUT/at-$n.png" ]; then
 			sleep 1
 			cp "$OUT/last.png" "$OUT/at-$n.png" 2>/dev/null
-			if [ "$n" = wbinput ]; then
-				python3 tests/send_input.py --group 239.255.96.5 --port 9700 \
-					--iface $HOST_IP move:60,60 >"$OUT/wbinput.log" 2>&1
-				touch "$work/wbinput.done"
-			fi
 			if [ "$n" = input ]; then
 				# on monitor 2: click into the Shell, type, then point somewhere
 				python3 tests/send_input.py --group 239.255.96.2 --port 9697 \
@@ -231,8 +211,8 @@ while [ ! -f "$work/autorun.done" ]; do
 	done
 	sleep 0.5
 done
-kill $upid $vpid $wpid 2>/dev/null
-wait $upid $vpid $wpid 2>/dev/null
+kill $upid $vpid 2>/dev/null
+wait $upid $vpid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
 echo "---- MulticastDesktop"
@@ -282,16 +262,6 @@ else
 	echo "FAIL: ... and back: the desktop, at its left edge, the same window active ('$w0' / '$w2')"
 	status=1
 fi
-w3=$(tr -d '\r' < "$work/where3.log" 2>/dev/null)
-echo "$w3"
-x3=$(mousex "$w3")
-if [ "$(front "$w3")" = Workbench ] && [ -n "$x3" ] && [ "$x3" -ge 50 ] && [ "$x3" -le 70 ]; then
-	echo "PASS: WBSTREAM: the mouse into the Workbench's window: the Workbench in front, the pointer there"
-else
-	echo "FAIL: WBSTREAM: the mouse into the Workbench's window ('$w3')"
-	status=1
-fi
-grep -q "Workbench is not on a graphics card" "$work/card-wb.log" 2>/dev/null && export NO_WBSTREAM=1
 python3 tests/check_desktop.py "$OUT" || status=1
 echo "---- status"
 tr -d '\r' < "$work/status.txt" 2>/dev/null

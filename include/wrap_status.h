@@ -203,9 +203,10 @@ struct WrapStatus {
 	UWORD inner_found;     /* inner FindCard said yes */
 	UWORD inner_init;      /* inner InitCard said yes */
 	UWORD nboards;
-	UWORD pad;
+	UWORD keepdisplay;     /* KEEPDISPLAY=1: never switch the wrapped card's display off */
 	struct WrapBoard *boards;  /* WRAP_MAXBOARDS of them */
 	struct WrapMirror *mirror;
+	ULONG kept_on;         /* ... "off" calls (SetSwitch, SetDisplay) passed on as "on" */
 };
 
 struct WrapBase {

@@ -22,8 +22,8 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "2.5"
-#define MC_REVISION    5      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_VERSION_STR "2.6"
+#define MC_REVISION    6      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -35,7 +35,6 @@ extern struct GfxBase *GfxBase;
 
 /* SPLIT=CxR: at most this many parts, each sent to a port of its own */
 #define MC_MAXVIEWS 4
-#define MC_WBVIEW   MC_MAXVIEWS   /* WBSTREAM=1: the Workbench's sender, PORT + 4 */
 
 /* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs
    (ENVARC: if ENV: has none yet) */
@@ -62,7 +61,6 @@ struct McConfig {
 	UWORD nomodes;     /* MODES=NONE: offer none, P96's settings do */
 	UWORD mode_w[MC_MAXMODES], mode_h[MC_MAXMODES];
 	UWORD input;       /* INPUT=1: the viewers' mouse and keys work the Amiga */
-	UWORD wbstream;    /* WBSTREAM=1: the Workbench screen too, on PORT + 4 */
 	ULONG input_from;  /* INPUTFROM=address: only that viewer's (0: any viewer's) */
 	UWORD quiet;
 	char  log[80];     /* sender log file, "" for none */

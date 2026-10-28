@@ -161,9 +161,6 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 	} else if ((v = match_key(line, "input")) != NULL) {
 		if (parse_num(v, &n))
 			cfg->input = n != 0;
-	} else if ((v = match_key(line, "wbstream")) != NULL) {
-		if (parse_num(v, &n))
-			cfg->wbstream = n != 0;
 	} else if ((v = match_key(line, "inputfrom")) != NULL) {
 		/* only this viewer's mouse and keys (empty: any viewer's) */
 		if (!parse_ip(v, &cfg->input_from))

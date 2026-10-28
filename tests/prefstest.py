@@ -215,12 +215,14 @@ def main():
     print("    " + out.replace("\n", "\n    "))
     wrap = read("envarc", "Wrap.prefs") or []
     mc = read("envarc", "Multicast.prefs") or []
-    check(rc == 0 and not any(l.startswith("CARD=") for l in wrap) and "SPLIT=2x1" in mc and
+    check(rc == 0 and "CARD=uaegfx.card" in wrap and "KEEPDISPLAY=1" in wrap and
+          "SPLIT=2x1" in mc and "WBMONITOR=1" in mc and
           "INPUT=1" in mc and
           "BOARDS=1" in mc and any(l.startswith("MODES=1280x480,1600x600") for l in mc) and
-          os.path.exists(os.path.join(mon, "Multicast")) and os.path.exists(os.path.join(mon, "uaegfx"))
-          and not os.path.exists(os.path.join(mon, "Wrap")),
-          "SETUP=DESKTOP: one Multicast screen split in two, uaegfx kept, no Wrap: %r %r"
+          os.path.exists(os.path.join(mon, "Multicast")) and os.path.exists(os.path.join(mon, "Wrap"))
+          and not os.path.exists(os.path.join(mon, "uaegfx")),
+          "SETUP=DESKTOP: one Multicast screen split in two, beside uaegfx kept on by Wrap.card: "
+          "%r %r"
           % (wrap, mc))
     check("DesktopOpen" in out and "--span 2x1" in out and
           any(l.startswith("MODES=1600x600") or ",1600x600" in l for l in mc),

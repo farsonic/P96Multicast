@@ -100,6 +100,13 @@ MulticastDesktop (C:) opens the desktop and keeps it open; a commodity
   ctrl alt 1 ... 4       to the middle of monitor 1 ... 4
   ctrl alt m             the desktop in front, or the Workbench again
 HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers.
+The Workbench keeps its own display while the desktop is in front with
+WBMONITOR=1 ("Workbench own monitor"; SETUP=DESKTOP sets it): Wrap.card
+wraps the Workbench's card (uaegfx in FS-UAE) only to keep its display on
+(KEEPDISPLAY=1 in Wrap.prefs), and the monitors get DISPLAYCHAIN=NO. For the
+mouse to move between the Workbench and the desktop, install P96ScreenCx
+(Aminet util/cdity/P96ScreenCx): MulticastPrefs writes the monitor tool
+types it reads (RIGHT_OF=... from WORKBENCH=).
 The Workbench sits next to the desktop where WORKBENCH= says (LEFT1: left of
 monitor 1; RIGHT2, ABOVE1, BELOW2, ...; NONE: the hotkey only), as the
 Desktop page's picture shows: click around the monitors to move it. Push

@@ -84,7 +84,10 @@ int main(void)
 		FreeArgs(rda);
 		return RETURN_WARN;
 	}
-	printf("  CARD=%s DRAW=%u\n", st.card[0] ? st.card : "(none)", st.draw);
+	printf("  CARD=%s DRAW=%u KEEPDISPLAY=%u\n", st.card[0] ? st.card : "(none)", st.draw,
+	       st.keepdisplay);
+	if (st.keepdisplay)
+		printf("  display kept on: %lu \"off\" calls passed on as \"on\"\n", st.kept_on);
 	if (innername[0])
 		printf("  wrapping %s %u.%u\n", innername, innerver, innerrev);
 	else

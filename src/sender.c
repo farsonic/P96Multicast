@@ -39,22 +39,6 @@
 #include "copper.h"
 #include "render.h"
 #include "riptide_mmsg.h"
-#include <proto/graphics.h>
-
-/* cybergraphics.library GetCyberMapAttr(); the NDK has no CGX headers */
-ULONG __GetCyberMapAttr(__reg("a6") struct Library *, __reg("a0") struct BitMap *bm,
-                        __reg("d0") ULONG attr) = "\tjsr\t-96(a6)";
-#define CYBRMATTR_XMOD       0x80000001UL
-#define CYBRMATTR_DISPADR    0x80000003UL
-#define CYBRMATTR_PIXFMT     0x80000004UL
-#define CYBRMATTR_WIDTH      0x80000005UL
-#define CYBRMATTR_HEIGHT     0x80000006UL
-#define CYBRMATTR_ISCYBERGFX 0x80000008UL
-APTR __LockBitMapTagList(__reg("a6") struct Library *, __reg("a0") struct BitMap *bm,
-                         __reg("a1") ULONG *tags) = "\tjsr\t-168(a6)";
-void __UnLockBitMap(__reg("a6") struct Library *, __reg("a0") APTR lock) = "\tjsr\t-174(a6)";
-#define LBMI_BYTESPERROW     0x84001006UL
-#define LBMI_BASEADDRESS     0x84001007UL
 
 #define TILE_ROWBYTES 64             /* tile width in bytes (before clipping) */
 #define TILE_H        16
@@ -75,24 +59,12 @@ struct Viewer {
 struct Sender {
 	struct McCard *mc;
 	UWORD  view;                     /* which part of a SPLIT= screen, 0 for the first */
-	BOOL   wb;                       /* WBSTREAM=1: this one sends the Workbench screen */
 	BOOL   behind;                   /* the board is switched off: another board's in front */
 	WORD   vx, vy;                   /* its top left on the screen */
 	ULONG  lost_seen;                /* mc->ring_lost, last handled */
 	struct McConfig *cfg;
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
-	struct Library *gfxbase, *cgxbase;   /* the Workbench sender: its bitmap and colours */
-	struct BitMap *wb_bm;
-	UBYTE *wb_mem;
-	ULONG  wb_bpr, wb_serial, wb_checked;
-	UWORD  wb_w, wb_h;
-	RGBFTYPE wb_fmt;
-	UBYTE  wb_pal[256 * 3];
-	ULONG  wb_rgb32[256 * 3];
-	BOOL   wb_pal_new, wb_planar;
-	BOOL   wb_ptr_on, wb_on_sent;
-	WORD   wb_ptr_x, wb_ptr_y;
 	struct MsgPort *inport;          /* INPUT=1: input.device, once a viewer types */
 	struct IOStdReq *inreq;
 	BOOL   in_failed;
@@ -450,7 +422,7 @@ static void send_palette(struct Sender *s)
 	p = rec(s, CU_PALETTE, 4 + 256 * 3);
 	put16(p, 0);
 	put16(p + 2, 256);
-	CopyMem(s->wb ? s->wb_pal : s->mc->pal, p + 4, 256 * 3);
+	CopyMem(s->mc->pal, p + 4, 256 * 3);
 }
 
 static void send_pointer(struct Sender *s)
@@ -478,16 +450,6 @@ static void send_pointer_pos(struct Sender *s)
 	struct McCard *mc = s->mc;
 	UBYTE *p = rec(s, CU_POINTERPOS, 6);
 
-	if (s->wb) {
-		/* the Workbench's own board draws its pointer: the card's shape, there */
-		s->ptr_vx = s->wb_ptr_x;
-		s->ptr_vy = s->wb_ptr_y;
-		put16(p, s->ptr_vx);
-		put16(p + 2, s->ptr_vy);
-		p[4] = s->wb_ptr_on && mc->ptr_w;
-		p[5] = 0;
-		return;
-	}
 	s->pos_serial = mc->pos_serial;
 	s->ptr_vx = mc->ptr_x - s->xoff - s->vx;
 	s->ptr_vy = mc->ptr_y - s->yoff - s->vy;
@@ -674,103 +636,6 @@ static void free_tiles(struct Sender *s)
 }
 
 /*
- * WBSTREAM=1: the Workbench screen, on another board, as this sender's
- * screen. Its bitmap's memory from cybergraphics (P96 has it too), checked
- * once a second and whenever the bitmap changes; its colours from its
- * ColorMap; where the mouse is on it. FALSE: no Workbench to send.
- */
-static BOOL wb_source(struct Sender *s, ULONG *serial)
-{
-	/* cybergraphics' pixel formats (PIXFMT_*) as P96's */
-	static const RGBFTYPE fmts[14] = {
-		RGBFB_CLUT, RGBFB_R5G5B5, RGBFB_NONE, RGBFB_R5G5B5PC, RGBFB_B5G5R5PC, RGBFB_R5G6B5,
-		RGBFB_NONE, RGBFB_R5G6B5PC, RGBFB_B5G6R5PC, RGBFB_R8G8B8, RGBFB_B8G8R8,
-		RGBFB_A8R8G8B8, RGBFB_B8G8R8A8, RGBFB_R8G8B8A8
-	};
-	struct IntuitionBase *ib = s->ibase;
-	struct Library *GfxBase = s->gfxbase;
-	struct Screen *scr;
-	struct BitMap *bm = NULL;
-	BOOL check = s->pass - s->wb_checked >= s->cfg->fps;
-
-	if (!ib || !s->cgxbase)
-		return FALSE;
-	Forbid();
-	for (scr = ib->FirstScreen; scr; scr = scr->NextScreen)
-		if ((scr->Flags & SCREENTYPE) == WBENCHSCREEN)
-			break;
-	if (scr) {
-		bm = scr->RastPort.BitMap;
-		s->wb_ptr_on = ib->FirstScreen == scr;
-		s->wb_ptr_x = scr->MouseX - s->mc->ptr_hx;
-		s->wb_ptr_y = scr->MouseY - s->mc->ptr_hy;
-		if (check && GfxBase && scr->ViewPort.ColorMap) {
-			ULONG n = scr->ViewPort.ColorMap->Count;
-
-			GetRGB32(scr->ViewPort.ColorMap, 0, n < 256 ? n : 256, s->wb_rgb32);
-		}
-	}
-	Permit();
-	if (!bm)
-		return FALSE;
-	if (bm != s->wb_bm || check) {
-		ULONG pf;
-		int i;
-
-		s->wb_checked = s->pass;
-		s->wb_bm = bm;
-		if (!__GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_ISCYBERGFX)) {
-			if (!s->wb_planar)
-				mc_log(s, "the Workbench is not on a graphics card (planar): not sent\n",
-				       0, 0, 0, 0);
-			s->wb_planar = TRUE;
-			return FALSE;
-		}
-		pf = __GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_PIXFMT);
-		s->wb_fmt = pf < 14 ? fmts[pf] : RGBFB_NONE;
-		s->wb_mem = (UBYTE *)__GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_DISPADR);
-		s->wb_bpr = __GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_XMOD);
-		s->wb_w = __GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_WIDTH);
-		s->wb_h = __GetCyberMapAttr(s->cgxbase, bm, CYBRMATTR_HEIGHT);
-		if (!s->wb_mem) {
-			/* some give the address only to a lock: take one for a moment */
-			ULONG base = 0, bpr = 0;
-			ULONG tags[] = { LBMI_BASEADDRESS, (ULONG)&base, LBMI_BYTESPERROW, (ULONG)&bpr,
-			                 TAG_END };
-			APTR lock = __LockBitMapTagList(s->cgxbase, bm, tags);
-
-			if (lock) {
-				__UnLockBitMap(s->cgxbase, lock);
-				s->wb_mem = (UBYTE *)base;
-				if (bpr)
-					s->wb_bpr = bpr;
-			}
-		}
-		if (!s->wb_mem || s->wb_fmt == RGBFB_NONE) {
-			if (!s->wb_planar)
-				mc_log(s, "the Workbench is not on a graphics card (pixel format %ld, "
-				       "memory $%lx): not sent\n", pf, (LONG)s->wb_mem, 0, 0);
-			s->wb_planar = TRUE;
-			return FALSE;
-		}
-		s->wb_planar = FALSE;
-		if (s->wb_fmt == RGBFB_CLUT && GfxBase) {
-			for (i = 0; i < 256 * 3; i++) {
-				UBYTE c = s->wb_rgb32[i] >> 24;
-
-				if (c != s->wb_pal[i]) {
-					s->wb_pal[i] = c;
-					s->wb_pal_new = TRUE;
-				}
-			}
-		}
-	}
-	*serial = (ULONG)s->wb_mem ^ ((ULONG)s->wb_w << 16) ^ s->wb_h ^ ((ULONG)s->wb_fmt << 24) ^
-	          s->wb_bpr;
-	return s->wb_mem && s->wb_fmt != RGBFB_NONE && s->wb_w && s->wb_h;
-}
-
-/*
  * Look at the display state. A new mode or format gets a new shadow, which
  * goes out whole; another bitmap or another scroll position keeps it, and
  * only what differs goes out. FALSE when there is nothing to show.
@@ -785,35 +650,17 @@ static BOOL snapshot(struct Sender *s)
 	ULONG serial, bpp, t;
 	BOOL newmode, moved;
 
-	if (s->wb) {
-		BOOL ok = wb_source(s, &serial);
-
-		bm = ok ? s->wb_mem : NULL;
-		fmt = s->wb_fmt;
-		bmw = mc_bytesperpixel(fmt) ? s->wb_bpr / mc_bytesperpixel(fmt) : 0;
-		xoff = yoff = 0;
-		w = s->wb_w;
-		h = s->wb_h;
-		display = ok;
-		/* not in front: the viewers say so */
-		if (s->behind != !s->wb_ptr_on) {
-			s->behind = !s->wb_ptr_on;
-			if (s->visible)
-				send_surface(s);
-		}
-	} else {
-		Forbid();
-		serial = mc->serial;
-		bm = mc->bm_mem;
-		bmw = mc->bm_width;
-		xoff = mc->xoff;
-		yoff = mc->yoff;
-		w = mc->width;
-		h = mc->height;
-		fmt = mc->format;
-		display = mc->display && mc->moniswitch;
-		Permit();
-	}
+	Forbid();
+	serial = mc->serial;
+	bm = mc->bm_mem;
+	bmw = mc->bm_width;
+	xoff = mc->xoff;
+	yoff = mc->yoff;
+	w = mc->width;
+	h = mc->height;
+	fmt = mc->format;
+	display = mc->display && mc->moniswitch;
+	Permit();
 
 	if (serial == s->serial)
 		return s->visible;
@@ -828,7 +675,7 @@ static BOOL snapshot(struct Sender *s)
 	 * still in video memory, so the viewers keep getting it, marked behind,
 	 * instead of a blank window.
 	 */
-	if (!s->wb && s->behind != !display) {
+	if (s->behind != !display) {
 		s->behind = !display;
 		if (s->visible)
 			send_surface(s);
@@ -843,7 +690,7 @@ static BOOL snapshot(struct Sender *s)
 	if (bmw < w)
 		bmw = w;
 	/* SPLIT=: this sender's part of the screen */
-	if (!s->wb) {
+	{
 		UWORD cols = mc->cfg.split_cols ? mc->cfg.split_cols : 1;
 		UWORD rows = mc->cfg.split_rows ? mc->cfg.split_rows : 1;
 
@@ -857,7 +704,7 @@ static BOOL snapshot(struct Sender *s)
 	s->bm = bm;
 	s->xoff = xoff;
 	s->yoff = yoff;
-	s->bpr = s->wb ? s->wb_bpr : mc_bytesperrow(bmw, fmt);
+	s->bpr = mc_bytesperrow(bmw, fmt);
 	s->src = bm + (yoff + s->vy) * s->bpr + (xoff + s->vx) * bpp;
 
 	if (newmode) {
@@ -927,8 +774,6 @@ static void set_tail(struct Sender *s, ULONG tail)
 	ULONG oldest = tail, head;
 	UWORD i;
 
-	if (s->wb)
-		return;     /* the Workbench's drawing doesn't come through this card */
 	Forbid();
 	head = mc->ring_head;
 	mc->view_tail[s->view] = tail;
@@ -1104,7 +949,7 @@ static void take_orders(struct Sender *s)
 	ULONG head, tail;
 	ULONG t;
 
-	if (!mc->ring || s->wb)
+	if (!mc->ring)
 		return;
 	if (mc->ring_lost != s->lost_seen) {
 		/* drawing went faster than the senders: compare everything */
@@ -1440,9 +1285,8 @@ static struct Screen *our_screen(struct Sender *s)
 		return NULL;
 	Forbid();
 	for (scr = IntuitionBase->FirstScreen; scr; scr = scr->NextScreen)
-		if (s->wb ? (scr->Flags & SCREENTYPE) == WBENCHSCREEN :
-		    ((bi->ViewPort && &scr->ViewPort == bi->ViewPort) ||
-		     (bi->VisibleBitMap && scr->RastPort.BitMap == bi->VisibleBitMap))) {
+		if ((bi->ViewPort && &scr->ViewPort == bi->ViewPort) ||
+		    (bi->VisibleBitMap && scr->RastPort.BitMap == bi->VisibleBitMap)) {
 			found = scr;
 			break;
 		}
@@ -1597,20 +1441,14 @@ static void pass(struct Sender *s)
 
 	if (snapshot(s)) {
 		read_viewers(s);
-		if (s->wb ? s->wb_pal_new : mc->pal_serial != s->pal_serial) {
-			s->wb_pal_new = FALSE;
+		if (mc->pal_serial != s->pal_serial)
 			send_palette(s);
-		}
 		if (mc->ptr_serial != s->ptr_serial)
 			send_pointer(s);
-		if (s->wb ? s->wb_ptr_on != s->wb_on_sent ||
-		            (s->wb_ptr_on && (s->wb_ptr_x != s->ptr_vx || s->wb_ptr_y != s->ptr_vy)) :
-		    mc->pos_serial != s->pos_serial ||
+		if (mc->pos_serial != s->pos_serial ||
 		    (mc->ptr_on && (mc->ptr_x - s->xoff - s->vx != s->ptr_vx ||
-		                     mc->ptr_y - s->yoff - s->vy != s->ptr_vy))) {
-			s->wb_on_sent = s->wb_ptr_on;
+		                     mc->ptr_y - s->yoff - s->vy != s->ptr_vy)))
 			send_pointer_pos(s);
-		}
 		take_orders(s);
 		compare(s);
 		send_wanted(s);
@@ -1630,7 +1468,7 @@ static void pass(struct Sender *s)
 	if (s->emitted) {
 		UBYTE *p = rec(s, CU_FRAME, 4);
 
-		put32(p, mc->nviews > 1 && !s->wb ? mc->tick : ++s->frame);
+		put32(p, mc->nviews > 1 ? mc->tick : ++s->frame);
 	}
 	finish(s);
 	transmit(s);
@@ -1654,7 +1492,7 @@ static ULONG part_dest(struct Sender *s)
 {
 	struct McConfig *cfg = &s->mc->cfg;
 
-	if (s->view && s->view < MC_MAXVIEWS && cfg->part_dest[s->view])
+	if (s->view && cfg->part_dest[s->view])
 		return cfg->part_dest[s->view];
 	if ((cfg->dest >> 28) == 0xe)
 		return cfg->dest + s->view;
@@ -1738,7 +1576,6 @@ static void SenderMain(void)
 		return;
 	s->mc = mc;
 	s->view = start->view;
-	s->wb = s->view == MC_WBVIEW;
 	s->cfg = &mc->cfg;
 	s->serial = mc->serial - 1;
 	s->ptr_serial = mc->ptr_serial - 1;
@@ -1794,18 +1631,11 @@ static void SenderMain(void)
 		s->timer = s->efreq != 0;
 	}
 	s->ibase = (struct IntuitionBase *)OpenLibrary("intuition.library", 37);
-	if (s->wb) {
-		s->gfxbase = OpenLibrary("graphics.library", 39);
-		s->cgxbase = OpenLibrary("cybergraphics.library", 40);
-		if (!s->cgxbase)
-			mc_log(s, "WBSTREAM=1 needs cybergraphics.library\n", 0, 0, 0, 0);
-	}
 
 	ticks = TICKS_PER_SECOND / mc->cfg.fps;
 	if (!ticks)
 		ticks = 1;
-	if (!s->wb)
-		mc->view_task[s->view] = (struct Task *)me;
+	mc->view_task[s->view] = (struct Task *)me;
 	while (s->sockbase && !mc->sender_quit) {
 		if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 			break;
@@ -1822,7 +1652,7 @@ static void SenderMain(void)
 			Permit();
 		}
 		pass(s);
-		if (mc->nviews > 1 && s->view && !s->wb && !mc->lead_gone) {
+		if (mc->nviews > 1 && s->view && !mc->lead_gone) {
 			if (Wait(SIGBREAKF_CTRL_F | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 				break;
 		} else {
@@ -1830,8 +1660,7 @@ static void SenderMain(void)
 		}
 	}
 	Forbid();
-	if (!s->wb)
-		mc->view_task[s->view] = NULL;
+	mc->view_task[s->view] = NULL;
 	if (!s->view && mc->nviews > 1) {
 		UWORD v;
 
@@ -1856,10 +1685,6 @@ static void SenderMain(void)
 	close_input(s);
 	if (s->ibase)
 		CloseLibrary((struct Library *)s->ibase);
-	if (s->gfxbase)
-		CloseLibrary(s->gfxbase);
-	if (s->cgxbase)
-		CloseLibrary(s->cgxbase);
 	free_tiles(s);
 	if (s->hist)
 		FreeMem(s->hist, s->nhist * CU_MAX_DGRAM);
@@ -1882,8 +1707,8 @@ BOOL mc_sender_start(struct McCard *mc)
 	 * board, ...; with SPLIT=, the further parts' senders are
 	 * "Multicast.card part 2" and so on.
 	 */
-	static char names[MC_MAXBOARDS][MC_MAXVIEWS + 1][28];
-	static struct Start starts[MC_MAXBOARDS][MC_MAXVIEWS + 1];
+	static char names[MC_MAXBOARDS][MC_MAXVIEWS][24];
+	static struct Start starts[MC_MAXBOARDS][MC_MAXVIEWS];
 	struct Process *p;
 	UWORD v, n = mc->cfg.split_cols * mc->cfg.split_rows;
 
@@ -1926,27 +1751,6 @@ BOOL mc_sender_start(struct McCard *mc)
 		Permit();
 		if (!p)
 			return v > 0;
-	}
-	/*
-	 * WBSTREAM=1: the Workbench screen too, from the first board, on PORT + 4
-	 * (and a group of its own, DEST + 4), so the viewers show it in a window
-	 * next to the desktop's, whichever screen is in front.
-	 */
-	if (mc->cfg.wbstream && mc->boardnum == 0) {
-		char *name = names[0][MC_WBVIEW];
-
-		CopyMem("Multicast.card Workbench", name, 25);
-		starts[0][MC_WBVIEW].mc = mc;
-		starts[0][MC_WBVIEW].view = MC_WBVIEW;
-		Forbid();
-		p = CreateNewProcTags(NP_Entry, (ULONG)SenderMain,
-		                      NP_Name, (ULONG)name,
-		                      NP_Priority, mc->cfg.pri,
-		                      NP_StackSize, 8192,
-		                      TAG_END);
-		if (p)
-			p->pr_Task.tc_UserData = &starts[0][MC_WBVIEW];
-		Permit();
 	}
 	return TRUE;
 }

@@ -71,7 +71,6 @@ static const struct Field fields[] = {
 	{ 0, F_SETTING, CHECKBOX_KIND, "Open at boot",     "ATBOOT" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Behind Workbench", "BEHIND" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Viewers control it", "INPUT" },
-	{ 0, F_SETTING, CHECKBOX_KIND, "Workbench to viewers", "WBSTREAM" },
 	{ 0, F_SETTING, CHECKBOX_KIND, "Workbench own monitor", "WBMONITOR" },
 	{ 0, F_OPEN,    BUTTON_KIND,   "Open now",         NULL, 1, 1 },
 	{ 0, F_CLOSE,   BUTTON_KIND,   "Close",            NULL, 1, 2 },
@@ -897,7 +896,7 @@ static BOOL collect(void)
 	prefs_set(find_setting("COLOURS"), colour_value[colour_sel]);
 	wb_name(buf, sizeof(buf), wb_side[wb_sel], wb_mon[wb_sel]);
 	prefs_set(find_setting("WORKBENCH"), buf);
-	if (layout_sel && wrap) {
+	if (layout_sel && wrap >= 2) {
 		/* a desktop over several windows is one plain Multicast board */
 		wrap = 0;
 		note("Wrap.card off: the desktop is one Multicast board, split in parts.");

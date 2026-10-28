@@ -116,18 +116,6 @@ def main():
     print("Shell: %s" % (sb,))
     check(sb is not None and abs((sb[0] + sb[2]) // 2 - HALF) <= 6 and
           abs((sb[1] + sb[3]) // 2 - 240) <= 12, "SHELL: a Shell in the middle of the desktop")
-    # WBSTREAM=1: the Workbench's own stream
-    wb = load(out, "wb") if os.path.exists(os.path.join(out, "wb.png")) else None
-    if wb is None:
-        p = os.path.join(out, "wb.png")
-        wb = read_png(p) if os.path.exists(p) else None
-    colours = len(set(bytes(wb[2][i:i + 3]) for i in range(0, len(wb[2]), 3 * 97))) if wb else 0
-    if os.environ.get("NO_WBSTREAM"):
-        print("SKIP: WBSTREAM: the Workbench is planar here, nothing to send")
-    else:
-        check(wb is not None and wb[0] >= 320 and colours > 2,
-              "WBSTREAM: the Workbench screen in a window of its own (%s, %d colours)" %
-              ("%dx%d" % wb[:2] if wb else "no picture", colours))
     # the Workbench in front: the desktop's window keeps its picture, not black
     pic = load(out, "behind")
     if pic:

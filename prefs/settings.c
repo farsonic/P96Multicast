@@ -74,8 +74,7 @@ const struct Setting settings[] = {
 	{ "ATBOOT",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen at every boot (WBStartup)" },
 	{ "WORKBENCH", FILE_MC, T_PLACE, 0, 0,      "LEFT1", "Where the Workbench is next to the desktop: LEFT1, RIGHT2, BELOW1, ... or NONE; the mouse crosses over there" },
 	{ "P96SCREENCX", FILE_MC, T_BOOL, 0, 1,     "1",     "Monitor tool types for P96ScreenCx, which moves the mouse to the Workbench (MulticastDesktop does when it isn't running)" },
-	{ "WBMONITOR", FILE_MC, T_BOOL, 0, 1,       "0",     "The Workbench's board is a monitor of its own (DISPLAYCHAIN=NO): its screen stays shown" },
-	{ "WBSTREAM",  FILE_MC, T_BOOL, 0, 1,       "0",     "Send the Workbench screen too (PORT+4): a window of its own in p96view.py --workbench" },
+	{ "WBMONITOR", FILE_MC, T_BOOL, 0, 1,       "0",     "The Workbench's board is a monitor of its own: Wrap.card keeps it on (KEEPDISPLAY), so it stays shown" },
 	{ "HOTKEYS",   FILE_MC, T_TEXT, 0, 31,      "ctrl+alt", "Qualifiers of MulticastDesktop's hotkeys, + between them" },
 	{ "VRAM",      FILE_MC, T_NUM,  1, 256,     "8",     "Video memory per board, MB (at boot)" },
 	{ "MAXWIDTH",  FILE_MC, T_NUM,  320, 4096,  "1920",  "Widest built-in mode" },
@@ -90,6 +89,7 @@ const struct Setting settings[] = {
 	/* Wrap.prefs: see docs/WRAP.md */
 	{ "CARD",      FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver Wrap.card wraps, e.g. Multicast.card" },
 	{ "DRAW",      FILE_WRAP, T_BOOL, 0, 1,     "1",     "Wrap the drawing functions too" },
+	{ "KEEPDISPLAY", FILE_WRAP, T_BOOL, 0, 1,   "0",     "Never switch the wrapped card's display off (WBMONITOR=1: the Workbench stays shown)" },
 	{ "MIRROR",    FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver to show the same screen on" },
 	{ "SPAN",      FILE_WRAP, T_SPAN, 0, 0,     "",      "One big screen on CxR heads, e.g. 2x2" },
 	{ "HEAD",      FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver of every head" },
@@ -553,10 +553,11 @@ void prefs_fix(void (*note)(const char *))
 	char buf[80];
 	int i;
 
-	if (!*card) {
+	/* a desktop (SPLIT=), also beside a Workbench card that Wrap.card only wraps */
+	if (!*card || ((!span || !*span) && (!mirror || !*mirror)))
 		desktop_fix(note);
+	if (!*card)
 		return;
-	}
 	/* the wrapped board, if it is a Multicast board, and each Multicast head */
 	need = is_multicast(card) ? 1 : 0;
 	if (span && *span) {
