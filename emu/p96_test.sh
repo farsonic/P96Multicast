@@ -161,6 +161,8 @@ Wait 10
 C:wrapstat >Work:wrapstat3.txt
 C:mctest STATUS >Work:status3.txt
 Status >Work:tasks3.txt
+Run >NIL: NewShell "CON:40/40/300/100/DeskShell/CLOSE/SCREENPANORAMA"
+Wait 4
 C:PanoramaDesk
 Wait 3
 C:mctest WHERE >Work:where0.txt
@@ -205,11 +207,18 @@ check() {
 check '[ "$(front where-boot.txt)" = Workbench ] && [ "$(width where-boot.txt)" = 640 ]' \
 	"the Workbench on the uaegfx board, 640 wide"
 check '[ "$(front where0.txt)" = "Panorama desktop" ]' "PanoramaPrefs OPEN: the desktop opens, PanoramaDesk brings it to the front"
+active() { tr -d '\r' < "$work/$1" 2>/dev/null | sed -n 's/.* active \(.*\)/\1/p'; }
+check '[ "$(active where0.txt)" = DeskShell ]' "a Shell on the desktop, active"
+check '[ -f "$OUT/shot-desktop.png" ] && [ "$(convert "$OUT/shot-desktop.png" -colorspace gray -format "%[fx:mean>0.1]" info:)" = 1 ]' \
+	"the desktop in front: the Workbench still shown (KEEPDISPLAY)"
 x1=$(mousex where1.txt)
 check '[ "$(front where1.txt)" = Workbench ] && [ -n "$x1" ] && [ "$x1" -ge $(( $(width where1.txt) - 16 )) ]' \
 	"the mouse over the desktop's left edge: the Workbench, at its right edge"
+check '[ "$(active where1.txt)" != DeskShell ] && [ -n "$(active where1.txt)" ]' \
+	"... the keys go with it: a Workbench window active ($(active where1.txt))"
 x2=$(mousex where2.txt)
 check '[ "$(front where2.txt)" = "Panorama desktop" ] && [ -n "$x2" ] && [ "$x2" -le 12 ]' \
 	"... and over the Workbench's right edge: the desktop, at its left edge"
+check '[ "$(active where2.txt)" = DeskShell ]' "... the keys go with it: the desktop's Shell active again"
 echo "screens: $OUT/shot-*.png"
 exit $status

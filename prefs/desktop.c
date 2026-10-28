@@ -59,7 +59,7 @@
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.5"
+#define MD_VERSION "1.6"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
@@ -308,6 +308,65 @@ static BOOL window_on(struct Screen *scr, struct Window *w)
 }
 
 /*
+ * A window on scr made active: w if it is still there, else the one at x, y,
+ * else the frontmost.
+ */
+static void activate_on(struct Screen *scr, struct Window *w, WORD x, WORD y)
+{
+	struct Layer *l;
+
+	if (w && window_on(scr, w)) {
+		ActivateWindow(w);
+		return;
+	}
+	w = NULL;
+	LockLayerInfo(&scr->LayerInfo);
+	l = WhichLayer(&scr->LayerInfo, x, y);
+	if (!l || !l->Window || ((struct Window *)l->Window)->WScreen != scr)
+		for (l = scr->LayerInfo.top_layer; l; l = l->back)
+			if (l->Window && ((struct Window *)l->Window)->WScreen == scr &&
+			    !(((struct Window *)l->Window)->Flags & WFLG_BACKDROP))
+				break;
+	if (l && l->Window)
+		w = (struct Window *)l->Window;
+	UnlockLayerInfo(&scr->LayerInfo);
+	if (!w)
+		w = scr->FirstWindow;     /* the Workbench's backdrop window, say */
+	if (w)
+		ActivateWindow(w);
+}
+
+/*
+ * The keys go where the mouse went: when the screen in front changes
+ * (crossing over here or with P96ScreenCx, a viewer's mouse, a depth
+ * gadget) to the desktop or the Workbench, and the active window is on
+ * another screen, the window last active on that one is active again (else
+ * the one under the pointer, else the frontmost). Not while a button is
+ * held: that is a drag, or a menu.
+ */
+static void follow_focus(struct Screen *desk, UWORD qual)
+{
+	static struct Screen *last_front;
+	struct Screen *front = IntuitionBase->FirstScreen;
+	struct Window *act = IntuitionBase->ActiveWindow;
+	BOOL wb;
+
+	if (act && act->WScreen == desk)
+		last_desk = act;
+	else if (act && (act->WScreen->Flags & SCREENTYPE) == WBENCHSCREEN)
+		last_wb = act;
+	if (front == last_front ||
+	    (qual & (IEQUALIFIER_LEFTBUTTON | IEQUALIFIER_RBUTTON | IEQUALIFIER_MIDBUTTON)))
+		return;
+	last_front = front;
+	if (!front || (act && act->WScreen == front))
+		return;
+	wb = (front->Flags & SCREENTYPE) == WBENCHSCREEN;
+	if (front == desk || wb)
+		activate_on(front, wb ? last_wb : last_desk, front->MouseX, front->MouseY);
+}
+
+/*
  * To the Workbench (to_wb) or the desktop: in front, the pointer at frac
  * (0-65535) along the edge they share, and a window there active again.
  */
@@ -354,20 +413,9 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 	ie.ie_EventAddress = (APTR)&pp;
 	AddIEvents(&ie);
 
-	/* the window last active there, else the one under the pointer */
+	/* the window last active there, else the one under the pointer, else the frontmost */
 	w = to_wb ? last_wb : last_desk;
-	if (!w || !window_on(to, w)) {
-		struct Layer *l;
-
-		w = NULL;
-		LockLayerInfo(&to->LayerInfo);
-		l = WhichLayer(&to->LayerInfo, x, y);
-		if (l && l->Window && ((struct Window *)l->Window)->WScreen == to)
-			w = (struct Window *)l->Window;
-		UnlockLayerInfo(&to->LayerInfo);
-	}
-	if (w)
-		ActivateWindow(w);
+	activate_on(to, w, x, y);
 	UnlockPubScreen(NULL, wb);
 }
 
@@ -457,7 +505,8 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
 #define HK_UP     3
 #define HK_DOWN   4
 #define HK_SWAP   5
-#define HK_EDGE   6     /* a mouse move: over an edge? */
+#define HK_EDGE   6     /* a mouse move: over an edge? the keys after the screen? */
+#define HK_PTR    7     /* the pointer put somewhere (a viewer's mouse): the keys after it */
 #define HK_MON    10    /* + n: monitor n */
 
 static BOOL add_hotkey(CxObj *broker, struct MsgPort *port, const char *quals, const char *key,
@@ -562,17 +611,29 @@ static int commodity(void)
 
 		add_hotkey(broker, port, quals, key, HK_MON + i);
 	}
-	if (wb_side != WB_NONE) {
-		/* every mouse move, copied to us: is it over the Workbench's edge? */
+	{
+		/*
+		 * Every mouse move, copied to us: is it over the Workbench's edge,
+		 * has the screen in front changed? And the pointer put somewhere,
+		 * as Panorama.card does for the viewers' mouse.
+		 */
 		static struct InputXpression ix = {
 			IX_VERSION, IECLASS_RAWMOUSE, 0, 0, 0, 0, 0
 		};
-		CxObj *f = CxFilter(NULL);
+		static struct InputXpression ixp = {
+			IX_VERSION, IECLASS_NEWPOINTERPOS, 0, 0, 0, 0, 0
+		};
+		CxObj *f = CxFilter(NULL), *fp = CxFilter(NULL);
 
 		if (f) {
 			SetFilterIX(f, &ix);
 			AttachCxObj(f, CxSender(port, HK_EDGE));
 			AttachCxObj(broker, f);
+		}
+		if (fp) {
+			SetFilterIX(fp, &ixp);
+			AttachCxObj(fp, CxSender(port, HK_PTR));
+			AttachCxObj(broker, fp);
 		}
 		LayersBase = OpenLibrary("layers.library", 37);
 	}
@@ -602,13 +663,17 @@ static int commodity(void)
 			ULONG type = CxMsgType(msg);
 			LONG id = CxMsgID(msg);
 
-			if (type == CXM_IEVENT && id == HK_EDGE) {
+			if (type == CXM_IEVENT && (id == HK_EDGE || id == HK_PTR)) {
 				struct InputEvent *ie = (struct InputEvent *)CxMsgData(msg);
 				WORD dx = ie->ie_X, dy = ie->ie_Y;
+				UWORD qual = ie->ie_Qualifier;
 
 				ReplyMsg((struct Message *)msg);
-				if (LayersBase)
-					edge(scr, dx, dy);
+				if (LayersBase) {
+					if (id == HK_EDGE)
+						edge(scr, dx, dy);
+					follow_focus(scr, qual);
+				}
 				continue;
 			}
 			ReplyMsg((struct Message *)msg);

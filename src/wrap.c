@@ -87,7 +87,7 @@ struct Library *LibInit(__reg("d0") struct WrapBase *base, __reg("a0") BPTR segl
 	base->lib.lib_Node.ln_Name = LibName;
 	base->lib.lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
 	base->lib.lib_Version = 0;
-	base->lib.lib_Revision = 5;
+	base->lib.lib_Revision = 6;
 	base->lib.lib_IdString = LibId;
 
 	DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 37);
@@ -588,16 +588,6 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 		return FALSE;
 	}
 	status->inner_init++;
-	/*
-	 * KEEPDISPLAY: the Workbench's board beside the Panorama desktop is a
-	 * monitor of its own, whatever the card says (UAE's uaegfx can say it
-	 * is in the display chain). P96ScreenCx moves the mouse only between
-	 * boards out of the chain: in it, the board counts as "Native", and the
-	 * desktop's RIGHT_OF=Wrap would lead nowhere.
-	 */
-	if (status->keepdisplay)
-		bi->Flags &= ~BIF_INDISPLAYCHAIN;
-
 	/* the card works without the thunks, so a broken table only stops the wrapping */
 	if (WrapThunksEnd - WrapThunks != THUNK_SIZE * WRAP_NSLOTS) {
 		status->error = WRAP_ERR_THUNKS;
