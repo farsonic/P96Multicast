@@ -44,6 +44,37 @@ enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE
        A_REBOOT, A_NOREBOOT, A_TRACE,
        A_COUNT };
 
+/*
+ * y or n from the console, a key at a time: a line read (fgets) waits for a
+ * newline that some shells' terminals (bash's) never send for Return. The
+ * first y or n counts; Return alone, or nothing for 30 s, is no.
+ */
+static BOOL ask_yes(const char *question)
+{
+	BPTR in = Input();
+	int waited = 0;
+	char c;
+
+	printf("%s", question);
+	fflush(stdout);
+	while (waited < 30) {
+		if (!WaitForChar(in, 1000000)) {
+			waited++;
+			continue;
+		}
+		if (Read(in, &c, 1) != 1)
+			break;
+		if ((c | 32) == 'y') {
+			printf("\n");
+			return TRUE;
+		}
+		if ((c | 32) == 'n' || c == '\r' || c == '\n')
+			break;
+	}
+	printf(waited >= 30 ? "\nNo answer: not rebooting.\n" : "\n");
+	return FALSE;
+}
+
 static void print_note(const char *s)
 {
 	printf("%s\n", s);
@@ -115,14 +146,8 @@ int main(int argc, char **argv)
 		if (rc == RETURN_OK && !args[A_DRY] && !args[A_NOREBOOT]) {
 			BOOL now = args[A_REBOOT] != 0;
 
-			if (!now && IsInteractive(Input())) {
-				char answer[8];
-
-				printf("Reboot now? (y/n) ");
-				fflush(stdout);
-				if (fgets(answer, sizeof(answer), stdin) && (answer[0] | 32) == 'y')
-					now = TRUE;
-			}
+			if (!now && IsInteractive(Input()))
+				now = ask_yes("Reboot now? (y/n) ");
 			if (now) {
 				printf("Rebooting...\n");
 				fflush(stdout);
