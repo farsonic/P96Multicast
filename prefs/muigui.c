@@ -127,17 +127,26 @@ static struct TextFont *ofont(Object *obj)
 }
 
 /*
- * Text's width in a font, for MUIM_AskMinMax: a RastPort of our own with
- * only the font set, no soft style (bold is a pixel a character wider).
+ * Text's width in a font, for MUIM_AskMinMax, from the font's own tables
+ * (each character's spacing and kerning, or the fixed width), not from
+ * TextLength: a patched text renderer (AAText) froze MUI 3.8 there, with a
+ * RastPort that had no bitmap. Bold is a pixel a character wider.
  */
 static LONG measure(Object *obj, const char *s, BOOL bold)
 {
-	struct RastPort rp;
-	LONG n = strlen(s);
+	struct TextFont *tf = ofont(obj);
+	const WORD *space = (const WORD *)tf->tf_CharSpace, *kern = (const WORD *)tf->tf_CharKern;
+	LONG w = 0, n = 0;
 
-	InitRastPort(&rp);
-	SetFont(&rp, ofont(obj));
-	return TextLength(&rp, (STRPTR)s, n) + (bold ? n : 0);
+	for (; *s; s++, n++) {
+		UBYTE c = *s;
+		LONG i = (c >= tf->tf_LoChar && c <= tf->tf_HiChar ? c : tf->tf_HiChar + 1) -
+		         tf->tf_LoChar;
+
+		w += (space && (tf->tf_Flags & FPF_PROPORTIONAL) ? space[i] : tf->tf_XSize) +
+		     (kern ? kern[i] : 0);
+	}
+	return w + (bold ? n : 0);
 }
 
 static ULONG xget(Object *obj, ULONG attr)
