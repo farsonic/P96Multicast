@@ -251,13 +251,15 @@ images and for what rtg.library draws with the CPU (lines, planar blits).
   copies too.
 * **Viewports** in the viewer: one desktop spread over several monitors.
 
-## For Riptide
+## With Riptide
 
-Nothing in Riptide limits Copper today. These would help a sender like it:
+Riptide 0.17 added what this sender asked for:
 
-* **Pacing:** a socket that `WaitSelect` reports writable when the SANA-II write
-  queue has room. Today the sender gets `ENOBUFS` at `S2_MAX_WRITES`, with
-  nothing to wait for.
-* **Batching:** several datagrams in one call (like `sendmmsg`).
-* **Per-socket checksums:** UDP checksums off for one socket (like Linux's
-  `SO_NO_CHECK`), for LAN-only video.
+* **Batches:** with riptide.library 3 running, each sender sends up to 16
+  datagrams per `RiptideSendMMsg()` call and reads viewer messages with
+  `RiptideRecvMMsg()` (`include/riptide_mmsg.h`). With other stacks it uses
+  `sendto()` and `recvfrom()`. `mctest STATUS` says which.
+* **Pacing:** a non-blocking UDP socket says `EWOULDBLOCK` while the
+  interface is full, instead of dropping the datagram. The card counts that
+  as a wait, not an error, and sends the rest in the next pass.
+* **No checksums** (`SO_RIPTIDE_NO_CHECK`) is not used yet.
