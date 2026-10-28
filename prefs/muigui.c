@@ -34,6 +34,7 @@
 #include <dos/dostags.h>
 #include <devices/timer.h>
 #include <intuition/intuition.h>
+#include <graphics/gfxbase.h>
 #include <libraries/mui.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -107,6 +108,23 @@ static Object *app, *win;
 #define _between(a, x, b) ((x) >= (a) && (x) <= (b))
 #define _inside(obj, x, y) (_between(_mleft(obj), (x), _mright(obj)) && \
                             _between(_mtop(obj), (y), _mbottom(obj)))
+
+/*
+ * The object's font: MUI's, or the screen's, or the system's. MUI need not
+ * have given an object its font yet when it asks for its size (Easel never
+ * uses _font() unchecked either); measuring with none froze the machine.
+ */
+static struct TextFont *ofont(Object *obj)
+{
+	struct Screen *scr;
+
+	if (_font(obj))
+		return _font(obj);
+	scr = _screen(obj);
+	if (scr && scr->RastPort.Font)
+		return scr->RastPort.Font;
+	return GfxBase->DefaultFont;
+}
 
 static ULONG xget(Object *obj, ULONG attr)
 {
@@ -274,7 +292,7 @@ struct NavData {
 
 static LONG nav_rowh(Object *obj)
 {
-	return _font(obj)->tf_YSize + 14;
+	return ofont(obj)->tf_YSize + 14;
 }
 
 /* the first of each method a class gets, traced (TRACE=) */
@@ -347,7 +365,7 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 
 		DoSuperMethodA(cl, obj, msg);
 		InitRastPort(&rp);
-		SetFont(&rp, _font(obj));
+		SetFont(&rp, ofont(obj));
 		for (i = 0; i < NPAGES; i++) {
 			LONG l = theme_textlen(&rp, page_names[i], TRUE);
 
@@ -365,13 +383,13 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 	}
 	case MUIM_Draw: {
 		struct RastPort *rp = _rp(obj);
-		LONG i, rh = nav_rowh(obj), fh = _font(obj)->tf_YSize;
+		LONG i, rh = nav_rowh(obj), fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		if (!(((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE)))
 			return 0;
 		d = INST_DATA(cl, obj);
-		SetFont(rp, _font(obj));
+		SetFont(rp, ofont(obj));
 		theme_fill(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_PANEL));
 		for (i = 0; i < NPAGES; i++) {
 			LONG y = _mtop(obj) + 8 + i * rh;
@@ -416,7 +434,7 @@ struct MapData {
 static void map_geometry(Object *obj, LONG *ox, LONG *oy, LONG *cw, LONG *ch)
 {
 	LONG c = layout_cols(), r = layout_rows(), w = _mwidth(obj) - 8;
-	LONG h = _mheight(obj) - _font(obj)->tf_YSize - 10;
+	LONG h = _mheight(obj) - ofont(obj)->tf_YSize - 10;
 	UWORD mw, mh;
 
 	monitor_size(&mw, &mh);
@@ -461,13 +479,13 @@ static void wb_box(Object *obj, int n, LONG ox, LONG oy, LONG cw, LONG ch, LONG 
 static void map_draw(Object *obj)
 {
 	struct RastPort *rp = _rp(obj);
-	LONG c = layout_cols(), r = layout_rows(), ox, oy, cw, ch, i, fh = _font(obj)->tf_YSize;
+	LONG c = layout_cols(), r = layout_rows(), ox, oy, cw, ch, i, fh = ofont(obj)->tf_YSize;
 	const char *pv = prefs_value(find_setting("PORT"));
 	UWORD mw, mh;
 	int port = atoi(pv);
 	char buf[80];
 
-	SetFont(rp, _font(obj));
+	SetFont(rp, ofont(obj));
 	theme_fill(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_BACK));
 	map_geometry(obj, &ox, &oy, &cw, &ch);
 	monitor_size(&mw, &mh);
@@ -555,7 +573,7 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		LONG fh = _font(obj)->tf_YSize;
+		LONG fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		mm->MinWidth += 260;
@@ -657,12 +675,12 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		struct RastPort rp;
-		LONG w = 0, i, fh = _font(obj)->tf_YSize;
+		LONG w = 0, i, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		d = INST_DATA(cl, obj);
 		InitRastPort(&rp);
-		SetFont(&rp, _font(obj));
+		SetFont(&rp, ofont(obj));
 		for (i = 0; i < d->n; i++) {
 			LONG l = theme_textlen(&rp, d->labels[i], FALSE);
 
@@ -680,14 +698,14 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	}
 	case MUIM_Draw: {
 		struct RastPort *rp = _rp(obj);
-		LONG fh = _font(obj)->tf_YSize, aw = fh + 8, l;
+		LONG fh = ofont(obj)->tf_YSize, aw = fh + 8, l;
 		const char *s;
 
 		DoSuperMethodA(cl, obj, msg);
 		if (!(((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE)))
 			return 0;
 		d = INST_DATA(cl, obj);
-		SetFont(rp, _font(obj));
+		SetFont(rp, ofont(obj));
 		theme_fill(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_FIELD));
 		theme_rect(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_BORDER));
 		theme_icon(rp, IC_LEFT, _mleft(obj) + (aw - fh) / 2, _mtop(obj) + 4, fh, tpen(C_DIM));
@@ -784,7 +802,7 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		LONG h = _font(obj)->tf_YSize + 6;
+		LONG h = ofont(obj)->tf_YSize + 6;
 
 		DoSuperMethodA(cl, obj, msg);
 		mm->MinWidth += 2 * h;
@@ -903,12 +921,12 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
 		struct RastPort rp;
-		LONG w, h, fh = _font(obj)->tf_YSize;
+		LONG w, h, fh = ofont(obj)->tf_YSize;
 
 		DoSuperMethodA(cl, obj, msg);
 		d = INST_DATA(cl, obj);
 		InitRastPort(&rp);
-		SetFont(&rp, _font(obj));
+		SetFont(&rp, ofont(obj));
 		w = theme_textlen(&rp, d->label, (d->flags & LB_TITLE) != 0) + 2;
 		if (d->flags == ~0UL) {
 			/* a button: room round the label, and the icon */
@@ -928,14 +946,14 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	}
 	case MUIM_Draw: {
 		struct RastPort *rp = _rp(obj);
-		LONG fh = _font(obj)->tf_YSize, tw, x, y, iw;
+		LONG fh = ofont(obj)->tf_YSize, tw, x, y, iw;
 		ULONG sel = 0;
 
 		DoSuperMethodA(cl, obj, msg);
 		if (!(((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE)))
 			return 0;
 		d = INST_DATA(cl, obj);
-		SetFont(rp, _font(obj));
+		SetFont(rp, ofont(obj));
 		if (d->flags != ~0UL) {
 			/* a label */
 			BOOL bold = (d->flags & LB_TITLE) != 0;
@@ -1051,7 +1069,7 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 		break;
 	case MUIM_AskMinMax: {
 		struct MUI_MinMax *mm = ((struct MUIP_AskMinMax *)msg)->MinMaxInfo;
-		LONG rh = _font(obj)->tf_YSize + 3;
+		LONG rh = ofont(obj)->tf_YSize + 3;
 
 		DoSuperMethodA(cl, obj, msg);
 		d = INST_DATA(cl, obj);
@@ -1065,13 +1083,13 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 	}
 	case MUIM_Draw: {
 		struct RastPort *rp = _rp(obj);
-		LONG rh = _font(obj)->tf_YSize + 3, i, y;
+		LONG rh = ofont(obj)->tf_YSize + 3, i, y;
 
 		DoSuperMethodA(cl, obj, msg);
 		if (!(((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE)))
 			return 0;
 		d = INST_DATA(cl, obj);
-		SetFont(rp, _font(obj));
+		SetFont(rp, ofont(obj));
 		theme_fill(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_FIELD));
 		theme_rect(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_BORDER));
 		for (i = 0, y = _mtop(obj) + 4; i < d->count && y + rh <= _mbottom(obj); i++, y += rh) {
@@ -1103,7 +1121,7 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
 		    _inside(obj, im->MouseX, im->MouseY)) {
-			LONG i = (im->MouseY - _mtop(obj) - 4) / (_font(obj)->tf_YSize + 3);
+			LONG i = (im->MouseY - _mtop(obj) - 4) / (ofont(obj)->tf_YSize + 3);
 
 			d = INST_DATA(cl, obj);
 			set(obj, MUIA_Rows_Active, i >= 0 && i < d->count ? i : -1);
