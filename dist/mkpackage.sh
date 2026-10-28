@@ -33,7 +33,7 @@ cp dist/scripts/desktop.command dist/scripts/desktop-lan.command "$PKG/Client/"
 chmod +x "$PKG/Client/"*.command
 cp README.md "$PKG/Docs/README.md"
 cp docs/COPPER.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
-git ls-files | grep -v "^docs/mui-guide/img/" | while read -r f; do
+git ls-files | grep -v "^docs/mui-guide/" | while read -r f; do
 	mkdir -p "$PKG/Source/$(dirname "$f")"
 	cp "$f" "$PKG/Source/$f"
 done
