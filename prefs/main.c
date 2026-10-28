@@ -80,7 +80,41 @@ static void print_note(const char *s)
 	printf("%s\n", s);
 }
 
+static int prefs_main(int argc);
+
+/* (bigstack.s) fn(arg) on the stack ss describes */
+long run_on_stack(struct StackSwapStruct *ss, long (*fn)(void *), void *arg);
+
+static long main_on_stack(void *argc)
+{
+	return prefs_main((int)(LONG)argc);
+}
+
+/*
+ * All of it on a stack of 64 KB when the Shell gave less than 32 KB (a
+ * bash, or a Shell's default 4 KB): the windows, the install code and the
+ * settings keep buffers on the stack, and running past a small one froze
+ * the machine somewhere later (a click on Monitors, Save).
+ */
 int main(int argc, char **argv)
+{
+	struct Task *me = FindTask(NULL);
+	ULONG have = (ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower;
+	struct StackSwapStruct ss;
+	APTR stack;
+	long rc;
+
+	if (have >= 32768 || !(stack = AllocVec(65536, MEMF_ANY)))
+		return prefs_main(argc);
+	ss.stk_Lower = stack;
+	ss.stk_Upper = (ULONG)stack + 65536;
+	ss.stk_Pointer = (APTR)ss.stk_Upper;
+	rc = run_on_stack(&ss, main_on_stack, (void *)(LONG)argc);
+	FreeVec(stack);
+	return rc;
+}
+
+static int prefs_main(int argc)
 {
 	LONG args[A_COUNT] = { 0 };
 	struct RDArgs *rda;
