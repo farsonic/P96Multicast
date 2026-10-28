@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Wrap.card: the BoardInfo function slots it can wrap, and
+ * Panorama - Wrap.card: the BoardInfo function slots it can wrap, and
  * the status block in its library base, read by "wrapstat".
  */
 #ifndef P96MC_WRAP_STATUS_H
@@ -138,7 +138,7 @@ struct WrapBoard {
  * HEADSHARE=1: heads that can show any memory show the wrapped board's
  * bitmap itself instead of a copy.
  *
- * Multicast.card 2 heads hear what is drawn: the thunks pass the wrapped
+ * Panorama.card 2 heads hear what is drawn: the thunks pass the wrapped
  * board's drawing calls (and pointer) on to a shared head (McRecord,
  * McPointer), and the copying says what it copied to the others
  * (McDamage), so the head sends orders and compares only what changed.
@@ -159,7 +159,7 @@ struct WrapHead {
 	UWORD error;           /* WRAP_MERR_*, for the last attempt */
 	UWORD display;         /* its display is on */
 	UWORD shared;          /* it shows the wrapped board's bitmap (HEADSHARE) */
-	UWORD orders;          /* it hears the wrapped board's drawing (Multicast.card 2) */
+	UWORD orders;          /* it hears the wrapped board's drawing (Panorama.card 2) */
 	struct Library *lib;   /* its card driver, open */
 	struct BoardInfo *bi;  /* its board, once set up */
 	ULONG setups;          /* modes set up on it */

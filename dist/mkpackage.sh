@@ -1,5 +1,5 @@
 #!/bin/sh
-# P96Multicast - build the LhA package: build/P96Multicast.lha
+# Panorama - build the LhA package: build/Panorama.lha
 #
 #   dist/mkpackage.sh            (make package)
 #
@@ -11,21 +11,21 @@ set -eu
 cd "$(dirname "$0")/.."
 RIPTIDE_SRC=${RIPTIDE_SRC:-/home/user/Riptide}
 STAGE=build/package
-PKG=$STAGE/P96Multicast
+PKG=$STAGE/Panorama
 
-for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat build/MulticastPrefs \
-         build/MulticastDesktop build/Boing; do
+for f in build/Panorama.card build/Wrap.card build/mctest build/wrapstat build/PanoramaPrefs \
+         build/PanoramaDesk build/Boing; do
 	[ -f "$f" ] || { echo "$f missing: run make first"; exit 1; }
 done
-rm -rf "$STAGE" build/P96Multicast.lha
+rm -rf "$STAGE" build/Panorama.lha
 mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
 	"$PKG/Client" "$PKG/Docs" "$PKG/Source" "$PKG/Scripts"
 
 cp dist/ReadMe "$PKG/ReadMe"
-cp build/Multicast.card build/Wrap.card "$PKG/Libs/Picasso96/"
-cp build/mctest build/wrapstat build/MulticastDesktop build/Boing "$PKG/C/"
-cp build/MulticastPrefs "$PKG/"
-cp client/p96view.py tests/fake_sender.py "$PKG/Client/"
+cp build/Panorama.card build/Wrap.card "$PKG/Libs/Picasso96/"
+cp build/mctest build/wrapstat build/PanoramaDesk build/Boing "$PKG/C/"
+cp build/PanoramaPrefs "$PKG/"
+cp client/panoview.py tests/fake_sender.py "$PKG/Client/"
 # scripts: the shared desktop from Workbench (IconX) or a Shell; the viewer on a Mac
 cp dist/scripts/DesktopOpen dist/scripts/DesktopShell dist/scripts/DesktopBoing \
 	dist/scripts/DesktopClose "$PKG/Scripts/"
@@ -38,8 +38,8 @@ git ls-files | while read -r f; do
 	cp "$f" "$PKG/Source/$f"
 done
 
-cat > "$PKG/Prefs/Multicast.prefs" <<'EOF'
-# P96Multicast settings: copy to ENVARC:Multicast.prefs (and ENV:)
+cat > "$PKG/Prefs/Panorama.prefs" <<'EOF'
+# Panorama settings: copy to ENVARC:Panorama.prefs (and ENV:)
 # KEY=VALUE, one per line; '#' starts a comment. Defaults shown.
 #DEST=239.255.96.1
 #PORT=9696
@@ -50,7 +50,7 @@ cat > "$PKG/Prefs/Multicast.prefs" <<'EOF'
 #VRAM=8
 #MAXWIDTH=1920
 #MAXHEIGHT=1200
-#LOG=T:Multicast.log
+#LOG=T:Panorama.log
 #BOARDS=1
 EOF
 
@@ -60,28 +60,28 @@ cat > "$PKG/Prefs/Wrap.prefs" <<'EOF'
 CARD=uaegfx.card
 # DRAW=0 leaves the drawing functions unwrapped
 #DRAW=1
-# MIRROR= a card driver to show the same screen on, e.g. Multicast.card
-#MIRROR=Multicast.card
+# MIRROR= a card driver to show the same screen on, e.g. Panorama.card
+#MIRROR=Panorama.card
 # SPAN= one big screen on CxR heads, each HEAD= (or HEAD1= ... HEAD4=)
 #SPAN=2x2
-#HEAD=Multicast.card
-# HEADSHARE=1: heads that can show any memory (Multicast.card) need no copy
+#HEAD=Panorama.card
+# HEADSHARE=1: heads that can show any memory (Panorama.card) need no copy
 #HEADSHARE=0
 #MIRRORFPS=25
 EOF
 
 # the monitor icon: a TOOL icon whose ToolTypes name the board, like P96's own
 if [ -f "$RIPTIDE_SRC/tools/mkicon.py" ]; then
-	python3 "$RIPTIDE_SRC/tools/mkicon.py" tool "$PKG/MulticastPrefs.info" >/dev/null
+	python3 "$RIPTIDE_SRC/tools/mkicon.py" tool "$PKG/PanoramaPrefs.info" >/dev/null
 	for s in DesktopOpen DesktopShell DesktopBoing DesktopClose; do
 		python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Scripts/$s.info" --tool C:IconX \
 			--tooltype "WINDOW=NIL:" >/dev/null
 	done
-	python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Devs/Monitors/Multicast.info" \
-		--tooltype "BOARDTYPE=Multicast" --tooltype "(DEST=239.255.96.1)" \
-		--tooltype "(PORT=9696)" --tooltype "(FPS=25)" --tooltype "(LOG=T:Multicast.log)" >/dev/null
+	python3 "$RIPTIDE_SRC/tools/mkicon.py" project "$PKG/Devs/Monitors/Panorama.info" \
+		--tooltype "BOARDTYPE=Panorama" --tooltype "(DEST=239.255.96.1)" \
+		--tooltype "(PORT=9696)" --tooltype "(FPS=25)" --tooltype "(LOG=T:Panorama.log)" >/dev/null
 	# do_Type (offset 48 of the DiskObject): WBPROJECT -> WBTOOL
-	python3 - "$PKG/Devs/Monitors/Multicast.info" <<'EOF'
+	python3 - "$PKG/Devs/Monitors/Panorama.info" <<'EOF'
 import sys
 p = sys.argv[1]
 b = bytearray(open(p, "rb").read())
@@ -95,10 +95,10 @@ fi
 
 # Amiga line ends are LF already; make the scripts and docs plain files
 # an lha that can create archives, or our own writer (stored, level 2)
-if (cd "$STAGE" && lha a ../P96Multicast.lha P96Multicast >/dev/null 2>&1) && [ -s build/P96Multicast.lha ]; then
+if (cd "$STAGE" && lha a ../Panorama.lha Panorama >/dev/null 2>&1) && [ -s build/Panorama.lha ]; then
 	:
 else
-	rm -f build/P96Multicast.lha
-	python3 dist/mklha.py build/P96Multicast.lha "$PKG" P96Multicast
+	rm -f build/Panorama.lha
+	python3 dist/mklha.py build/Panorama.lha "$PKG" Panorama
 fi
-echo "built build/P96Multicast.lha"
+echo "built build/Panorama.lha"

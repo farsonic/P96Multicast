@@ -1,5 +1,5 @@
 /*
- * P96Multicast - wraptest: runs the built Wrap.card under vamos, wrapping
+ * Panorama - wraptest: runs the built Wrap.card under vamos, wrapping
  * Fake.card, with this program in the place of rtg.library.
  *
  *   wraptest [DRAW [PATH]]   DRAW: the DRAW= in ENV:Wrap.prefs, 0 or 1 (default)

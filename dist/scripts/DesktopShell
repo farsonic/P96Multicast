@@ -1,2 +1,2 @@
-; P96Multicast: another Shell, in the middle of the shared desktop
-C:MulticastDesktop SHELL WAIT=10
+; Panorama: another Shell, in the middle of the shared desktop
+C:PanoramaDesk SHELL WAIT=10

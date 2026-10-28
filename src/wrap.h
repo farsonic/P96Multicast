@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Wrap.card internals, shared by wrap.c and mirror.c.
+ * Panorama - Wrap.card internals, shared by wrap.c and mirror.c.
  */
 #ifndef P96MC_WRAP_H
 #define P96MC_WRAP_H
@@ -23,7 +23,7 @@ BOOL InnerInitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltype
 struct Library *wrap_open_card(const char *card);
 ULONG wrap_bytesperpixel(ULONG fmt);
 
-/* Multicast.card 2's functions for heads (its orders.c) */
+/* Panorama.card 2's functions for heads (its orders.c) */
 #define WRAP_LVO_MCRECORD  -42
 #define WRAP_LVO_MCDAMAGE  -48
 #define WRAP_LVO_MCPOINTER -54

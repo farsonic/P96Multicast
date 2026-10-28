@@ -1,10 +1,10 @@
 #!/bin/sh
-# P96Multicast - Wrap.card's mirror, end to end over the network, in FS-UAE
+# Panorama - Wrap.card's mirror, end to end over the network, in FS-UAE
 # with AROS m68k and Riptide. Like emu/run_test.sh, it needs FSUAE_PCAP (an
 # FS-UAE built with Riptide's patch) and root, for the veth bridge.
 #
-# Wrap.card wraps Multicast.card (its first board, port 9696) with
-# MIRROR=Multicast.card (its second board, BOARDS=2, port 9697, which
+# Wrap.card wraps Panorama.card (its first board, port 9696) with
+# MIRROR=Panorama.card (its second board, BOARDS=2, port 9697, which
 # rtg.library never sees). mctest draws on the wrapped board in 8, 16 and
 # 32 bit; both streams must show the test pattern, and the same picture.
 #
@@ -23,7 +23,7 @@ GROUP=239.255.96.1
 AMIGA_IP=192.168.96.2
 HOST_IP=192.168.96.1
 
-for f in build/Multicast.card build/Wrap.card build/mctest build/wrapstat "$RIPTIDE" \
+for f in build/Panorama.card build/Wrap.card build/mctest build/wrapstat "$RIPTIDE" \
          "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
@@ -48,19 +48,19 @@ work=$(cd "$OUT/work" && pwd)
 
 # ---- install into AROS
 mkdir -p "$AROSFS/Libs/Picasso96" "$AROSFS/Prefs/Env-Archive"
-cp build/Multicast.card build/Wrap.card "$AROSFS/Libs/Picasso96/"
-rm -f "$AROSFS/Devs/Monitors/Multicast" "$AROSFS/Devs/Monitors/Wrap"
+cp build/Panorama.card build/Wrap.card "$AROSFS/Libs/Picasso96/"
+rm -f "$AROSFS/Devs/Monitors/Panorama" "$AROSFS/Devs/Monitors/Wrap"
 cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Wrap"
-printf 'CARD=Multicast.card\nMIRROR=Multicast.card\nMIRRORFPS=25\n%b\n' "${WRAP_EXTRA:-}" \
+printf 'CARD=Panorama.card\nMIRROR=Panorama.card\nMIRRORFPS=25\n%b\n' "${WRAP_EXTRA:-}" \
 	> "$AROSFS/Prefs/Env-Archive/Wrap.prefs"
-cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
+cat > "$AROSFS/Prefs/Env-Archive/Panorama.prefs" <<EOF
 # written by emu/mirror_test.sh
 BOARDS=2
 DEST=$GROUP
 PORT=9696
 FPS=25
 REFRESH=2
-LOG=RAM:Multicast.log
+LOG=RAM:Panorama.log
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
@@ -95,7 +95,7 @@ STEPS="8 16 32"
 	echo 'Work:mctest LIST >Work:modes.txt'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	for d in $STEPS; do
-		echo "Run >Work:mctest-$d.log Work:mctest NAME=Multicast WIDTH=640 HEIGHT=480 DEPTH=$d SECS=16"
+		echo "Run >Work:mctest-$d.log Work:mctest NAME=Panorama WIDTH=640 HEIGHT=480 DEPTH=$d SECS=16"
 		echo 'Wait 12'
 		echo "Work:wrapstat >Work:wrapstat-$d.txt"
 		echo "Echo >Work:shown-$d done"
@@ -103,8 +103,8 @@ STEPS="8 16 32"
 	done
 	echo 'Work:wrapstat >Work:wrapstat.txt' 
 	echo 'Work:mctest STATUS >>Work:status.txt'
-	echo 'Copy RAM:Multicast.log Work:card.log'
-	echo 'Copy RAM:Multicast.log.2 Work:card2.log'
+	echo 'Copy RAM:Panorama.log Work:card.log'
+	echo 'Copy RAM:Panorama.log.2 Work:card2.log'
 	echo 'Echo >Work:autorun.done done'
 } > "$work/autorun"
 
@@ -141,11 +141,11 @@ SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
 start=$(date +%s)
 for st in $STEPS; do
-	python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP \
-		--snapshot "$OUT/frame-$st-a.png" --duration 600 2>"$OUT/p96view-$st-a.log" &
+	python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP \
+		--snapshot "$OUT/frame-$st-a.png" --duration 600 2>"$OUT/panoview-$st-a.log" &
 	va=$!
-	python3 client/p96view.py --group $GROUP --port 9697 --iface $HOST_IP \
-		--snapshot "$OUT/frame-$st-b.png" --duration 600 2>"$OUT/p96view-$st-b.log" &
+	python3 client/panoview.py --group $GROUP --port 9697 --iface $HOST_IP \
+		--snapshot "$OUT/frame-$st-b.png" --duration 600 2>"$OUT/panoview-$st-b.log" &
 	vb=$!
 	while [ ! -f "$work/shown-$st" ]; do
 		if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
@@ -172,8 +172,8 @@ show() {
 	echo "---- $1"
 	tr -d '\r' < "$work/$1" 2>/dev/null
 }
-echo "---- modes (Multicast, first 3; none of the mirror's)"
-tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep "Multicast" | head -3
+echo "---- modes (Panorama, first 3; none of the mirror's)"
+tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep "Panorama" | head -3
 show status.txt
 show card.log
 show card2.log
@@ -207,7 +207,7 @@ EOF
 	else fail "depth $d: the mirror shows the same picture"
 	fi
 done
-if tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep -q "Multicast2"; then
+if tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep -q "Panorama2"; then
 	fail "the mirror's board is not offered to rtg.library"
 else
 	pass "the mirror's board is not offered to rtg.library"

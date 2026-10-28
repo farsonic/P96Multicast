@@ -1,4 +1,4 @@
-; P96Multicast - bigstack.s: run a C function on a stack of its own (exec
+; Panorama - bigstack.s: run a C function on a stack of its own (exec
 ; StackSwap), for MUI, which wants far more stack than a Shell gives.
 ;
 ; long run_on_stack(struct StackSwapStruct *ss, long (*fn)(void *), void *arg)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a frame captured by p96view.py against mctest's test pattern.
+"""Check a frame captured by panoview.py against mctest's test pattern.
 
     check_frame.py frame.png [WIDTH HEIGHT]
 
@@ -15,7 +15,7 @@ TOLERANCE = 8
 
 
 def read_png(path):
-    """Read the 8 bit RGB, unfiltered PNGs that p96view.py writes."""
+    """Read the 8 bit RGB, unfiltered PNGs that panoview.py writes."""
     with open(path, "rb") as f:
         data = f.read()
     if data[:8] != b"\x89PNG\r\n\x1a\n":

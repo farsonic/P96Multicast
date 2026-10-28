@@ -22,7 +22,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "client"))
-import p96view  # noqa: E402
+import panoview  # noqa: E402
 
 SHIFTED = "~!@#$%^&*()_+|{}:\"<>?ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 NAMES = {" ": "space", "\n": "Return", "`": "grave", "-": "minus", "=": "equal",
@@ -38,13 +38,13 @@ NAMES = {" ": "space", "\n": "Return", "`": "grave", "-": "minus", "=": "equal",
 def keys_for(text):
     ev = []
     for ch in text:
-        code = p96view.KEYMAP[NAMES.get(ch, ch)]
+        code = panoview.KEYMAP[NAMES.get(ch, ch)]
         shift = ch in SHIFTED
         if shift:
-            ev.append((p96view.IN_KEY, 0x60, 0, 0))
-        ev += [(p96view.IN_KEY, code, 0, 0), (p96view.IN_KEY, code | 0x80, 0, 0)]
+            ev.append((panoview.IN_KEY, 0x60, 0, 0))
+        ev += [(panoview.IN_KEY, code, 0, 0), (panoview.IN_KEY, code | 0x80, 0, 0)]
         if shift:
-            ev.append((p96view.IN_KEY, 0x60 | 0x80, 0, 0))
+            ev.append((panoview.IN_KEY, 0x60 | 0x80, 0, 0))
     return ev
 
 
@@ -56,18 +56,18 @@ def main():
     ap.add_argument("steps", nargs="+")
     args = ap.parse_args()
 
-    sock = p96view.open_socket(args.group, args.port, args.iface)
+    sock = panoview.open_socket(args.group, args.port, args.iface)
     sock.settimeout(10)
     amiga = stream = None
     while amiga is None:
         data, addr = sock.recvfrom(65536)
-        if len(data) >= 12 and struct.unpack(">H", data[:2])[0] == p96view.MAGIC:
+        if len(data) >= 12 and struct.unpack(">H", data[:2])[0] == panoview.MAGIC:
             amiga, stream = addr, struct.unpack(">I", data[4:8])[0]
     print("card at %s:%d" % amiga)
 
     def send(events):
         for i in range(0, len(events), 100):
-            sock.sendto(struct.pack(">HBBI", p96view.MAGIC, p96view.VERSION, p96view.INPUT,
+            sock.sendto(struct.pack(">HBBI", panoview.MAGIC, panoview.VERSION, panoview.INPUT,
                                     stream) +
                         b"".join(struct.pack(">BBHH", *e) for e in events[i:i + 100]), amiga)
             time.sleep(0.05)
@@ -76,12 +76,12 @@ def main():
         kind, _, arg = step.partition(":")
         if kind == "move":
             x, y = (int(v) for v in arg.split(","))
-            send([(p96view.IN_MOVE, 0, x, y)])
+            send([(panoview.IN_MOVE, 0, x, y)])
         elif kind == "click":
             b = int(arg)
-            send([(p96view.IN_BUTTON, b, 0, 0)])
+            send([(panoview.IN_BUTTON, b, 0, 0)])
             time.sleep(0.1)
-            send([(p96view.IN_BUTTON, b | 0x80, 0, 0)])
+            send([(panoview.IN_BUTTON, b | 0x80, 0, 0)])
         elif kind == "type":
             send(keys_for(arg.replace("\\n", "\n")))
         elif kind == "wait":
@@ -102,7 +102,7 @@ def main():
         pos, n = 12, len(data)
         while pos + 3 <= n:
             rtype, length = data[pos], (data[pos + 1] << 8) | data[pos + 2]
-            if rtype == p96view.POINTERPOS and length >= 6:
+            if rtype == panoview.POINTERPOS and length >= 6:
                 last = struct.unpack(">hhB", data[pos + 3:pos + 8])
             pos += 3 + length
     if last:

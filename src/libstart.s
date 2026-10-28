@@ -1,4 +1,4 @@
-; P96Multicast - Multicast.card library header.
+; Panorama - Panorama.card library header.
 ;
 ; A P96 card driver is an ordinary Amiga library with two extra entries:
 ; FindCard at -30 and InitCard at -36. The rest of the driver is reached
@@ -23,7 +23,7 @@
 	xdef	_LibId
 
 VERSION		equ	2
-REVISION	equ	8
+REVISION	equ	9
 LIBSIZE		equ	512		; struct McBase, MC_LIBSIZE in mc_status.h
 RTF_AUTOINIT	equ	$80
 NT_LIBRARY	equ	9
@@ -99,7 +99,7 @@ dmg_common:
 	rts
 
 _LibName:
-	dc.b	"Multicast.card",0
+	dc.b	"Panorama.card",0
 _LibId:
-	dc.b	"Multicast.card 2.8 (28.10.2026)",13,10,0
+	dc.b	"Panorama.card 2.9 (28.10.2026)",13,10,0
 	even

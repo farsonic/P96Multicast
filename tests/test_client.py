@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for client/p96view.py: records and pixel formats.
+"""Unit tests for client/panoview.py: records and pixel formats.
 
     python3 tests/test_client.py
 """
@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "client"))
-import p96view as pv  # noqa: E402
+import panoview as pv  # noqa: E402
 
 def mode(s, w, h, fmt, bpp, display=1, tw=16, th=16):
     s.apply(pv.SURFACE, struct.pack(">HHBBBBHH", w, h, fmt, bpp, display, 0, tw, th))

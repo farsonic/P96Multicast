@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pretend to be Multicast.card: mctest's colour bars in Copper, for testing viewers.
+"""Pretend to be Panorama.card: mctest's colour bars in Copper, for testing viewers.
 
     fake_sender.py                         to 239.255.96.1:9696, 8 bit, for 30 s
     fake_sender.py --dest 127.0.0.1 --depth 32 --seconds 0   forever, to localhost
@@ -9,7 +9,7 @@ Sends the screen as pixels, then moves a square across it with COPY and
 FILL orders and writes text with TEXT, like the card does. Answers the
 viewer's NAKs from a history of datagrams and its WANTs from the screen.
 --loss drops that share of datagrams (repairs too), to test the viewer's
-recovery; --final writes the screen at the end in p96view.py's --raw format.
+recovery; --final writes the screen at the end in panoview.py's --raw format.
 """
 import argparse
 import os
@@ -21,7 +21,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "client"))
-import p96view as pv  # noqa: E402
+import panoview as pv  # noqa: E402
 
 BARS = [0xffffff, 0xffff00, 0x00ffff, 0x00ff00, 0xff00ff, 0xff0000, 0x0000ff, 0x000000]
 MAX = 1472
@@ -45,7 +45,7 @@ class Card:
         self.hist = {}
         self.cur = []
         self.curlen = 12
-        # the screen, as the card's shadow: drawn with p96view's own renderer
+        # the screen, as the card's shadow: drawn with panoview's own renderer
         self.screen = pv.Screen()
         self.screen.apply(pv.SURFACE, self.surface())
         self.sent = self.lost = 0
@@ -125,7 +125,7 @@ def main():
     ap.add_argument("--loss", type=float, default=0, help="share of datagrams to drop")
     ap.add_argument("--linger", type=float, default=1.5,
                     help="seconds to go on answering at the end")
-    ap.add_argument("--final", help="write the last screen here (p96view.py --raw format)")
+    ap.add_argument("--final", help="write the last screen here (panoview.py --raw format)")
     args = ap.parse_args()
 
     fmt, bpp = {8: (pv.CLUT, 1), 16: (pv.R5G6B5PC, 2), 32: (pv.B8G8R8A8, 4)}[args.depth]

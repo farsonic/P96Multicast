@@ -1,4 +1,4 @@
-; P96Multicast - Wrap.card library header, thunks and calls into the
+; Panorama - Wrap.card library header, thunks and calls into the
 ; wrapped card.
 ;
 ; Wrap.card is a P96 card driver that loads another card driver and sits

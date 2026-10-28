@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The viewer (client/p96view.py) against the card's reference renderer.
+"""The viewer (client/panoview.py) against the card's reference renderer.
 
     python3 tests/test_copper.py
 
@@ -18,7 +18,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOP = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(TOP, "client"))
-import p96view as pv  # noqa: E402
+import panoview as pv  # noqa: E402
 
 FMT = {1: pv.CLUT, 2: pv.R5G6B5, 3: pv.R8G8B8, 4: pv.A8R8G8B8}
 STREAM = 0x1234
@@ -180,7 +180,7 @@ class LossTest(unittest.TestCase):
     def test_loss(self):
         with tempfile.TemporaryDirectory() as d:
             port = str(20000 + os.getpid() % 20000)
-            view = subprocess.Popen([sys.executable, os.path.join(TOP, "client", "p96view.py"),
+            view = subprocess.Popen([sys.executable, os.path.join(TOP, "client", "panoview.py"),
                                      "--group", "127.0.0.1", "--port", port,
                                      "--snapshot", os.path.join(d, "v.png"),
                                      "--raw", os.path.join(d, "v.raw"), "--duration", "7"],

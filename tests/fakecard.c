@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Fake.card for tests/wraptest.c (see fakecard.h).
+ * Panorama - Fake.card for tests/wraptest.c (see fakecard.h).
  *
  * InitCard fills in SetGC, SetPanning, SetDisplay and FillRect with
  * FakeRecord and SetMemoryMode with FakeKeep, sets BlitRect to rtg.library's

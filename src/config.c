@@ -1,8 +1,8 @@
 /*
- * P96Multicast - settings.
+ * Panorama - settings.
  *
  * KEY=VALUE pairs, from the monitor icon's ToolTypes (real P96 only; AROS
- * passes none) and from ENV:Multicast.prefs, one pair per line, '#' starts
+ * passes none) and from ENV:Panorama.prefs, one pair per line, '#' starts
  * a comment. Unknown keys are ignored. See README.md for the list.
  */
 #include <exec/memory.h>
@@ -273,11 +273,13 @@ BOOL mc_config_file(struct McConfig *cfg, const char *path)
 }
 
 /*
- * ENV:Multicast.prefs, or ENVARC:Multicast.prefs when ENV: has not been
+ * ENV:Panorama.prefs, or ENVARC:Panorama.prefs when ENV: has not been
  * filled yet (the card may start before the Startup-Sequence copies it).
  */
 void mc_config_env(struct McConfig *cfg)
 {
-	if (!mc_config_file(cfg, "ENV:Multicast.prefs"))
+	if (!mc_config_file(cfg, "ENV:Panorama.prefs") &&
+	    !mc_config_file(cfg, "ENVARC:Panorama.prefs") &&
+	    !mc_config_file(cfg, "ENV:Multicast.prefs"))     /* from before the rename */
 		mc_config_file(cfg, "ENVARC:Multicast.prefs");
 }

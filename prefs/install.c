@@ -1,17 +1,17 @@
 /*
- * P96Multicast - MulticastPrefs: install the cards and their monitor.
+ * Panorama - PanoramaPrefs: install the cards and their monitor.
  *
  * P96 sets a board up for each monitor in DEVS:Monitors whose icon names it
- * (ToolType BOARDTYPE=Multicast loads LIBS:Picasso96/Multicast.card); every
+ * (ToolType BOARDTYPE=Panorama loads LIBS:Picasso96/Panorama.card); every
  * monitor is a copy of the same small program. AROS's DEVS:Monitors/P96
  * loads the card named after the file instead. So:
  *
- *   1. Multicast.card and Wrap.card go to LIBS:Picasso96/, from FROM=, or
+ *   1. Panorama.card and Wrap.card go to LIBS:Picasso96/, from FROM=, or
  *      the package's Libs/Picasso96/ beside this program or in the current
  *      directory (install_card); mctest and wrapstat from the package's C/
  *      to C:, so an old copy there doesn't answer for the new cards.
  *   2. The monitor: DEVS:Monitors/Wrap if Wrap.card is used (CARD= set),
- *      else DEVS:Monitors/Multicast, copied from a P96 monitor already
+ *      else DEVS:Monitors/Panorama, copied from a P96 monitor already
  *      there (one whose icon has BOARDTYPE=, or AROS's P96), with an icon
  *      saying BOARDTYPE=<its name>.
  *   3. Monitors that would set a card up a second time go to
@@ -157,10 +157,10 @@ static void board_name(const char *card, char *out, int len)
 
 /*
  * The monitors Install moved to SYS:Storage/Monitors, in
- * ENVARC:P96Multicast.moved, so a later setup that doesn't need them out of
+ * ENVARC:Panorama.moved, so a later setup that doesn't need them out of
  * the way (back from MIRROR to SINGLE, say) puts them back.
  */
-#define MOVED_FILE "ENVARC:P96Multicast.moved"
+#define MOVED_FILE "ENVARC:Panorama.moved"
 #define MAXMOVED 16
 static char moved[MAXMOVED][32];
 static int nmoved;
@@ -480,12 +480,12 @@ static void install_tool(const char *file)
 }
 
 /*
- * ATBOOT=1: MulticastDesktop in SYS:WBStartup, with an icon, so the shared
+ * ATBOOT=1: PanoramaDesk in SYS:WBStartup, with an icon, so the shared
  * desktop opens at every boot; ATBOOT=0 takes it out again.
  */
 static void boot_desktop(void)
 {
-	static const char *wb = "SYS:WBStartup/MulticastDesktop";
+	static const char *wb = "SYS:WBStartup/PanoramaDesk";
 	BOOL on = prefs_value(find_setting("ATBOOT"))[0] == '1';
 
 	if (!exists("SYS:WBStartup"))
@@ -494,24 +494,56 @@ static void boot_desktop(void)
 		if (exists(wb)) {
 			if (!dry) {
 				DeleteFile((STRPTR)wb);
-				DeleteFile((STRPTR)"SYS:WBStartup/MulticastDesktop.info");
+				DeleteFile((STRPTR)"SYS:WBStartup/PanoramaDesk.info");
 			}
 			notef("Took %s out: the desktop opens when you start it%s", wb, "");
 		}
 		return;
 	}
-	if (!exists("C:MulticastDesktop")) {
-		notef("C:MulticastDesktop is missing: %s not made%s", wb, "");
+	if (!exists("C:PanoramaDesk")) {
+		notef("C:PanoramaDesk is missing: %s not made%s", wb, "");
 		return;
 	}
-	if (!copy_file("C:MulticastDesktop", wb)) {
-		notef("Could not copy C:MulticastDesktop to %s%s", wb, "");
+	if (!copy_file("C:PanoramaDesk", wb)) {
+		notef("Could not copy C:PanoramaDesk to %s%s", wb, "");
 		failed = TRUE;
 		return;
 	}
 	if (!write_icon(wb, NULL, NULL))
 		notef("Could not make %s.info%s", wb, "");
-	notef("Copied C:MulticastDesktop to %s: the desktop opens at every boot%s", wb, "");
+	notef("Copied C:PanoramaDesk to %s: the desktop opens at every boot%s", wb, "");
+}
+
+/*
+ * Before 3.1 this was P96Multicast: Multicast.card, MulticastPrefs and
+ * MulticastDesktop. Their monitor goes to SYS:Storage/Monitors (P96 would
+ * still load the old card for it), the old programs go, so the old
+ * commodity doesn't start at boot. Multicast.prefs stays, as it was: the
+ * settings were read from it and are saved as Panorama.prefs.
+ */
+static void old_names(void)
+{
+	static const char *const gone[] = {
+		"SYS:WBStartup/MulticastDesktop", "SYS:WBStartup/MulticastDesktop.info",
+		"SYS:Prefs/MulticastPrefs", "SYS:Prefs/MulticastPrefs.info",
+		"C:MulticastDesktop", "C:MulticastPrefs", "LIBS:Picasso96/Multicast.card", NULL
+	};
+	int i;
+
+	if (exists("DEVS:Monitors/Multicast")) {
+		make_dir("SYS:Storage");
+		make_dir("SYS:Storage/Monitors");
+		if (move_file("DEVS:Monitors/Multicast", "SYS:Storage/Monitors/Multicast"))
+			notef("Moved the old DEVS:Monitors/Multicast to SYS:Storage/Monitors%s", "", "");
+	}
+	for (i = 0; gone[i]; i++)
+		if (exists(gone[i])) {
+			if (!dry)
+				DeleteFile((STRPTR)gone[i]);
+			notef("Deleted the old %s%s (now Panorama)", gone[i], "");
+		}
+	if (!dry && exists("ENVARC:P96Multicast.moved") && !exists(MOVED_FILE))
+		Rename((STRPTR)"ENVARC:P96Multicast.moved", (STRPTR)MOVED_FILE);
 }
 
 /* a script from the package's Scripts/ to C:, marked as a script, so its name runs it */
@@ -538,34 +570,34 @@ static void install_script(const char *file)
 	}
 }
 
-/* MulticastPrefs itself to SYS:Prefs, with its icon, so it is at hand */
+/* PanoramaPrefs itself to SYS:Prefs, with its icon, so it is at hand */
 static void install_program(void)
 {
-	static const char *from[] = { "PROGDIR:MulticastPrefs", "MulticastPrefs" };
+	static const char *from[] = { "PROGDIR:PanoramaPrefs", "PanoramaPrefs" };
 	char ic[60], dic[60];
 	int i;
 
 	if (!exists("SYS:Prefs"))
 		return;
 	for (i = 0; i < 2; i++)
-		if (exists(from[i]) && !same_file(from[i], "SYS:Prefs/MulticastPrefs"))
+		if (exists(from[i]) && !same_file(from[i], "SYS:Prefs/PanoramaPrefs"))
 			break;
 	if (i == 2)
 		return;
-	if (!copy_file(from[i], "SYS:Prefs/MulticastPrefs")) {
-		notef("Could not copy %s to %s", from[i], "SYS:Prefs/MulticastPrefs");
+	if (!copy_file(from[i], "SYS:Prefs/PanoramaPrefs")) {
+		notef("Could not copy %s to %s", from[i], "SYS:Prefs/PanoramaPrefs");
 		return;
 	}
-	notef("Copied %s to %s", from[i], "SYS:Prefs/MulticastPrefs");
+	notef("Copied %s to %s", from[i], "SYS:Prefs/PanoramaPrefs");
 	snprintf(ic, sizeof(ic), "%s.info", from[i]);
-	snprintf(dic, sizeof(dic), "SYS:Prefs/MulticastPrefs.info");
+	snprintf(dic, sizeof(dic), "SYS:Prefs/PanoramaPrefs.info");
 	if (exists(ic))
 		copy_file(ic, dic);
 }
 
 /*
  * The display card to mirror: a monitor in DEVS:Monitors (or one Install
- * moved to SYS:Storage/Monitors) whose card, other than Multicast.card and
+ * moved to SYS:Storage/Monitors) whose card, other than Panorama.card and
  * Wrap.card, is in LIBS:Picasso96. Its board is the icon's BOARDTYPE, or
  * the monitor's name (AROS).
  */
@@ -600,7 +632,7 @@ static BOOL find_display_card_at(char *card, int len, char *monpath, int mlen, c
 				icon_board(path, b, sizeof(b));
 				if (!b[0])
 					board_name((char *)fib->fib_FileName, b, sizeof(b));
-				if (!mp_stricmp(b, "Multicast") || !mp_stricmp(b, "Wrap"))
+				if (!mp_stricmp(b, "Panorama") || !mp_stricmp(b, "Wrap"))
 					continue;
 				snprintf(lib, sizeof(lib), "LIBS:Picasso96/%s.card", b);
 				if (exists(lib)) {
@@ -630,7 +662,7 @@ static void set(const char *key, const char *value)
 
 static BOOL is_multicast_card(const char *card)
 {
-	return !mp_stricmp(card, "Multicast.card");
+	return !mp_stricmp(card, "Panorama.card");
 }
 
 /* SETUP=SINGLE, TWO, MIRROR, SPAN or DESKTOP: the settings for it */
@@ -644,14 +676,14 @@ static BOOL apply_setup(const char *setup)
 		set("SPAN", "");
 		set("BOARDS", mp_stricmp(setup, "two") ? "1" : "2");
 		set("SPLIT", "");
-		say(mp_stricmp(setup, "two") ? "Setup: one Multicast screen" :
-		    "Setup: two Multicast screens (ports 9696 and 9697)");
+		say(mp_stricmp(setup, "two") ? "Setup: one Panorama screen" :
+		    "Setup: two Panorama screens (ports 9696 and 9697)");
 		return TRUE;
 	}
 	if (!mp_stricmp(setup, "mirror")) {
 		const char *c = prefs_value(find_setting("CARD"));
 
-		if (*c && mp_stricmp(c, "Multicast.card"))
+		if (*c && mp_stricmp(c, "Panorama.card"))
 			snprintf(card, sizeof(card), "%s", c);
 		else if (!find_display_card(card, sizeof(card))) {
 			say("Setup MIRROR: no display card found (a monitor in DEVS:Monitors whose"
@@ -659,19 +691,19 @@ static BOOL apply_setup(const char *setup)
 			return FALSE;
 		}
 		set("CARD", card);
-		set("MIRROR", "Multicast.card");
+		set("MIRROR", "Panorama.card");
 		set("SPAN", "");
 		set("HEADSHARE", "1");
 		set("MIRRORFPS", "10");
 		set("BOARDS", "1");
 		set("SPLIT", "");
-		notef("Setup: the %s screen mirrored to a Multicast board%s", card,
+		notef("Setup: the %s screen mirrored to a Panorama board%s", card,
 		      " (port 9696)");
 		return TRUE;
 	}
 	if ((setup[0] | 32) == 's' && (setup[1] | 32) == 'p' && (setup[2] | 32) == 'a' &&
 	    (setup[3] | 32) == 'n') {
-		/* SPAN, or SPAN2x1, SPAN2x2 ...: the display card's screen over Multicast boards */
+		/* SPAN, or SPAN2x1, SPAN2x2 ...: the display card's screen over Panorama boards */
 		const char *c = prefs_value(find_setting("CARD"));
 		const char *size = setup[4] ? setup + 4 : "2x1";
 		const char *why = prefs_check(find_setting("SPAN"), size);
@@ -681,7 +713,7 @@ static BOOL apply_setup(const char *setup)
 			notef("Setup SPAN%s: %s", setup + 4, why);
 			return FALSE;
 		}
-		if (*c && mp_stricmp(c, "Multicast.card"))
+		if (*c && mp_stricmp(c, "Panorama.card"))
 			snprintf(card, sizeof(card), "%s", c);
 		else if (!find_display_card(card, sizeof(card))) {
 			say("Setup SPAN: no display card found (a monitor in DEVS:Monitors whose"
@@ -691,7 +723,7 @@ static BOOL apply_setup(const char *setup)
 		set("CARD", card);
 		set("MIRROR", "");
 		set("SPAN", size);
-		set("HEAD", "Multicast.card");
+		set("HEAD", "Panorama.card");
 		set("HEAD1", "");
 		set("HEAD2", "");
 		set("HEAD3", "");
@@ -701,7 +733,7 @@ static BOOL apply_setup(const char *setup)
 		snprintf(nb, sizeof(nb), "%ld", cols * rows);
 		set("BOARDS", nb);
 		set("SPLIT", "");
-		notef("Setup: the %s screen over %s Multicast boards, a part on each,", card, size);
+		notef("Setup: the %s screen over %s Panorama boards, a part on each,", card, size);
 		say(cols * rows == 2 ? "       one desktop (ports 9696 and 9697)" :
 		    "       one desktop (ports from 9696 on)");
 		return TRUE;
@@ -710,7 +742,7 @@ static BOOL apply_setup(const char *setup)
 	    (setup[3] | 32) == 'k' && (setup[4] | 32) == 't' && (setup[5] | 32) == 'o' &&
 	    (setup[6] | 32) == 'p') {
 		/*
-		 * DESKTOP, DESKTOP2x2: one Multicast board, its screen split in
+		 * DESKTOP, DESKTOP2x2: one Panorama board, its screen split in
 		 * parts, each sent to a port of its own (SPLIT=) for a window each.
 		 * No Wrap.card: the board keeps its own modes, twice as wide.
 		 */
@@ -735,7 +767,7 @@ static BOOL apply_setup(const char *setup)
 		set("INPUT", "1");
 		set("WBMONITOR", "1");
 		set("P96SCREENCX", "1");
-		notef("Setup: one Multicast screen split %s, a window for each part%s", size,
+		notef("Setup: one Panorama screen split %s, a window for each part%s", size,
 		      ", one desktop; the Workbench stays where it is");
 		say("       the viewers' mouse and keys work it (INPUT=1; INPUTFROM= limits who)");
 		return TRUE;
@@ -746,7 +778,7 @@ static BOOL apply_setup(const char *setup)
 
 /*
  * Screen modes: P96's own, if its settings (Picasso96Mode) have any for
- * Multicast, else the card's (MODES=): a board without modes can't be used.
+ * Panorama, else the card's (MODES=): a board without modes can't be used.
  */
 static void auto_modes(void)
 {
@@ -765,18 +797,18 @@ static void auto_modes(void)
 		while (buf && !p96 && (n = Read(fh, buf + keep, 4096 - keep)) > 0) {
 			LONG i, len = keep + n;
 
-			for (i = 0; i + 9 <= len && !p96; i++)
-				p96 = !memcmp(buf + i, "Multicast", 9);
-			keep = len < 8 ? len : 8;
+			for (i = 0; i + 8 <= len && !p96; i++)
+				p96 = !memcmp(buf + i, "Panorama", 8);
+			keep = len < 7 ? len : 7;
 			memmove(buf, buf + len - keep, keep);
 		}
 		if (buf)
 			FreeMem(buf, 4096);
 		Close(fh);
 	}
-	/* under Wrap.card the board is a "Wrap" board: Picasso96Mode's Multicast modes don't count */
+	/* under Wrap.card the board is a "Wrap" board: Picasso96Mode's Panorama modes don't count */
 	if (p96 && !*prefs_value(find_setting("CARD"))) {
-		say("Screen modes: Picasso96Mode has some for Multicast, so those (MODES= would "
+		say("Screen modes: Picasso96Mode has some for Panorama, so those (MODES= would "
 		    "add the card's own).");
 		return;
 	}
@@ -832,12 +864,12 @@ static void summary(void)
 			say("  open the desktop: DesktopOpen (or Execute C:DesktopOpen, or");
 			say("  double-click Scripts/DesktopOpen): it opens a Shell in the middle too");
 		} else {
-			say("  the desktop opens by itself (SYS:WBStartup/MulticastDesktop)");
+			say("  the desktop opens by itself (SYS:WBStartup/PanoramaDesk)");
 		}
 		say("  hotkeys: ctrl alt + cursor keys: the active window to the next monitor;");
 		say("  ctrl alt 1-4: to the middle of that monitor; ctrl alt m: desktop or Workbench");
 		say("  Boing bounces a ball over all of it");
-		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s",
+		snprintf(line, sizeof(line), "  on your computer: python3 panoview.py --span %s%s",
 		         split, multicast ? "" : " --group 127.0.0.1");
 		say(line);
 		say("  a window for each part; use the mouse and keys in them (INPUT=1),");
@@ -849,12 +881,12 @@ static void summary(void)
 	else if (*card && *mirror)
 		notef("  %s's screen also goes out through %s", card, mirror);
 	else
-		notef("  %s Multicast board(s), each its own screen%s", boards, "");
+		notef("  %s Panorama board(s), each its own screen%s", boards, "");
 	if (*card && *span)
-		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py --span %s%s", span,
+		snprintf(line, sizeof(line), "  on your computer: python3 panoview.py --span %s%s", span,
 		         multicast ? "" : " --group 127.0.0.1");
 	else
-		snprintf(line, sizeof(line), "  on your computer: python3 p96view.py%s",
+		snprintf(line, sizeof(line), "  on your computer: python3 panoview.py%s",
 		         multicast ? "" : " --group 127.0.0.1");
 	say(line);
 	if (*card && *span)
@@ -863,9 +895,9 @@ static void summary(void)
 		say("  (the second board: add --port 9697)");
 running:
 	Forbid();
-	mc = (struct Library *)FindName(&SysBase->LibList, "Multicast.card");
+	mc = (struct Library *)FindName(&SysBase->LibList, "Panorama.card");
 	if (mc)
-		snprintf(line, sizeof(line), "  Multicast.card %u.%u is running now; the installed one starts then",
+		snprintf(line, sizeof(line), "  Panorama.card %u.%u is running now; the installed one starts then",
 		         mc->lib_Version, mc->lib_Revision);
 	Permit();
 	if (mc)
@@ -930,7 +962,7 @@ static BOOL set_tooltypes(const char *monitor, const char **set, int nset, const
 /*
  * The monitors' places for P96ScreenCx (Aminet util/cdity/P96ScreenCx),
  * which moves the mouse between boards as between monitors side by side:
- * the Multicast monitor is a monitor of its own (DISPLAYCHAIN=NO) next to
+ * the Panorama monitor is a monitor of its own (DISPLAYCHAIN=NO) next to
  * the Workbench's board, on the side WORKBENCH= says. WBMONITOR=1: the
  * Workbench's board is one of its own too, so it keeps its screen shown
  * while the desktop is in front, instead of going blank.
@@ -952,7 +984,7 @@ void place_monitors(void (*note)(const char *))
 		IconBase = OpenLibrary("icon.library", 37);
 		opened = TRUE;
 	}
-	if (!IconBase || !exists("DEVS:Monitors/Multicast"))
+	if (!IconBase || !exists("DEVS:Monitors/Panorama"))
 		goto out;
 	if (*prefs_value(find_setting("CARD"))) {
 		/* Wrap.card: only when it wraps the Workbench's card beside the desktop */
@@ -980,8 +1012,8 @@ void place_monitors(void (*note)(const char *))
 		         wbmonitor && wbboard[0] ? wbboard : "Native");
 		set[nset++] = place;
 	}
-	if (set_tooltypes("DEVS:Monitors/Multicast", set, nset, drop, 4))
-		notef("DEVS:Monitors/Multicast: %s%s", nset > 1 ? place : "DISPLAYCHAIN=NO",
+	if (set_tooltypes("DEVS:Monitors/Panorama", set, nset, drop, 4))
+		notef("DEVS:Monitors/Panorama: %s%s", nset > 1 ? place : "DISPLAYCHAIN=NO",
 		      nset > 1 ? " (for P96ScreenCx: the mouse crosses to the Workbench)" : "");
 out:
 	if (opened && IconBase) {
@@ -994,7 +1026,7 @@ out:
  * WBMONITOR=1 with a desktop (SPLIT=, no MIRROR or SPAN): Wrap.card wraps
  * the Workbench's card, only to keep its display on (KEEPDISPLAY=1), so the
  * Workbench stays shown while the desktop's screen is in front; the
- * Multicast board is set up beside it. WBMONITOR=0 undoes that. TRUE: the
+ * Panorama board is set up beside it. WBMONITOR=0 undoes that. TRUE: the
  * Workbench's card is wrapped so.
  */
 static BOOL wb_wrap(void (*note)(const char *))
@@ -1084,13 +1116,14 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	prefs_fix(note);
 	card = prefs_value(find_setting("CARD"));
 	wrap = card[0] != 0;
-	monitor_name = wrap ? "Wrap" : "Multicast";
+	monitor_name = wrap ? "Wrap" : "Panorama";
 
-	install_card("Multicast.card");
+	old_names();
+	install_card("Panorama.card");
 	install_card("Wrap.card");
 	install_tool("mctest");
 	install_tool("wrapstat");
-	install_tool("MulticastDesktop");
+	install_tool("PanoramaDesk");
 	install_tool("Boing");
 	install_script("DesktopOpen");
 	install_script("DesktopShell");
@@ -1121,7 +1154,7 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 
 	make_monitor(monitor_name);
 	if (wbwrap)
-		make_monitor("Multicast");
+		make_monitor("Panorama");
 
 	for (i = 0; i < nretire; i++)
 		retire_monitors(retire[i], monitor_name);
@@ -1154,7 +1187,7 @@ static BOOL commodity_runs(const char *name)
 	nb.nb_Version = NB_VERSION;
 	nb.nb_Name = (STRPTR)name;
 	nb.nb_Title = (STRPTR)name;
-	nb.nb_Descr = (STRPTR)"(MulticastPrefs checking)";
+	nb.nb_Descr = (STRPTR)"(PanoramaPrefs checking)";
 	nb.nb_Unique = NBU_UNIQUE;
 	b = CxBroker(&nb, &err);
 	if (b)
@@ -1165,9 +1198,9 @@ static BOOL commodity_runs(const char *name)
 }
 
 /*
- * Before Open starts MulticastDesktop: the viewers' mouse and keys on (the
+ * Before Open starts PanoramaDesk: the viewers' mouse and keys on (the
  * card takes INPUT= while it runs), and P96ScreenCx started if it is
- * installed and not running. Without it, MulticastDesktop crosses to the
+ * installed and not running. Without it, PanoramaDesk crosses to the
  * Workbench itself.
  */
 void desktop_ready(void (*note)(const char *))

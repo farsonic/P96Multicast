@@ -1,16 +1,16 @@
-# P96Multicast - build with vbcc, vasm and vlink and the NDK 3.2 headers.
+# Panorama - build with vbcc, vasm and vlink and the NDK 3.2 headers.
 #
-#   make                 build/Multicast.card, build/Wrap.card, mctest, wrapstat,
-#                        MulticastPrefs, MulticastDesktop, Boing
+#   make                 build/Panorama.card, build/Wrap.card, mctest, wrapstat,
+#                        PanoramaPrefs, PanoramaDesk, Boing
 #   make check           offset test and Wrap.card test under vamos, hunk checks,
 #                        the viewer against the card's renderer (Copper)
-#   make package         build/P96Multicast.lha
+#   make package         build/Panorama.lha
 #   make emu-test        boot AROS in FS-UAE with the card and capture a frame
 #   make emu-wrap        boot AROS in FS-UAE with Wrap.card wrapping the card
 #   make emu-mirror      ... and mirroring it to a second board, over the network
 #   make emu-span        ... and spanning one screen over four boards, over the network
 #   make emu-copper      the viewer shows exactly what the card has, after a workload
-#   make emu-prefs       MulticastPrefs installs on a clean AROS; its window
+#   make emu-prefs       PanoramaPrefs installs on a clean AROS; its window
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -32,9 +32,9 @@ PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/
              prefs/muigui.c prefs/theme.c prefs/bigstack.s
 MUI ?= /home/user/toolchain/mui/include
 
-all: $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
-     $(BUILD)/MulticastDesktop $(BUILD)/Boing \
-     $(BUILD)/MulticastPrefs
+all: $(BUILD)/Panorama.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
+     $(BUILD)/PanoramaDesk $(BUILD)/Boing \
+     $(BUILD)/PanoramaPrefs
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -46,7 +46,7 @@ $(BUILD)/%.o: src/%.c $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -c -o $@ $<
 
 # a library: no startup code, libstart.o must come first
-$(BUILD)/Multicast.card: $(CARD_OBJ)
+$(BUILD)/Panorama.card: $(CARD_OBJ)
 	$(VC) -nostdlib -o $@ $(CARD_OBJ) -lvc -lamiga
 
 # the same, wrapstart.o first
@@ -57,11 +57,11 @@ $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
 
 # libraries opened by hand (no -lauto): the command line runs without intuition
-$(BUILD)/MulticastPrefs: $(PREFS_SRC) prefs/mcprefs.h prefs/theme.h $(HDRS) | $(BUILD)
+$(BUILD)/PanoramaPrefs: $(PREFS_SRC) prefs/mcprefs.h prefs/theme.h $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -Iprefs -I$(MUI) -o $@ $(PREFS_SRC) -lamiga
 
-# the desktop commodity: the settings code is MulticastPrefs'
-$(BUILD)/MulticastDesktop: prefs/desktop.c prefs/settings.c prefs/mcprefs.h | $(BUILD)
+# the desktop commodity: the settings code is PanoramaPrefs'
+$(BUILD)/PanoramaDesk: prefs/desktop.c prefs/settings.c prefs/mcprefs.h | $(BUILD)
 	$(VC) $(CFLAGS) -Iprefs -o $@ prefs/desktop.c prefs/settings.c -lamiga
 
 $(BUILD)/Boing: demos/boing.c | $(BUILD)
@@ -92,10 +92,10 @@ $(BUILD)/modetest: tests/modetest.c $(HDRS) | $(BUILD)
 $(BUILD)/offsets: tests/offsets.c include/boardinfo.h | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $<
 
-check: $(BUILD)/offsets $(BUILD)/Multicast.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest \
-       $(BUILD)/modetest $(BUILD)/MulticastPrefs
+check: $(BUILD)/offsets $(BUILD)/Panorama.card $(BUILD)/Wrap.card $(BUILD)/Fake.card $(BUILD)/wraptest \
+       $(BUILD)/modetest $(BUILD)/PanoramaPrefs
 	$(VAMOS) $(BUILD)/offsets
-	python3 tests/check_card.py $(BUILD)/Multicast.card
+	python3 tests/check_card.py $(BUILD)/Panorama.card
 	python3 tests/check_card.py $(BUILD)/Wrap.card Wrap.card
 	tests/wraptest.sh "$(VAMOS)"
 	tests/modetest.sh "$(VAMOS)"

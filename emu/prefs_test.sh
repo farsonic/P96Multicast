@@ -1,15 +1,15 @@
 #!/bin/sh
-# P96Multicast - MulticastPrefs on AROS m68k in FS-UAE: installing from the
+# Panorama - PanoramaPrefs on AROS m68k in FS-UAE: installing from the
 # package without P96's tools, the window, and a second boot from what it
 # set up. No network needed.
 #
 # Boot 1, on an AROS without the cards: from a package laid out like the
-# LhA (Work:pkg/MulticastPrefs, Work:pkg/Libs/Picasso96/*.card),
-#   MulticastPrefs SET ...      settings into ENVARC: and ENV:
-#   MulticastPrefs INSTALL      cards to LIBS:Picasso96, DEVS:Monitors/Multicast
+# LhA (Work:pkg/PanoramaPrefs, Work:pkg/Libs/Picasso96/*.card),
+#   PanoramaPrefs SET ...      settings into ENVARC: and ENV:
+#   PanoramaPrefs INSTALL      cards to LIBS:Picasso96, DEVS:Monitors/Panorama
 #                               and its icon
-# Boot 2: Multicast.card must come up from that alone (mctest STATUS), and
-# MulticastPrefs STATUS must say so. With FSUAE_PCAP (Riptide's FS-UAE) and
+# Boot 2: Panorama.card must come up from that alone (mctest STATUS), and
+# PanoramaPrefs STATUS must say so. With FSUAE_PCAP (Riptide's FS-UAE) and
 # root, boot 2 also starts Riptide, opens a public screen on the card and the
 # window on it, a page at a time, and captures each page from the card's
 # stream (gui-N.png): FS-UAE's own window shows nothing under Xvfb.
@@ -30,7 +30,7 @@ if [ -n "${FSUAE_PCAP:-}" ] && [ -x "$FSUAE_PCAP" ] && [ "$(id -u)" = 0 ] && [ -
 	NET=1
 fi
 
-for f in build/Multicast.card build/Wrap.card build/MulticastPrefs build/mctest \
+for f in build/Panorama.card build/Wrap.card build/PanoramaPrefs build/mctest \
          "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
@@ -39,9 +39,9 @@ command -v fs-uae >/dev/null 2>&1 || { echo "SKIP: fs-uae not installed"; exit 0
 rm -rf "$OUT"
 mkdir -p "$OUT/work/pkg/C" "$OUT/work/pkg/Libs/Picasso96"
 work=$(cd "$OUT/work" && pwd)
-cp build/MulticastPrefs "$work/pkg/"
+cp build/PanoramaPrefs "$work/pkg/"
 cp build/mctest "$work/pkg/C/"
-cp build/Multicast.card build/Wrap.card "$work/pkg/Libs/Picasso96/"
+cp build/Panorama.card build/Wrap.card "$work/pkg/Libs/Picasso96/"
 
 if [ $NET = 1 ]; then
 	ip link del p96br0 2>/dev/null
@@ -65,11 +65,11 @@ fi
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
 
 # ---- an AROS without the cards or their settings
-rm -f "$AROSFS/Libs/Picasso96/Multicast.card" "$AROSFS/Libs/Picasso96/Wrap.card" \
-      "$AROSFS/Devs/Monitors/Multicast" "$AROSFS/Devs/Monitors/Multicast.info" \
+rm -f "$AROSFS/Libs/Picasso96/Panorama.card" "$AROSFS/Libs/Picasso96/Wrap.card" \
+      "$AROSFS/Devs/Monitors/Panorama" "$AROSFS/Devs/Monitors/Panorama.info" \
       "$AROSFS/Devs/Monitors/Wrap" "$AROSFS/Devs/Monitors/Wrap.info" \
-      "$AROSFS/Prefs/Env-Archive/Multicast.prefs" "$AROSFS/Prefs/Env-Archive/Wrap.prefs"
-rm -rf "$AROSFS/Storage/Monitors/Multicast" "$AROSFS/Storage/Monitors/Wrap"
+      "$AROSFS/Prefs/Env-Archive/Panorama.prefs" "$AROSFS/Prefs/Env-Archive/Wrap.prefs"
+rm -rf "$AROSFS/Storage/Monitors/Panorama" "$AROSFS/Storage/Monitors/Wrap"
 if ! grep -q waitwork "$AROSFS/S/User-Startup" 2>/dev/null; then
 	cat >> "$AROSFS/S/User-Startup" <<'EOT'
 Lab waitwork
@@ -137,13 +137,13 @@ boot() {
 				move:520,200 click:1 wait:1 click:1 wait:1 click:1 wait:1 click:1 wait:1 \
 				click:1 wait:1 move:520,260 click:1 wait:1 click:1 wait:1 \
 				move:450,140 click:1 wait:1 move:520,200 click:1 wait:1 >"$OUT/click.log" 2>&1
-			python3 client/p96view.py --group $GROUP --port 9696 --iface 192.168.96.1 \
+			python3 client/panoview.py --group $GROUP --port 9696 --iface 192.168.96.1 \
 				--snapshot "$OUT/gui-clicked.png" --duration 5 2>>"$OUT/click.log"
 			touch "$work/clicked"
 		fi
 		if [ -f "$work/gui-$shot" ]; then
-			python3 client/p96view.py --group $GROUP --port 9696 --iface 192.168.96.1 \
-				--snapshot "$OUT/gui-$shot.png" --duration 7 2>"$OUT/p96view-$shot.log"
+			python3 client/panoview.py --group $GROUP --port 9696 --iface 192.168.96.1 \
+				--snapshot "$OUT/gui-$shot.png" --duration 7 2>"$OUT/panoview-$shot.log"
 			shot=$((shot + 1))
 		fi
 		sleep 1
@@ -154,9 +154,9 @@ boot() {
 
 cat > "$work/autorun" <<'EOF3'
 FailAt 21
-Work:pkg/MulticastPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 INPUT=1 >Work:set.txt
-Work:pkg/MulticastPrefs INSTALL NOREBOOT >Work:install.txt
-Work:pkg/MulticastPrefs SHOW >Work:show.txt
+Work:pkg/PanoramaPrefs SET FPS=10 REFRESH=2 MODES=640x480,800x600,1280x960 INPUT=1 >Work:set.txt
+Work:pkg/PanoramaPrefs INSTALL NOREBOOT >Work:install.txt
+Work:pkg/PanoramaPrefs SHOW >Work:show.txt
 List DEVS:Monitors >Work:monitors.txt
 Echo >Work:boot1.done done
 EOF3
@@ -165,20 +165,20 @@ boot boot1.done
 {
 	echo 'FailAt 21'
 	echo 'Work:pkg/C/mctest STATUS >Work:status2.txt'
-	echo 'Work:pkg/MulticastPrefs STATUS >Work:prefsstatus2.txt'
+	echo 'Work:pkg/PanoramaPrefs STATUS >Work:prefsstatus2.txt'
 	if [ $NET = 1 ]; then
 		echo 'Run >Work:riptide.log Work:pkg/C/Riptide CONFIG=Work:riptide.conf'
 		echo 'Wait 3'
 		echo 'Run >Work:pubscreen.log Work:pkg/C/mctest PUBSCREEN=MCPREFS WIDTH=640 HEIGHT=480 DEPTH=8'
 		echo 'Wait 3'
 		for n in 0 1 2 3 4; do
-			echo "Run >Work:gui-$n.log Work:pkg/MulticastPrefs PUBSCREEN=MCPREFS PAGE=$n TIMEOUT=12"
+			echo "Run >Work:gui-$n.log Work:pkg/PanoramaPrefs PUBSCREEN=MCPREFS PAGE=$n TIMEOUT=12"
 			echo 'Wait 3'
 			echo "Echo >Work:gui-$n x"
 			echo 'Wait 10'
 		done
 		# the Desktop page, worked from the viewer's side
-		echo 'Run >Work:gui-click.log Work:pkg/MulticastPrefs PUBSCREEN=MCPREFS PAGE=0 TIMEOUT=60'
+		echo 'Run >Work:gui-click.log Work:pkg/PanoramaPrefs PUBSCREEN=MCPREFS PAGE=0 TIMEOUT=60'
 		echo 'Wait 4'
 		echo 'Echo >Work:click x'
 		for i in $(seq 1 60); do
@@ -204,20 +204,20 @@ fail() { echo "FAIL: $1"; status=1; }
 has() {   # FILE TEXT WHAT
 	if tr -d '\r' < "$1" 2>/dev/null | grep -q "$2"; then pass "$3"; else fail "$3"; fi
 }
-has "$AROSFS/Prefs/Env-Archive/Multicast.prefs" "MODES=640x480,800x600,1280x960" "settings saved to ENVARC:"
-has "$work/install.txt" "Copied PROGDIR:Libs/Picasso96/Multicast.card" "Multicast.card copied from the package"
-has "$work/install.txt" "Made DEVS:Monitors/Multicast from DEVS:Monitors/P96" "monitor made from AROS's P96 monitor"
-[ -f "$AROSFS/Libs/Picasso96/Multicast.card" ] && cmp -s build/Multicast.card "$AROSFS/Libs/Picasso96/Multicast.card" \
-	&& pass "LIBS:Picasso96/Multicast.card in place" || fail "LIBS:Picasso96/Multicast.card in place"
-grep -q "BOARDTYPE=Multicast" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null \
-	&& pass "monitor icon says BOARDTYPE=Multicast" || fail "monitor icon says BOARDTYPE=Multicast"
-grep -q "DISPLAYCHAIN=NO" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null &&
-	grep -q "RIGHT_OF=Native" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null &&
-	grep -q "BOARDTYPE=Multicast" "$AROSFS/Devs/Monitors/Multicast.info" 2>/dev/null \
+has "$AROSFS/Prefs/Env-Archive/Panorama.prefs" "MODES=640x480,800x600,1280x960" "settings saved to ENVARC:"
+has "$work/install.txt" "Copied PROGDIR:Libs/Picasso96/Panorama.card" "Panorama.card copied from the package"
+has "$work/install.txt" "Made DEVS:Monitors/Panorama from DEVS:Monitors/P96" "monitor made from AROS's P96 monitor"
+[ -f "$AROSFS/Libs/Picasso96/Panorama.card" ] && cmp -s build/Panorama.card "$AROSFS/Libs/Picasso96/Panorama.card" \
+	&& pass "LIBS:Picasso96/Panorama.card in place" || fail "LIBS:Picasso96/Panorama.card in place"
+grep -q "BOARDTYPE=Panorama" "$AROSFS/Devs/Monitors/Panorama.info" 2>/dev/null \
+	&& pass "monitor icon says BOARDTYPE=Panorama" || fail "monitor icon says BOARDTYPE=Panorama"
+grep -q "DISPLAYCHAIN=NO" "$AROSFS/Devs/Monitors/Panorama.info" 2>/dev/null &&
+	grep -q "RIGHT_OF=Native" "$AROSFS/Devs/Monitors/Panorama.info" 2>/dev/null &&
+	grep -q "BOARDTYPE=Panorama" "$AROSFS/Devs/Monitors/Panorama.info" 2>/dev/null \
 	&& pass "monitor icon for P96ScreenCx: DISPLAYCHAIN=NO, RIGHT_OF=Native (the Workbench left)" \
 	|| fail "monitor icon for P96ScreenCx: DISPLAYCHAIN=NO, RIGHT_OF=Native (the Workbench left)"
-has "$work/status2.txt" "boards set up: 1" "second boot: Multicast.card set up from the installed files"
-has "$work/prefsstatus2.txt" "Multicast.card [0-9]\.[0-9]*: 1 board" "MulticastPrefs STATUS sees it"
+has "$work/status2.txt" "boards set up: 1" "second boot: Panorama.card set up from the installed files"
+has "$work/prefsstatus2.txt" "Panorama.card [0-9]\.[0-9]*: 1 board" "PanoramaPrefs STATUS sees it"
 if [ $NET = 1 ]; then
 	for n in 0 1 2 3 4; do
 		[ -s "$OUT/gui-$n.png" ] && pass "window, page $n, from the card: $OUT/gui-$n.png" ||

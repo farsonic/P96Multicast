@@ -1,12 +1,12 @@
 /*
- * P96Multicast - Copper's reference renderer against the viewer's.
+ * Panorama - Copper's reference renderer against the viewer's.
  *
  *   cc -Iinclude -Isrc -o build/rendertest tests/rendertest.c src/render.c
  *   build/rendertest BPP SEED OUT
  *
  * Draws random orders and pixels with src/render.c, built natively, and
  * writes them as Copper records to OUT, followed by the surface it ended
- * with. tests/test_copper.py has client/p96view.py draw the same records
+ * with. tests/test_copper.py has client/panoview.py draw the same records
  * and compares.
  *
  * OUT: u16 w, u16 h, u8 bpp, then records (u8 type, u16 length, body), a

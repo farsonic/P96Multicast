@@ -52,17 +52,17 @@ plays rtg.library, loading the built `Wrap.card`, which wraps
 copies both cards under such names.
 
 `emu/wrap_test.sh` (`make emu-wrap`) boots AROS in FS-UAE, like the test
-below, with `Wrap.card` wrapping `Multicast.card`. It needs neither Riptide
+below, with `Wrap.card` wrapping `Panorama.card`. It needs neither Riptide
 nor networking.
 
 ## End-to-end test
 
 `emu/run_test.sh` (`make emu-test`) boots AROS m68k in FS-UAE as an
-A4000/040, with the card installed as `LIBS:Picasso96/Multicast.card` and
-`DEVS:Monitors/Multicast` (a copy of AROS's P96 monitor driver, which
+A4000/040, with the card installed as `LIBS:Picasso96/Panorama.card` and
+`DEVS:Monitors/Panorama` (a copy of AROS's P96 monitor driver, which
 loads real P96 card drivers). Riptide runs on `uaenet.device`; `mctest`
 opens a screen on the card in 8, 16 and 32 bit and draws a test pattern,
-and `client/p96view.py` on the Linux side must receive it.
+and `client/panoview.py` on the Linux side must receive it.
 
 AROS: unpack an AROS `amiga-m68k-boot-iso` nightly into
 `/tmp/claude-0/arosfs` (or set `AROSFS`). The test moves AROS's own

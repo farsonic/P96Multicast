@@ -1,5 +1,5 @@
 /*
- * P96Multicast - what is drawn on the screen, for the sender.
+ * Panorama - what is drawn on the screen, for the sender.
  *
  * BLITTER=1: rtg.library hands its drawing to the card's blitter functions
  * when a card has them (on AROS, p96gfx.hidd does so for every bitmap in

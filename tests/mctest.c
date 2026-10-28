@@ -1,24 +1,24 @@
 /*
- * P96Multicast - mctest: opens a screen on the Multicast card and draws a
+ * Panorama - mctest: opens a screen on the Panorama card and draws a
  * known test pattern, for the end-to-end test (emu/run_test.sh).
  *
  *   mctest LIST                         list display modes
  *   mctest STATUS                       is the card loaded, is its sender running
- *   mctest DEPTH=8 SECS=10              the first Multicast mode with this depth
+ *   mctest DEPTH=8 SECS=10              the first Panorama mode with this depth
  *   mctest WIDTH=640 HEIGHT=480 DEPTH=16  a particular size
- *   mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=8
+ *   mctest PUBSCREEN=PANORAMA WIDTH=800 HEIGHT=600 DEPTH=8
  *                                       a Workbench-like public screen on the
  *                                       card, open until Ctrl-C, for shells and
- *                                       programs (CON:.../SCREENMULTICAST)
- *   mctest PUBSCREEN=MULTICAST DEFAULT  ... and the default public screen
+ *                                       programs (CON:.../SCREENPANORAMA)
+ *   mctest PUBSCREEN=PANORAMA DEFAULT  ... and the default public screen
  *                                       while open: new shells go there
- *   mctest PUBSCREEN=MULTICAST BACK     ... opened behind the other screens: the
+ *   mctest PUBSCREEN=PANORAMA BACK     ... opened behind the other screens: the
  *                                       card streams it while e.g. the Workbench
  *                                       stays in front on another board
- *   mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=16 SPAN=2x1 DEFAULT
+ *   mctest PUBSCREEN=PANORAMA WIDTH=800 HEIGHT=600 DEPTH=16 SPAN=2x1 DEFAULT
  *                                       ... twice as wide as the mode, for
  *                                       Wrap.card's SPAN=2x1: one public screen
- *                                       over two Multicast windows
+ *                                       over two Panorama windows
  *   mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=8 [DUMP=Work:screen.raw]
  *                                       a Workbench-like screen on the card and
  *                                       everyday work on it (a console listing
@@ -26,7 +26,7 @@
  *                                       drawing, scrolling, images), and for
  *                                       each step what the card sent: orders,
  *                                       pixels, KB. DUMP= then writes the screen
- *                                       as the card has it (p96view.py --raw's
+ *                                       as the card has it (panoview.py --raw's
  *                                       format), and keeps it 8 s longer
  *   mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16 [MARK=Work:span] [STEP=10]
  *                                       for Wrap.card's SPAN=: a screen of 2x2
@@ -158,7 +158,7 @@ static ULONG find_mode(const char *name, UWORD *want_w, UWORD *want_h, UWORD *wa
 	while ((id = NextDisplayInfo(id)) != INVALID_ID) {
 		char *m;
 
-		/* the whole board name: "Multicast" is not "Multicast2" */
+		/* the whole board name: "Panorama" is not "Panorama2" */
 		if (!mode_name(id, buf, sizeof(buf)) || !(m = strstr(buf, name)))
 			continue;
 		m += strlen(name);
@@ -265,14 +265,14 @@ static void status(void)
 	struct Library *sock;
 
 	Forbid();
-	card = (struct McBase *)FindName(&SysBase->LibList, "Multicast.card");
+	card = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
 	if (card)
 		st = card->status;
-	sender = FindTask("Multicast.card sender");
+	sender = FindTask("Panorama.card sender");
 	sock = (struct Library *)FindName(&SysBase->LibList, "bsdsocket.library");
 	Permit();
 
-	printf("Multicast.card: %s", card ? "loaded" : "not loaded");
+	printf("Panorama.card: %s", card ? "loaded" : "not loaded");
 	if (card)
 		printf(", version %u.%u, open count %u", card->lib.lib_Version,
 		       card->lib.lib_Revision, card->lib.lib_OpenCnt);
@@ -442,7 +442,7 @@ static BOOL read_status(struct McStatus *st)
 	BOOL ok = FALSE;
 
 	Forbid();
-	card = (struct McBase *)FindName(&SysBase->LibList, "Multicast.card");
+	card = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
 	if (card && card->status.magic == MC_STATUS_MAGIC) {
 		*st = card->status;
 		ok = TRUE;
@@ -547,7 +547,7 @@ static int workload(ULONG id, UWORD w, UWORD h, UWORD depth, const char *dumpfil
 	int i, ix, iy, iw, ih;
 
 	if (!read_status(&st) || !st.blitter) {
-		printf("mctest: WORKLOAD needs Multicast.card with BLITTER=1\n");
+		printf("mctest: WORKLOAD needs Panorama.card with BLITTER=1\n");
 		return RETURN_ERROR;
 	}
 	start = st;
@@ -719,7 +719,7 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, int co
 	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w * cols, SA_Height, h * rows,
 	                     SA_AutoScroll, TRUE,
 	                     SA_Depth, depth, SA_PubName, (ULONG)name,
-	                     SA_Title, (ULONG)"Multicast screen", SA_LikeWorkbench, TRUE,
+	                     SA_Title, (ULONG)"Panorama screen", SA_LikeWorkbench, TRUE,
 	                     SA_SharePens, TRUE, SA_Type, PUBLICSCREEN,
 	                     SA_ErrorCode, (ULONG)&err, TAG_END);
 	if (!scr) {
@@ -759,7 +759,7 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, int co
 
 /*
  * MOUSE=dx,dy,n: n moves of the mouse by dx, dy, as from the Amiga's own
- * mouse (relative), a frame apart: for MulticastDesktop's crossing over.
+ * mouse (relative), a frame apart: for PanoramaDesk's crossing over.
  */
 static int mouse_moves(const char *v)
 {
@@ -819,7 +819,7 @@ int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
 	struct RDArgs *rda;
-	const char *name = "Multicast";
+	const char *name = "Panorama";
 	UWORD w = 0, h = 0, depth = 8, secs = 10, want_d;
 	ULONG id, err = 0, na;
 	struct Screen *scr;

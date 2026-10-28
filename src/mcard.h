@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Multicast.card internals.
+ * Panorama - Panorama.card internals.
  *
  * The card has no hardware: its "video RAM" is a block of Fast RAM, and a
  * sender process (sender.c) streams what is visible on it to a UDP multicast
@@ -21,9 +21,9 @@
 #include "boardinfo.h"
 #include "mc_status.h"
 
-#define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "2.8"
-#define MC_REVISION    8      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_CARDNAME "Panorama.card"
+#define MC_VERSION_STR "2.9"
+#define MC_REVISION    9      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -36,7 +36,7 @@ extern struct GfxBase *GfxBase;
 /* SPLIT=CxR: at most this many parts, each sent to a port of its own */
 #define MC_MAXVIEWS 4
 
-/* settings: built-in defaults < monitor ToolTypes < ENV:Multicast.prefs
+/* settings: built-in defaults < monitor ToolTypes < ENV:Panorama.prefs
    (ENVARC: if ENV: has none yet) */
 struct McConfig {
 	ULONG dest;        /* IPv4 destination, host byte order (=network on 68k) */
@@ -68,7 +68,7 @@ struct McConfig {
 
 /*
  * BOARDS=n: up to this many boards, each with its own video memory and
- * sender. Board n sends to PORT + n and is called "Multicast<n+1>" from the
+ * sender. Board n sends to PORT + n and is called "Panorama<n+1>" from the
  * second one on, so its modes can be told apart.
  */
 #define MC_MAXBOARDS 8

@@ -1,7 +1,7 @@
 /*
- * P96Multicast - MulticastPrefs: the settings.
+ * Panorama - PanoramaPrefs: the settings.
  *
- * ENV:Multicast.prefs and ENV:Wrap.prefs (or ENVARC:, if ENV: has none),
+ * ENV:Panorama.prefs and ENV:Wrap.prefs (or ENVARC:, if ENV: has none),
  * KEY=VALUE per line, '#' for comments: the same files the cards read. A
  * file is kept as its lines, so comments, lines this tool doesn't know and
  * their order survive; a change replaces the line with the key, or a
@@ -48,7 +48,7 @@ void mp_trace(const char *fmt, ...)
 }
 
 const struct Setting settings[] = {
-	/* Multicast.prefs: see README.md */
+	/* Panorama.prefs: see README.md */
 	{ "DEST",      FILE_MC, T_IP,   0, 0,       "239.255.96.1", "Where to send: a multicast group, or one machine" },
 	{ "PORT",      FILE_MC, T_NUM,  1, 65535,   "9696",  "UDP port; board n sends to PORT+n" },
 	{ "DEST2",     FILE_MC, T_IP,   0, 0,       "",      "SPLIT=: where part 2 goes (default: DEST's next group, or DEST)" },
@@ -65,17 +65,17 @@ const struct Setting settings[] = {
 	{ "INPUT",     FILE_MC, T_BOOL, 0, 1,       "0",     "The viewers' mouse and keys work this Amiga" },
 	{ "INPUTFROM", FILE_MC, T_IP,   0, 0,       "",      "INPUT=1: only from this viewer's address (empty: any)" },
 	{ "SPLIT",     FILE_MC, T_SPAN, 0, 0,       "1x1",   "The screen in CxR parts, a stream (and a window) each, ports PORT, PORT+1, ..." },
-	/* the shared screen MulticastDesktop opens (the card itself ignores these) */
+	/* the shared screen PanoramaDesk opens (the card itself ignores these) */
 	{ "MONITOR",   FILE_MC, T_MODES, 0, 0,      "800x600", "Size of each part (monitor) of the shared screen" },
 	{ "COLOURS",   FILE_MC, T_NUM,  8, 32,      "16",    "Bits per pixel of the shared screen: 8, 16 or 32" },
-	{ "PUBSCREEN", FILE_MC, T_TEXT, 0, 31,      "MULTICAST", "Name of the shared public screen" },
+	{ "PUBSCREEN", FILE_MC, T_TEXT, 0, 31,      "PANORAMA", "Name of the shared public screen" },
 	{ "DEFAULTSCREEN", FILE_MC, T_BOOL, 0, 1,   "1",     "Programs open on the shared screen" },
 	{ "BEHIND",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen behind the Workbench" },
 	{ "ATBOOT",    FILE_MC, T_BOOL, 0, 1,       "0",     "Open the shared screen at every boot (WBStartup)" },
 	{ "WORKBENCH", FILE_MC, T_PLACE, 0, 0,      "LEFT1", "Where the Workbench is next to the desktop: LEFT1, RIGHT2, BELOW1, ... or NONE; the mouse crosses over there" },
-	{ "P96SCREENCX", FILE_MC, T_BOOL, 0, 1,     "1",     "Monitor tool types for P96ScreenCx, which moves the mouse to the Workbench (MulticastDesktop does when it isn't running)" },
+	{ "P96SCREENCX", FILE_MC, T_BOOL, 0, 1,     "1",     "Monitor tool types for P96ScreenCx, which moves the mouse to the Workbench (PanoramaDesk does when it isn't running)" },
 	{ "WBMONITOR", FILE_MC, T_BOOL, 0, 1,       "0",     "The Workbench's board is a monitor of its own: Wrap.card keeps it on (KEEPDISPLAY), so it stays shown" },
-	{ "HOTKEYS",   FILE_MC, T_TEXT, 0, 31,      "ctrl+alt", "Qualifiers of MulticastDesktop's hotkeys, + between them" },
+	{ "HOTKEYS",   FILE_MC, T_TEXT, 0, 31,      "ctrl+alt", "Qualifiers of PanoramaDesk's hotkeys, + between them" },
 	{ "VRAM",      FILE_MC, T_NUM,  1, 256,     "8",     "Video memory per board, MB (at boot)" },
 	{ "MAXWIDTH",  FILE_MC, T_NUM,  320, 4096,  "1920",  "Widest built-in mode" },
 	{ "MAXHEIGHT", FILE_MC, T_NUM,  200, 4096,  "1200",  "Highest built-in mode" },
@@ -84,10 +84,10 @@ const struct Setting settings[] = {
 	{ "BLITTER",   FILE_MC, T_BOOL, 0, 1,       "1",     "Send the drawing as orders, not pixels" },
 	{ "BOARDTYPE", FILE_MC, T_NUM,  0, 255,     "6",     "P96 board type reported" },
 	{ "PRI",       FILE_MC, T_NUM,  -128, 127,  "-1",    "Sender task priority" },
-	{ "LOG",       FILE_MC, T_TEXT, 0, 79,      "",      "Log file, e.g. T:Multicast.log" },
+	{ "LOG",       FILE_MC, T_TEXT, 0, 79,      "",      "Log file, e.g. T:Panorama.log" },
 	{ "QUIET",     FILE_MC, T_BOOL, 0, 1,       "0",     "Set BIF_QUIET" },
 	/* Wrap.prefs: see docs/WRAP.md */
-	{ "CARD",      FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver Wrap.card wraps, e.g. Multicast.card" },
+	{ "CARD",      FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver Wrap.card wraps, e.g. Panorama.card" },
 	{ "DRAW",      FILE_WRAP, T_BOOL, 0, 1,     "1",     "Wrap the drawing functions too" },
 	{ "KEEPDISPLAY", FILE_WRAP, T_BOOL, 0, 1,   "0",     "Never switch the wrapped card's display off (WBMONITOR=1: the Workbench stays shown)" },
 	{ "MIRROR",    FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver to show the same screen on" },
@@ -102,7 +102,7 @@ const struct Setting settings[] = {
 };
 const int nsettings = sizeof(settings) / sizeof(settings[0]);
 
-struct PrefsFile files[NFILES] = { { "Multicast.prefs" }, { "Wrap.prefs" } };
+struct PrefsFile files[NFILES] = { { "Panorama.prefs" }, { "Wrap.prefs" } };
 
 static int lower(int c)
 {
@@ -196,6 +196,33 @@ static BOOL read_file(struct PrefsFile *f, const char *dir)
 	return TRUE;
 }
 
+/* a value naming what was called Multicast before 3.1: the new name */
+static void renamed(const struct Setting *s)
+{
+	static const char *const was[] = { "Multicast.card", "Multicast.log", "MULTICAST" };
+	static const char *const now[] = { "Panorama.card", "Panorama.log", "PANORAMA" };
+	const char *v = prefs_get(s);
+	char buf[100];
+	int i, l;
+
+	if (!v)
+		return;
+	for (i = 0; i < 3; i++) {
+		const char *p = strstr(v, was[i]);
+
+		if (!p || (i == 2 && (p != v || p[9])))
+			continue;
+		l = p - v;
+		if (l + strlen(now[i]) + strlen(p + strlen(was[i])) >= sizeof(buf))
+			return;
+		memcpy(buf, v, l);
+		strcpy(buf + l, now[i]);
+		strcat(buf, p + strlen(was[i]));
+		prefs_set(s, buf);
+		return;
+	}
+}
+
 void prefs_load(void)
 {
 	int i;
@@ -204,6 +231,17 @@ void prefs_load(void)
 		files[i].nlines = 0;
 		files[i].loaded = read_file(&files[i], "ENV:") || read_file(&files[i], "ENVARC:");
 	}
+	if (!files[FILE_MC].loaded) {
+		/* from before the rename: Multicast.prefs, saved as Panorama.prefs */
+		const char *name = files[FILE_MC].name;
+
+		files[FILE_MC].name = "Multicast.prefs";
+		files[FILE_MC].loaded = read_file(&files[FILE_MC], "ENV:") ||
+		                        read_file(&files[FILE_MC], "ENVARC:");
+		files[FILE_MC].name = name;
+	}
+	for (i = 0; i < nsettings; i++)
+		renamed(&settings[i]);
 }
 
 static BOOL write_file(struct PrefsFile *f, const char *dir)
@@ -225,7 +263,7 @@ static BOOL write_file(struct PrefsFile *f, const char *dir)
 }
 
 /*
- * Use: ENV: only, the cards read it when they start (and Multicast.card's
+ * Use: ENV: only, the cards read it when they start (and Panorama.card's
  * network settings again when the TCP/IP stack appears). Save: ENVARC: too,
  * for the next boot.
  */
@@ -469,12 +507,12 @@ static BOOL is_multicast(const char *card)
 	for (; *p; p++)
 		if (*p == ':' || *p == '/')
 			name = p + 1;
-	return !mp_stricmp(name, "Multicast.card");
+	return !mp_stricmp(name, "Panorama.card");
 }
 
 /*
- * Settings that must agree: with Wrap.card wrapping Multicast.card and heads
- * that are Multicast boards too, BOARDS has to cover them all.
+ * Settings that must agree: with Wrap.card wrapping Panorama.card and heads
+ * that are Panorama boards too, BOARDS has to cover them all.
  */
 /*
  * SPLIT= with the shared desktop of MONITOR= parts: the card must offer a
@@ -558,7 +596,7 @@ void prefs_fix(void (*note)(const char *))
 		desktop_fix(note);
 	if (!*card)
 		return;
-	/* the wrapped board, if it is a Multicast board, and each Multicast head */
+	/* the wrapped board, if it is a Panorama board, and each Panorama head */
 	need = is_multicast(card) ? 1 : 0;
 	if (span && *span) {
 		p = span;
@@ -582,7 +620,7 @@ void prefs_fix(void (*note)(const char *))
 	if (have < need) {
 		snprintf(buf, sizeof(buf), "%ld", need);
 		prefs_set(bs, buf);
-		snprintf(buf, sizeof(buf), "BOARDS=%ld: %s Multicast heads", need,
+		snprintf(buf, sizeof(buf), "BOARDS=%ld: %s Panorama heads", need,
 		         is_multicast(card) ? "the wrapped board and its" : "the");
 		note(buf);
 	}

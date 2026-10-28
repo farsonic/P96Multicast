@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Static checks of a built card driver (an AmigaOS hunk file).
 
-    check_card.py build/Multicast.card
+    check_card.py build/Panorama.card
     check_card.py build/Wrap.card Wrap.card
 
 * the first hunk is code and starts with "moveq #-1,d0; rts", so running the
   library as a program fails harmlessly;
 * it has a RomTag (RTC_MATCHWORD, pointing at itself) for an auto-init
-  NT_LIBRARY named "Multicast.card" (or the name given);
+  NT_LIBRARY named "Panorama.card" (or the name given);
 * the function table has Open, Close, Expunge, Null, FindCard and InitCard
   (6 entries, -1 terminated), so FindCard is at -30 and InitCard at -36;
-  Multicast.card has McRecord, McDamage and McPointer after them, for
+  Panorama.card has McRecord, McDamage and McPointer after them, for
   Wrap.card (9 entries).
 """
 import struct
@@ -85,8 +85,8 @@ def load_hunks(data):
 
 
 def main(argv):
-    path = argv[1] if len(argv) > 1 else "build/Multicast.card"
-    want = argv[2] if len(argv) > 2 else "Multicast.card"
+    path = argv[1] if len(argv) > 1 else "build/Panorama.card"
+    want = argv[2] if len(argv) > 2 else "Panorama.card"
     with open(path, "rb") as f:
         data = f.read()
     hunks, _ = load_hunks(data)
@@ -121,7 +121,7 @@ def main(argv):
                 fails.append("function table entry at %d is not relocated" % p)
             entries.append(v)
             p += 4
-        nfuncs = 9 if name == "Multicast.card" else 6
+        nfuncs = 9 if name == "Panorama.card" else 6
         if len(entries) != nfuncs:
             fails.append("function table has %d entries, want %d" % (len(entries), nfuncs))
         print("check_card: %s: library %s version %d, %d functions, %d bytes"

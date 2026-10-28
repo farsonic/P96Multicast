@@ -1,5 +1,5 @@
 /*
- * P96Multicast - wrapstat: what Wrap.card wraps and what the wrapped card
+ * Panorama - wrapstat: what Wrap.card wraps and what the wrapped card
  * has been asked to do.
  *
  *   wrapstat            the wrapped card, its boards, display state, calls,

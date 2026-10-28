@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a screen dump (mctest DUMP=) with a viewer's (p96view.py --raw).
+"""Compare a screen dump (mctest DUMP=) with a viewer's (panoview.py --raw).
 
     compare_raw.py card.raw viewer.raw
 

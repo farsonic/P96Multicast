@@ -1,7 +1,7 @@
 /*
- * P96Multicast - Copper's reference renderer: see render.h.
+ * Panorama - Copper's reference renderer: see render.h.
  *
- * client/p96view.py must draw exactly the same; tests/rendertest.c and
+ * client/panoview.py must draw exactly the same; tests/rendertest.c and
  * tests/test_copper.py check that it does.
  */
 #include <string.h>

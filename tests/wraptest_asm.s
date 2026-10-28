@@ -1,4 +1,4 @@
-; P96Multicast - register-level helpers for tests/wraptest.c
+; Panorama - register-level helpers for tests/wraptest.c
 
 	section	code,code
 

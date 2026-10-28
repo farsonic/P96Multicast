@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""P96Multicast viewer: shows the screen an Amiga's Multicast.card sends.
+"""Panorama viewer: shows the screen an Amiga's Panorama.card sends.
 
-    p96view.py                              join 239.255.96.1:9696, show a window
-    p96view.py --group 127.0.0.1            UAE's NAT (slirp): the card sends to 10.0.2.2
-    p96view.py --group 239.255.96.2 --port 9700
-    p96view.py --span 2x1                   two parts of a SPLIT=2x1 screen, a window each
+    panoview.py                              join 239.255.96.1:9696, show a window
+    panoview.py --group 127.0.0.1            UAE's NAT (slirp): the card sends to 10.0.2.2
+    panoview.py --group 239.255.96.2 --port 9700
+    panoview.py --span 2x1                   two parts of a SPLIT=2x1 screen, a window each
                                             (groups 239.255.96.1 and .2, ports 9696, 9697)
-    p96view.py --part 2                     only part 2 (group 239.255.96.2, port 9697)
-    p96view.py --span 2x1 --groups 239.1.1.1,239.2.2.2
+    panoview.py --part 2                     only part 2 (group 239.255.96.2, port 9697)
+    panoview.py --span 2x1 --groups 239.1.1.1,239.2.2.2
                                             each part from an address of its own
                                             (the card's DEST= and DEST2= ...)
-    p96view.py --snapshot out.png --duration 60   no window: save frames as PNG
-    p96view.py --web                        show it in a web browser instead
+    panoview.py --snapshot out.png --duration 60   no window: save frames as PNG
+    panoview.py --web                        show it in a web browser instead
 
 The card speaks Copper (docs/COPPER.md): it sends what was drawn (fills,
 copies, text) for the viewer to draw, and pixels only for the rest. The
@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - optional
     np = None
 
 MAGIC, VERSION = 0x4355, 1
-OLD_MAGIC = b"P96M"   # protocol 1, Multicast.card 1.x
+OLD_MAGIC = b"P96M"   # protocol 1, Panorama.card 1.x
 F_REPAIR = 1
 
 SURFACE, PALETTE, FRAME = 0x01, 0x02, 0x03
@@ -548,8 +548,8 @@ class Viewer:
         magic, version, flags, stream, seq = struct.unpack(">HBBII", data[:12])
         if magic != MAGIC or version != VERSION:
             if data[:4] == OLD_MAGIC and not self.warned_old:
-                print("p96view: this is Multicast.card 1.x (protocol 1): install "
-                      "Multicast.card 2 for this viewer", file=sys.stderr)
+                print("panoview: this is Panorama.card 1.x (protocol 1): install "
+                      "Panorama.card 2 for this viewer", file=sys.stderr)
                 self.warned_old = True
             st["bad"] += 1
             return []
@@ -731,7 +731,7 @@ def print_stats(viewer, out=sys.stderr):
              PIXELS: "pixels", POINTERPOS: "pointer"}
     orders = ", ".join("%d %s" % (rec[t], n) for t, n in names.items() if rec.get(t))
     modes = ", ".join("%dx%d %s" % m for m in sorted(screen.stats["modes"])) or "none"
-    print("p96view: %d datagrams, %d KB, %d frames; %s; %d repairs, %d NAKs, %d WANTs, "
+    print("panoview: %d datagrams, %d KB, %d frames; %s; %d repairs, %d NAKs, %d WANTs, "
           "%d gaps, %d bad; %d of %d tiles; modes: %s" % (
               st["datagrams"], st["bytes"] >> 10, screen.frames, orders or "no records",
               st["repairs"], st["naks"], st["wants"], st["gaps"],
@@ -966,7 +966,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
             state["wall"] = (ww, wh)
             windows[0][1].configure(width=ww, height=wh)
             scr = heads[0].screen
-            root.title("P96Multicast %dx%d %s%s" % (ww, wh, FORMAT_NAMES.get(scr.fmt, "?"),
+            root.title("Panorama %dx%d %s%s" % (ww, wh, FORMAT_NAMES.get(scr.fmt, "?"),
                        ", %d screens" % len(heads) if len(heads) > 1 else ""))
         for i, (h, st) in enumerate(zip(heads, per)):
             screen = h.screen
@@ -976,7 +976,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
             if not screen.width:
                 # say what is (not) arriving, in the title
                 n = h.viewer.stats["datagrams"]
-                text = ("P96Multicast screen %d (port %d): %s" % (
+                text = ("Panorama screen %d (port %d): %s" % (
                     i + 1, h.port,
                     "nothing from the Amiga yet" if not n else
                     "%d datagrams, but no screen shown on this board yet" % n))
@@ -1003,7 +1003,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
                 st["size"], st["at"] = size, at
                 st["ptr_serial"] = -1
             if separate:
-                text = "P96Multicast %s (port %d) %dx%d %s%s" % (
+                text = "Panorama %s (port %d) %dx%d %s%s" % (
                     "screen %d of %d" % (i + 1, len(heads)), h.port, size[0], size[1], FORMAT_NAMES.get(screen.fmt, "?"),
                     " (behind: another screen is in front on the Amiga)" if screen.behind else
                     "" if screen.display else ": display off (its screen is not shown)")
@@ -1154,7 +1154,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
 
 
 WEB_PAGE = b"""<!doctype html>
-<html><head><meta charset="utf-8"><title>P96Multicast</title>
+<html><head><meta charset="utf-8"><title>Panorama</title>
 <style>
  body { margin: 0; background: #111; color: #aaa; font: 13px sans-serif; }
  #bar { padding: 4px 8px; }
@@ -1255,7 +1255,7 @@ def run_web(heads, args):  # pragma: no cover - interactive
     threading.Thread(target=receive, daemon=True).start()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.web), Handler)
     url = "http://127.0.0.1:%d/" % server.server_address[1]
-    print("p96view: showing the Amiga screen at %s (Ctrl-C to stop)" % url, file=sys.stderr)
+    print("panoview: showing the Amiga screen at %s (Ctrl-C to stop)" % url, file=sys.stderr)
     if not args.no_browser:
         webbrowser.open(url)
     server.serve_forever()
@@ -1310,7 +1310,7 @@ def main(argv=None):
                     help="with --span: all boards in one window, not a window each")
     ap.add_argument("--no-input", action="store_true",
                     help="don't send the mouse and keys to the Amiga (the card does that only "
-                         "with INPUT=1 in Multicast.prefs)")
+                         "with INPUT=1 in Panorama.prefs)")
     ap.add_argument("--iface", help="local address of the interface to join on")
     ap.add_argument("--snapshot", help="no window: write the screen to this PNG")
     ap.add_argument("--raw", help="with --snapshot: also the card's own pixels to this file")
@@ -1344,7 +1344,7 @@ def main(argv=None):
             try:
                 import tkinter  # noqa: F401
             except ImportError:
-                print("p96view: no tkinter in this Python (on macOS with Homebrew: "
+                print("panoview: no tkinter in this Python (on macOS with Homebrew: "
                       "brew install python-tk), using the web view", file=sys.stderr)
                 args.web = 8096
                 run_web(heads, args)

@@ -1,10 +1,10 @@
 /*
- * P96Multicast - the card's own screen modes.
+ * Panorama - the card's own screen modes.
  *
  * P96 normally takes a board's resolutions from its settings, made with
  * Picasso96Mode. A card may also put its own in bi->ResolutionsList in
  * InitCard, as UAE's uaegfx.card does, and then needs no settings at all.
- * Multicast.card does that, with the sizes in MODES=, each in every depth
+ * Panorama.card does that, with the sizes in MODES=, each in every depth
  * class whose screen fits in the video memory. A frame
  * buffer has no monitor, so the timings only have to be plausible.
  *
@@ -30,7 +30,7 @@
 #include "mcard.h"
 
 /*
- * Multicast.card 1.3 numbered from 0xff down, and Picasso96Mode saves the
+ * Panorama.card 1.3 numbered from 0xff down, and Picasso96Mode saves the
  * modes it is shown, so those IDs may be in the settings now: 2.0 starts
  * lower. Neither range is one P96 gives a mode of its own.
  */
@@ -205,7 +205,7 @@ void mc_modes_build(struct McCard *mc)
 		                       taken(bi, 0, 0, res->DisplayID)));
 		if (taken(bi, w, h, 0xffffffffUL))
 			continue;
-		/* "Multicast:640x480" */
+		/* "Panorama:640x480" */
 		while (*b && name < res->Name + MAXRESOLUTIONNAMELENGTH - 11)
 			*name++ = *b++;
 		*name++ = ':';

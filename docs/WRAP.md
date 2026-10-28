@@ -78,8 +78,8 @@ WaitBlitter) unwrapped, for speed.
 | `HEAD` | (none) | with `SPAN`: the card driver of every head |
 | `HEAD1`...`HEAD4` | `HEAD` | with `SPAN`: the card driver of one head (left to right, top to bottom) |
 | `MIRRORFPS` | 25 | head updates per second (1-50) |
-| `HEADSHARE` | 0 | 1: heads that can show any memory (Multicast.card) show the big screen's bitmap itself, no copy |
-| `KEEPDISPLAY` | 0 | 1: never switch the wrapped card's display off. P96 switches a board off when another board's screen comes to the front; for the Workbench's card beside a Multicast desktop that blanks it (FS-UAE's uaegfx goes to the empty native display). With this, it keeps showing its screen. `wrapstat` counts the "off" calls it turned into "on". MulticastPrefs' `WBMONITOR=1` sets it up |
+| `HEADSHARE` | 0 | 1: heads that can show any memory (Panorama.card) show the big screen's bitmap itself, no copy |
+| `KEEPDISPLAY` | 0 | 1: never switch the wrapped card's display off. P96 switches a board off when another board's screen comes to the front; for the Workbench's card beside a Panorama desktop that blanks it (FS-UAE's uaegfx goes to the empty native display). With this, it keeps showing its screen. `wrapstat` counts the "off" calls it turned into "on". PanoramaPrefs' `WBMONITOR=1` sets it up |
 
 The settings are read when FindCard runs, so only from `ENV:`/`ENVARC:`.
 The monitor's ToolTypes are passed on to the real card's InitCard untouched.
@@ -110,20 +110,20 @@ wrapped board's pixel format (wrapstat says so if not).
 
 `MIRROR=card` is one head showing what the wrapped board shows (its
 visible part, where it is scrolled to). It can be a second board of the
-same driver. With Multicast.card, `BOARDS=2` in `Multicast.prefs` gives a
+same driver. With Panorama.card, `BOARDS=2` in `Panorama.prefs` gives a
 second board that streams to PORT+1:
 
 ```
-# ENVARC:Wrap.prefs                # ENVARC:Multicast.prefs
-CARD=Multicast.card                BOARDS=2
-MIRROR=Multicast.card
+# ENVARC:Wrap.prefs                # ENVARC:Panorama.prefs
+CARD=Panorama.card                BOARDS=2
+MIRROR=Panorama.card
 ```
 
 Or, to stream a real board's screen to the network:
 
 ```
 CARD=uaegfx.card
-MIRROR=Multicast.card
+MIRROR=Panorama.card
 ```
 
 ### SPAN: one screen on up to four monitors
@@ -143,30 +143,30 @@ either:
   heads: the mode is split evenly between the heads, each getting its tile's
   size with the big mode's refresh rate.
 
-The wrapped board is best a virtual one: Multicast.card's first board
+The wrapped board is best a virtual one: Panorama.card's first board
 holds the big screen in Fast RAM (it needs no monitor of its own, though it
 streams too), and the heads are the real monitors:
 
 ```
 # ENVARC:Wrap.prefs
-CARD=Multicast.card
+CARD=Panorama.card
 SPAN=2x1
 HEAD1=PicassoIV.card
 HEAD2=ZZ9000.card
 ```
 
 Or all four on the network, as `emu/span_test.sh` runs it (BOARDS=5 in
-`Multicast.prefs`: board 1 is the big screen, boards 2 to 5 the heads,
+`Panorama.prefs`: board 1 is the big screen, boards 2 to 5 the heads,
 ports 9697 to 9700):
 
 ```
-CARD=Multicast.card
+CARD=Panorama.card
 SPAN=2x2
-HEAD=Multicast.card
+HEAD=Panorama.card
 ```
 
 A card with a hardware sprite draws the pointer only on its own display,
-so the wrapped board should be one without (like Multicast.card): rtg.library
+so the wrapped board should be one without (like Panorama.card): rtg.library
 then draws the pointer into the screen, and it shows on whichever head it
 is over.
 
@@ -181,13 +181,13 @@ span test each head took about 1 MB over a minute instead of 600 KB per
 pass. Without room for a shadow, a head compares with its own video memory.
 
 The comparing is not free either: it reads as much as a copy does. With
-`HEADSHARE=1`, heads that can show any memory (Multicast.card's boards)
+`HEADSHARE=1`, heads that can show any memory (Panorama.card's boards)
 skip it: each one is panned onto its part of the big screen's bitmap
 (SetPanning with the bitmap's width and the tile's offset), and nothing is
 compared or copied. Real cards can only show their own video memory, so
 for them it stays off.
 
-Multicast.card 2 heads don't compare their whole screen either: with
+Panorama.card 2 heads don't compare their whole screen either: with
 HEADSHARE, Wrap.card passes the wrapped board's drawing calls on to them
 (McRecord), so they send orders and compare only what the calls don't
 explain; heads that get a copy hear what was copied (McDamage). See
@@ -197,19 +197,19 @@ docs/COPPER.md.
 
 * **AROS gives a card driver one board.** `p96gfx.hidd` calls a `.card`
   library's FindCard once, while rtg.library calls it until it fails. So
-  `BOARDS=2` in Multicast.card should give two independent boards on P96
+  `BOARDS=2` in Panorama.card should give two independent boards on P96
   (not tested yet), but on AROS only Wrap.card's heads reach the others.
 
 * **AROS also calls the wrapped card directly.** AROS's `p96gfx.hidd`
   calls `FindCard` on every `.card` library in memory, so after Wrap.card
   loads the real card, AROS asks that card for a board too. The card has to
-  say no. Multicast.card does, because it has one board. Drivers for real
+  say no. Panorama.card does, because it has one board. Drivers for real
   hardware normally do too, once they have claimed their Zorro board.
 * **Real P96 (rtg.library).** rtg.library calls `InitCard` through
   `bi->CardBase` (fixed in 0.3, see above). Still open: whether it calls
   any slot with a BoardInfo that isn't in a0.
 * **Stays loaded.** BoardInfo pointers lead into Wrap.card's code, so it
-  never expunges (like Multicast.card).
+  never expunges (like Panorama.card).
 
 ## Testing
 
@@ -220,17 +220,17 @@ docs/COPPER.md.
   wrapped, the call counts and the recorded display state, with `DRAW=1`
   and `DRAW=0`.
 * `make emu-wrap` (`emu/wrap_test.sh`) boots AROS m68k in FS-UAE with
-  Wrap.card wrapping Multicast.card, opens and draws 8, 16 and 32 bit
+  Wrap.card wrapping Panorama.card, opens and draws 8, 16 and 32 bit
   screens with mctest, and checks `wrapstat`: the board is set up through
   Wrap.card and SetGC and SetPanning went through it. It needs no network.
 * `make emu-span` (`emu/span_test.sh`) is a 2x2 span over the network:
-  Multicast.card's first board holds a 1280x960 screen in a 640x480 mode,
+  Panorama.card's first board holds a 1280x960 screen in a 640x480 mode,
   and its boards 2 to 5 are the heads. mctest `SPAN=2x2` draws the test
   pattern in each head's tile and moves an orange window from head 1 to
   head 4. At each step, every head must show its pattern, and only the head
   the window is on must show the window.
 * `make emu-mirror` (`emu/mirror_test.sh`) is the mirror over the network,
   like `make emu-test` (Riptide, FSUAE_PCAP, root). Wrap.card wraps
-  Multicast.card's first board and mirrors it onto the second. mctest
+  Panorama.card's first board and mirrors it onto the second. mctest
   draws on the first in 8, 16 and 32 bit, and the receivers on ports 9696
   and 9697 must both see the test pattern and the same picture.

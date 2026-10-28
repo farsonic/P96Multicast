@@ -1,4 +1,4 @@
-; P96Multicast - Fake.card library header and its recording functions,
+; Panorama - Fake.card library header and its recording functions,
 ; for tests/wraptest.c (see tests/fakecard.h).
 
 	section	code,code

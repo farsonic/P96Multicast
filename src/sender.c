@@ -1,5 +1,5 @@
 /*
- * P96Multicast - the sender process: the screen as a Copper stream
+ * Panorama - the sender process: the screen as a Copper stream
  * (include/copper.h, docs/COPPER.md).
  *
  * FPS times a second the sender
@@ -64,7 +64,7 @@ struct Sender {
 	ULONG  lost_seen;                /* mc->ring_lost, last handled */
 	struct McConfig *cfg;
 	UWORD  input_told;               /* INPUT= as the viewers were last told it */
-	struct DateStamp prefs_date;     /* ENV:Multicast.prefs when last read for INPUT= */
+	struct DateStamp prefs_date;     /* ENV:Panorama.prefs when last read for INPUT= */
 	struct Library *sockbase;
 	struct IntuitionBase *ibase;
 	struct MsgPort *inport;          /* INPUT=1: input.device, once a viewer types */
@@ -1294,7 +1294,7 @@ static BOOL board_mode(struct BoardInfo *bi, struct Screen *scr)
  *
  * The list is walked in Forbid(), not under LockIBase(): a sender runs at a
  * low priority, every pass, and holding Intuition's lock there kept
- * Intuition waiting while other tasks ran, which froze AmigaOS (MulticastPrefs
+ * Intuition waiting while other tasks ran, which froze AmigaOS (PanoramaPrefs
  * stopped in the middle of a click). Forbid() is held only for the walk.
  */
 static struct Screen *our_screen(struct Sender *s)
@@ -1450,8 +1450,8 @@ static void pace(struct Sender *s, struct EClockVal *start)
 }
 
 /*
- * MulticastPrefs' Use and Open change INPUT= and INPUTFROM= while the card
- * runs: the first part's sender looks at ENV:Multicast.prefs every two
+ * PanoramaPrefs' Use and Open change INPUT= and INPUTFROM= while the card
+ * runs: the first part's sender looks at ENV:Panorama.prefs every two
  * seconds and takes those two from it when it has changed. The rest of the
  * settings stay as they were at boot.
  */
@@ -1467,7 +1467,7 @@ static void live_settings(struct Sender *s)
 	if (s->view || s->pass % (2 * cfg->fps))
 		return;
 	me->pr_WindowPtr = (APTR)-1;
-	lock = Lock((STRPTR)"ENV:Multicast.prefs", ACCESS_READ);
+	lock = Lock((STRPTR)"ENV:Panorama.prefs", ACCESS_READ);
 	me->pr_WindowPtr = oldwin;
 	if (!lock)
 		return;
@@ -1485,7 +1485,7 @@ static void live_settings(struct Sender *s)
 	if (!fresh)
 		return;
 	mc_config_defaults(fresh);
-	if (mc_config_file(fresh, "ENV:Multicast.prefs") &&
+	if (mc_config_file(fresh, "ENV:Panorama.prefs") &&
 	    (fresh->input != cfg->input || fresh->input_from != cfg->input_from)) {
 		cfg->input_from = fresh->input_from;
 		cfg->input = fresh->input;
@@ -1774,9 +1774,9 @@ static void SenderMain(void)
 BOOL mc_sender_start(struct McCard *mc)
 {
 	/*
-	 * "Multicast.card sender", "Multicast.card sender 2" for the second
+	 * "Panorama.card sender", "Panorama.card sender 2" for the second
 	 * board, ...; with SPLIT=, the further parts' senders are
-	 * "Multicast.card part 2" and so on.
+	 * "Panorama.card part 2" and so on.
 	 */
 	static char names[MC_MAXBOARDS][MC_MAXVIEWS][24];
 	static struct Start starts[MC_MAXBOARDS][MC_MAXVIEWS];
@@ -1793,17 +1793,17 @@ BOOL mc_sender_start(struct McCard *mc)
 
 		mc->view_tail[v] = mc->ring_head;
 		if (v) {
-			CopyMem("Multicast.card part ", name, 20);
-			name[20] = '1' + v;
-			name[21] = mc->boardnum ? '/' : 0;
-			name[22] = '1' + mc->boardnum;
-			name[23] = 0;
+			CopyMem("Panorama.card part ", name, 19);
+			name[19] = '1' + v;
+			name[20] = mc->boardnum ? '/' : 0;
+			name[21] = '1' + mc->boardnum;
+			name[22] = 0;
 		} else {
-			CopyMem("Multicast.card sender", name, 22);
+			CopyMem("Panorama.card sender", name, 21);
 			if (mc->boardnum) {
-				name[21] = ' ';
-				name[22] = '1' + mc->boardnum;
-				name[23] = 0;
+				name[20] = ' ';
+				name[21] = '1' + mc->boardnum;
+				name[22] = 0;
 			}
 		}
 		starts[mc->boardnum][v].mc = mc;

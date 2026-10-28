@@ -1,9 +1,9 @@
-# Copper: the Multicast.card display protocol
+# Copper: the Panorama.card display protocol
 
 The Amiga's Copper runs a list of display instructions. This protocol streams one:
 what was drawn (a fill, a copy, a line of text) whenever the viewer can draw it
-itself, pixels only for the rest. Multicast.card 2 sends it, and `client/p96view.py`
-shows it. It replaces protocol 1 (Multicast.card 1.x), which compared the whole
+itself, pixels only for the rest. Panorama.card 2 sends it, and `client/panoview.py`
+shows it. It replaces protocol 1 (Panorama.card 1.x), which compared the whole
 screen with a copy every pass and sent every change as pixels.
 
 `include/copper.h` is the definitive list of numbers. `src/render.c` is the
@@ -34,7 +34,7 @@ Copper is built on three rules:
 ## How the card works
 
 ```
- rtg.library ──calls──▶ Multicast.card stubs ──▶ rtg.library's own drawing
+ rtg.library ──calls──▶ Panorama.card stubs ──▶ rtg.library's own drawing
                              │                       (into the frame buffer)
                              ▼
                        the order ring
@@ -90,11 +90,11 @@ Copper is built on three rules:
 
 ### Under Wrap.card
 
-When Multicast.card 2 is a head that shows the wrapped board's bitmap itself
-(`MIRROR=Multicast.card`, `HEADSHARE=1`), Wrap.card passes it the wrapped card's
-drawing calls and pointer, through two library functions of Multicast.card:
+When Panorama.card 2 is a head that shows the wrapped board's bitmap itself
+(`MIRROR=Panorama.card`, `HEADSHARE=1`), Wrap.card passes it the wrapped card's
+drawing calls and pointer, through two library functions of Panorama.card:
 `McRecord` (-42) and `McPointer` (-54). Mirroring uaegfx.card or a real graphics
-card then sends orders as well. Heads that get a copy instead tell Multicast.card
+card then sends orders as well. Heads that get a copy instead tell Panorama.card
 what was copied (`McDamage`, -48), so it compares only that. `wrapstat` shows
 "hears the wrapped board's drawing" for such heads.
 
@@ -191,8 +191,8 @@ comes to the front), at the part's position plus the part's place on the
 screen. Any part's sender takes them, so every window of a split screen works
 the same desktop, from the same device or different ones. `INPUTFROM=` limits
 input to one address. Anyone else who can reach the card can type on the Amiga,
-so INPUT is off unless set (`SETUP=DESKTOP` and MulticastPrefs' Open set it).
-The card reads `INPUT=` and `INPUTFROM=` from ENV:Multicast.prefs again
+so INPUT is off unless set (`SETUP=DESKTOP` and PanoramaPrefs' Open set it).
+The card reads `INPUT=` and `INPUTFROM=` from ENV:Panorama.prefs again
 when the file changes, and tells the viewers in its next SURFACE.
 
 ## Reliability
@@ -219,7 +219,7 @@ when the file changes, and tells the viewers in its next SURFACE.
   `REFRESH=` seconds (default 10, 0 = never). This is for listen-only viewers
   behind a firewall.
 
-## Settings (Multicast.prefs)
+## Settings (Panorama.prefs)
 
 | Key | Default | |
 |---|---|---|
@@ -232,7 +232,7 @@ when the file changes, and tells the viewers in its next SURFACE.
 | `HISTORY` | 512 | KB of sent datagrams kept for repairs |
 | `REFRESH` | 10 | seconds between whole screens while no viewer talks back (0 = never) |
 | `SPLIT` | 1x1 | the screen in C×R parts, each a stream of its own on PORT, PORT+1, ... and, with a multicast DEST, in a group of its own, DEST, DEST+1, ... (a sender each, with its own shadow, history and ring position) |
-| `DEST2`-`DEST4` | | where parts 2-4 go instead of the next group (`p96view.py --groups`) |
+| `DEST2`-`DEST4` | | where parts 2-4 go instead of the next group (`panoview.py --groups`) |
 | `INPUT` | 0 | 1: the viewers' mouse and keys work the Amiga |
 | `INPUTFROM` | | with `INPUT=1`: only from this address |
 

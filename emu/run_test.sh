@@ -1,10 +1,10 @@
 #!/bin/sh
-# P96Multicast - end-to-end test on FS-UAE with AROS m68k and Riptide.
+# Panorama - end-to-end test on FS-UAE with AROS m68k and Riptide.
 #
-# Installs build/Multicast.card into the AROS system (Libs:Picasso96, plus a
-# copy of AROS's P96 monitor driver as Devs:Monitors/Multicast), boots an
+# Installs build/Panorama.card into the AROS system (Libs:Picasso96, plus a
+# copy of AROS's P96 monitor driver as Devs:Monitors/Panorama), boots an
 # A4000/040, starts Riptide on uaenet.device, and runs mctest on the card in
-# each depth. Meanwhile client/p96view.py on the Linux side records what
+# each depth. Meanwhile client/panoview.py on the Linux side records what
 # arrives, and tests/check_frame.py checks the test pattern.
 #
 #   emu/run_test.sh [DEPTHS] [TIMEOUT]      DEPTHS default "8 16 32"
@@ -18,7 +18,7 @@
 #
 # Environment: AROSFS (AROS system directory, default /tmp/claude-0/arosfs),
 # RIPTIDE (the Riptide binary), FSUAE_PCAP, DEST, PORT (default 9696),
-# EXTRA_PREFS (more lines for ENV:Multicast.prefs, e.g. VRAM=64),
+# EXTRA_PREFS (more lines for ENV:Panorama.prefs, e.g. VRAM=64),
 # EXTRA_AUTORUN (AmigaDOS lines run after the depth tests; \n separates).
 set -u
 cd "$(dirname "$0")/.."
@@ -45,7 +45,7 @@ else
 	UNIT=0
 fi
 
-for f in build/Multicast.card build/mctest "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
+for f in build/Panorama.card build/mctest "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
 command -v "$FSUAE" >/dev/null 2>&1 || { echo "SKIP: $FSUAE not installed"; exit 0; }
@@ -70,8 +70,8 @@ work=$(cd "$OUT/work" && pwd)
 
 # ---- install the card into AROS
 mkdir -p "$AROSFS/Libs/Picasso96"
-cp build/Multicast.card "$AROSFS/Libs/Picasso96/Multicast.card"
-cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Multicast"
+cp build/Panorama.card "$AROSFS/Libs/Picasso96/Panorama.card"
+cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Panorama"
 # the card on its own: no Wrap.card from emu/wrap_test.sh or mirror_test.sh
 rm -f "$AROSFS/Devs/Monitors/Wrap"
 # AROS's multi-user startup loads AROS's own usergroup.library, and Riptide
@@ -80,13 +80,13 @@ if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
 fi
 mkdir -p "$AROSFS/Prefs/Env-Archive"
-cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
+cat > "$AROSFS/Prefs/Env-Archive/Panorama.prefs" <<EOF
 # written by emu/run_test.sh
 DEST=$DEST
 PORT=$PORT
 FPS=25
 REFRESH=2
-LOG=RAM:Multicast.log
+LOG=RAM:Panorama.log
 ${EXTRA_PREFS:-}
 EOF
 if ! grep -q waitwork "$AROSFS/S/User-Startup" 2>/dev/null; then
@@ -130,7 +130,7 @@ EOF
 	done
 	[ -n "${EXTRA_AUTORUN:-}" ] && printf '%b\n' "$EXTRA_AUTORUN"
 	echo 'Work:mctest STATUS >>Work:status.txt'
-	echo 'Copy RAM:Multicast.log Work:card.log'
+	echo 'Copy RAM:Panorama.log Work:card.log'
 	echo "Work:ping -c 2 $HOST_IP >Work:ping.txt"
 	echo 'Work:ip -s link >Work:net.txt'
 	echo 'Work:netstat -s >>Work:net.txt'
@@ -176,8 +176,8 @@ SDL_AUDIODRIVER=dummy "$FSUAE" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
 start=$(date +%s)
 for d in $DEPTHS; do
-	python3 client/p96view.py --group "$DEST" --port "$PORT" --iface "$HOST_IP" \
-		--snapshot "$OUT/frame-$d.png" --duration 600 2>"$OUT/p96view-$d.log" &
+	python3 client/panoview.py --group "$DEST" --port "$PORT" --iface "$HOST_IP" \
+		--snapshot "$OUT/frame-$d.png" --duration 600 2>"$OUT/panoview-$d.log" &
 	vpid=$!
 	while [ ! -f "$work/shown-$d" ]; do
 		if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
@@ -197,14 +197,14 @@ while [ $status -eq 0 ] && [ ! -f "$work/autorun.done" ]; do
 	sleep 1
 done
 # what the card shows at the end (the AROS Workbench, if it opened there)
-python3 client/p96view.py --group "$DEST" --port "$PORT" --iface "$HOST_IP" \
-	--snapshot "$OUT/final.png" --duration 6 2>"$OUT/p96view-final.log"
+python3 client/panoview.py --group "$DEST" --port "$PORT" --iface "$HOST_IP" \
+	--snapshot "$OUT/final.png" --duration 6 2>"$OUT/panoview-final.log"
 import -window root "$OUT/screen.png" 2>/dev/null
 kill $upid 2>/dev/null
 wait $upid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-echo "---- modes (Multicast, first 8)"
+echo "---- modes (Panorama, first 8)"
 tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep -i multicast | head -8
 echo "---- riptide.log"
 tr -d '\r' < "$work/riptide.log" 2>/dev/null | tail -5
@@ -219,7 +219,7 @@ tr -d '\r' < "$work/net.txt" 2>/dev/null | sed -n '/eth0/,/driver stats/p'
 for d in $DEPTHS; do
 	echo "---- depth $d"
 	tr -d '\r' < "$work/mctest-$d.log" 2>/dev/null
-	cat "$OUT/p96view-$d.log"
+	cat "$OUT/panoview-$d.log"
 	if python3 tests/check_frame.py "$OUT/frame-$d.png"; then
 		echo "PASS: depth $d"
 	else

@@ -1,5 +1,5 @@
 /*
- * P96Multicast - checks struct BoardInfo against the published P96 offsets.
+ * Panorama - checks struct BoardInfo against the published P96 offsets.
  * Built with vbcc and run under vamos by "make check".
  */
 #include <stdio.h>

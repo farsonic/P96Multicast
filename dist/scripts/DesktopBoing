@@ -1,5 +1,5 @@
-; P96Multicast: the Boing ball, bouncing over the shared desktop.
+; Panorama: the Boing ball, bouncing over the shared desktop.
 ; Click the ball to stop it.
-Run >NIL: C:MulticastDesktop
-C:MulticastDesktop SWAP WAIT=10 >NIL:
+Run >NIL: C:PanoramaDesk
+C:PanoramaDesk SWAP WAIT=10 >NIL:
 Run >NIL: C:Boing

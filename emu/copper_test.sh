@@ -1,8 +1,8 @@
 #!/bin/sh
-# P96Multicast - Copper end to end: Multicast.card in FS-UAE with AROS m68k
+# Panorama - Copper end to end: Panorama.card in FS-UAE with AROS m68k
 # and Riptide, mctest WORKLOAD (a console listing directories, windows moved
 # and resized, drawing, scrolling, images, closing) in each depth, and
-# client/p96view.py receiving. At the end of each workload mctest dumps the
+# client/panoview.py receiving. At the end of each workload mctest dumps the
 # screen as the card has it; the viewer's picture must be the same, pixel
 # for pixel. Also shows what each step sent: orders, pixels, KB. Needs
 # FSUAE_PCAP and root, like emu/run_test.sh.
@@ -10,7 +10,7 @@
 #   emu/copper_test.sh [TIMEOUT]
 #
 # Environment: AROSFS, RIPTIDE, FSUAE_PCAP, OUT (default build/emu-copper),
-# DEPTHS (default "8 16 32"), EXTRA_PREFS (more lines for Multicast.prefs),
+# DEPTHS (default "8 16 32"), EXTRA_PREFS (more lines for Panorama.prefs),
 # VIEW_ARGS (more for the viewer: with EXTRA_PREFS=SPLIT=2x1, --span 2x1; the
 # parts put together must then be the card's screen).
 set -u
@@ -24,7 +24,7 @@ GROUP=239.255.96.1
 AMIGA_IP=192.168.96.2
 HOST_IP=192.168.96.1
 
-for f in build/Multicast.card build/mctest "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
+for f in build/Panorama.card build/mctest "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
 if [ -z "${FSUAE_PCAP:-}" ] || [ ! -x "$FSUAE_PCAP" ] || [ "$(id -u)" != 0 ]; then
@@ -48,14 +48,14 @@ work=$(cd "$OUT/work" && pwd)
 
 # ---- install into AROS: the card on its own
 mkdir -p "$AROSFS/Libs/Picasso96" "$AROSFS/Prefs/Env-Archive"
-cp build/Multicast.card "$AROSFS/Libs/Picasso96/"
+cp build/Panorama.card "$AROSFS/Libs/Picasso96/"
 rm -f "$AROSFS/Devs/Monitors/Wrap"
-cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Multicast"
-cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
+cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Panorama"
+cat > "$AROSFS/Prefs/Env-Archive/Panorama.prefs" <<EOF
 # written by emu/copper_test.sh
 DEST=$GROUP
 PORT=9696
-LOG=RAM:Multicast.log
+LOG=RAM:Panorama.log
 ${EXTRA_PREFS:-}
 EOF
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
@@ -91,7 +91,7 @@ EOF
 		echo "Work:mctest WORKLOAD WIDTH=640 HEIGHT=480 DEPTH=$d DUMP=Work:screen-$d.raw >Work:workload-$d.txt"
 	done
 	echo 'Work:mctest STATUS >Work:status.txt'
-	echo 'Copy RAM:Multicast.log Work:card.log'
+	echo 'Copy RAM:Panorama.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
 } > "$work/autorun"
 
@@ -126,8 +126,8 @@ status=0
 SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
 # the viewer, keeping its picture in the card's format too
-python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP ${VIEW_ARGS:-} \
-	--snapshot "$OUT/last.png" --raw "$OUT/view.raw" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
+python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP ${VIEW_ARGS:-} \
+	--snapshot "$OUT/last.png" --raw "$OUT/view.raw" --duration "$TIMEOUT" 2>"$OUT/panoview.log" &
 vpid=$!
 start=$(date +%s)
 while [ ! -f "$work/autorun.done" ]; do
@@ -164,5 +164,5 @@ done
 echo "---- status"
 tr -d '\r' < "$work/status.txt" 2>/dev/null
 echo "---- viewer"
-cat "$OUT/p96view.log"
+cat "$OUT/panoview.log"
 exit $status

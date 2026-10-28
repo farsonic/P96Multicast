@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Multicast.card: a P96 card driver without hardware.
+ * Panorama - Panorama.card: a P96 card driver without hardware.
  *
  * FindCard() allocates the "video RAM" from Fast RAM, InitCard() describes
  * the board to rtg.library and starts the sender process, and the BoardInfo
@@ -375,12 +375,12 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	}
 
 	if (mc->boardnum) {
-		/* "Multicast2" ..., up to MC_MAXBOARDS */
-		CopyMem("Multicast", mc->boardname, 9);
-		mc->boardname[9] = '1' + mc->boardnum;
-		mc->boardname[10] = 0;
+		/* "Panorama2" ..., up to MC_MAXBOARDS */
+		CopyMem("Panorama", mc->boardname, 8);
+		mc->boardname[8] = '1' + mc->boardnum;
+		mc->boardname[9] = 0;
 	} else {
-		CopyMem("Multicast", mc->boardname, 10);
+		CopyMem("Panorama", mc->boardname, 9);
 	}
 	bi->BoardName = mc->boardname;
 	bi->BoardType = mc->cfg.boardtype;

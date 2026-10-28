@@ -1,7 +1,7 @@
 #ifndef RIPTIDE_MMSG_H
 #define RIPTIDE_MMSG_H
 /*
- * P96Multicast - many datagrams per call with Riptide (0.17 and later).
+ * Panorama - many datagrams per call with Riptide (0.17 and later).
  *
  * riptide.library version 3 has Linux's sendmmsg()/recvmmsg():
  * RiptideSendMMsg() at LVO -534 and RiptideRecvMMsg() at -540. They work

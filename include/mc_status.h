@@ -1,5 +1,5 @@
 /*
- * P96Multicast - status block in the Multicast.card library base, for
+ * Panorama - status block in the Panorama.card library base, for
  * "mctest STATUS": what rtg.library asked of the card and why setup failed,
  * readable without a log file or a debugger.
  */

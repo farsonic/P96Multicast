@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Fake.card, a card driver for tests/wraptest.c: it finds
+ * Panorama - Fake.card, a card driver for tests/wraptest.c: it finds
  * one board, fills in a few BoardInfo functions that record the registers
  * they were called with, and leaves the rest to rtg.library.
  */

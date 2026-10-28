@@ -1,10 +1,10 @@
 /*
- * P96Multicast - MulticastDesktop: one screen over several Multicast windows.
+ * Panorama - PanoramaDesk: one screen over several Panorama windows.
  *
- * With SPLIT=CxR, Multicast.card sends its screen in C x R parts, each to
- * a port of its own, and p96view.py --span shows each part in a window of
- * its own: one desktop over several "monitors". MulticastDesktop opens that
- * desktop, a public screen of C x R times MONITOR=, on the Multicast board,
+ * With SPLIT=CxR, Panorama.card sends its screen in C x R parts, each to
+ * a port of its own, and panoview.py --span shows each part in a window of
+ * its own: one desktop over several "monitors". PanoramaDesk opens that
+ * desktop, a public screen of C x R times MONITOR=, on the Panorama board,
  * and keeps it open. It is a commodity, with hotkeys (HOTKEYS=, ctrl+alt by
  * default) for the active window:
  *
@@ -23,19 +23,19 @@
  * Exchange can hide, disable and quit it. Quitting closes the desktop once
  * no windows are left on it.
  *
- *   MulticastDesktop                    the commodity (also from WBStartup)
- *   MulticastDesktop MOVE=RIGHT         the active window one monitor right;
+ *   PanoramaDesk                    the commodity (also from WBStartup)
+ *   PanoramaDesk MOVE=RIGHT         the active window one monitor right;
  *                                       LEFT, UP, DOWN too
- *   MulticastDesktop CENTRE=2           ... to the middle of monitor 2
- *   MulticastDesktop SWAP               the desktop or the Workbench in front
- *   MulticastDesktop CLOSE              tells the running one to quit
- *   MulticastDesktop SHELL              a Shell in the middle of the desktop
- *   MulticastDesktop INFO               every public screen: size, mode, owner
+ *   PanoramaDesk CENTRE=2           ... to the middle of monitor 2
+ *   PanoramaDesk SWAP               the desktop or the Workbench in front
+ *   PanoramaDesk CLOSE              tells the running one to quit
+ *   PanoramaDesk SHELL              a Shell in the middle of the desktop
+ *   PanoramaDesk INFO               every public screen: size, mode, owner
  *   ... WAIT=10                         wait up to 10 s for the desktop to open
  *   ... WINDOW=title                    a window by its title, not the active one
  *
- * The settings are MulticastPrefs': SPLIT, MONITOR, COLOURS, PUBSCREEN,
- * DEFAULTSCREEN, BEHIND, WORKBENCH and HOTKEYS in ENV:Multicast.prefs.
+ * The settings are PanoramaPrefs': SPLIT, MONITOR, COLOURS, PUBSCREEN,
+ * DEFAULTSCREEN, BEHIND, WORKBENCH and HOTKEYS in ENV:Panorama.prefs.
  */
 #include <exec/memory.h>
 #include <exec/ports.h>
@@ -59,10 +59,10 @@
 #include <string.h>
 #include "mcprefs.h"
 
-#define MD_VERSION "1.4"
-#define PORTNAME "MulticastDesktop"
+#define MD_VERSION "1.5"
+#define PORTNAME "PanoramaDesk"
 
-static const char version[] = "$VER: MulticastDesktop " MD_VERSION " (" MP_DATE ")";
+static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -74,7 +74,7 @@ enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_C
 
 /* the desktop: C x R monitors of MW x MH */
 static UWORD cols = 1, rows = 1, mw = 800, mh = 600, depth = 16;
-static char pubname[MAXPUBSCREENNAME + 1] = "MULTICAST";
+static char pubname[MAXPUBSCREENNAME + 1] = "PANORAMA";
 static int wb_side = WB_LEFT, wb_mon;     /* WORKBENCH=: where the Workbench is */
 static BOOL from_wb;
 
@@ -129,12 +129,12 @@ static void say(const char *text)
 {
 	/* from Workbench, or run with its output nowhere to be seen: a requester */
 	if ((from_wb || !Output() || !IsInteractive(Output())) && IntuitionBase) {
-		struct EasyStruct es = { sizeof(struct EasyStruct), 0, (UBYTE *)"MulticastDesktop",
+		struct EasyStruct es = { sizeof(struct EasyStruct), 0, (UBYTE *)"PanoramaDesk",
 		                         (UBYTE *)text, (UBYTE *)"Ok" };
 
 		EasyRequestArgs(NULL, &es, NULL, NULL);
 	} else {
-		printf("MulticastDesktop: %s\n", text);
+		printf("PanoramaDesk: %s\n", text);
 	}
 }
 
@@ -142,10 +142,10 @@ static void say(const char *text)
 static void tell(const char *text)
 {
 	if (!from_wb && Output() && IsInteractive(Output()))
-		printf("MulticastDesktop: %s\n", text);
+		printf("PanoramaDesk: %s\n", text);
 }
 
-/* "1600x600, mode 50de1100 Multicast:1600x600 16bit PC" */
+/* "1600x600, mode 50de1100 Panorama:1600x600 16bit PC" */
 static void describe(struct Screen *scr, char *buf, int len)
 {
 	ULONG id = GetVPModeID(&scr->ViewPort);
@@ -159,7 +159,7 @@ static void describe(struct Screen *scr, char *buf, int len)
 
 /* ---------------------------------------------------------------- the screen */
 
-/* a Multicast mode of this size with at least this depth */
+/* a Panorama mode of this size with at least this depth */
 static ULONG find_mode(UWORD w, UWORD h, UWORD d)
 {
 	ULONG id = INVALID_ID;
@@ -170,10 +170,10 @@ static ULONG find_mode(UWORD w, UWORD h, UWORD d)
 		char *m;
 
 		if (!GetDisplayInfoData(NULL, (UBYTE *)&ni, sizeof(ni), DTAG_NAME, id) ||
-		    !(m = strstr((char *)ni.Name, "Multicast")))
+		    !(m = strstr((char *)ni.Name, "Panorama")))
 			continue;
-		m += 9;
-		/* the first board: not Multicast2 ... */
+		m += 8;
+		/* the first board: not Panorama2 ... */
 		if (*m >= '0' && *m <= '9')
 			continue;
 		if (!GetDisplayInfoData(NULL, (UBYTE *)&di, sizeof(di), DTAG_DIMS, id))
@@ -198,9 +198,9 @@ static struct Screen *open_desktop(BOOL *ours)
 		describe(scr, buf, sizeof(buf));
 		tell("a public screen of that name is open already, using it:");
 		tell(buf);
-		if (!strstr(buf, "Multicast"))
-			say("The public screen MULTICAST is open already, but not on the Multicast "
-			    "board: close it (or the program that opened it) and start MulticastDesktop "
+		if (!strstr(buf, "Panorama"))
+			say("The public screen PANORAMA is open already, but not on the Panorama "
+			    "board: close it (or the program that opened it) and start PanoramaDesk "
 			    "again.");
 		return scr;
 	}
@@ -208,13 +208,13 @@ static struct Screen *open_desktop(BOOL *ours)
 	id = find_mode(w, h, depth);
 	if (id == INVALID_ID) {
 		snprintf(buf, sizeof(buf),
-		         "No Multicast mode %ux%u with %u bit.\n"
-		         "MulticastPrefs' Desktop page sets the modes up (then reboot).", w, h, depth);
+		         "No Panorama mode %ux%u with %u bit.\n"
+		         "PanoramaPrefs' Desktop page sets the modes up (then reboot).", w, h, depth);
 		say(buf);
 		return NULL;
 	}
 	scr = OpenScreenTags(NULL, SA_DisplayID, id, SA_Width, w, SA_Height, h, SA_Depth, depth,
-	                     SA_PubName, (ULONG)pubname, SA_Title, (ULONG)"Multicast desktop",
+	                     SA_PubName, (ULONG)pubname, SA_Title, (ULONG)"Panorama desktop",
 	                     SA_LikeWorkbench, TRUE, SA_SharePens, TRUE, SA_Type, PUBLICSCREEN,
 	                     SA_Behind, setting_on("BEHIND"), SA_ErrorCode, (ULONG)&err, TAG_END);
 	if (!scr) {
@@ -373,7 +373,7 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 
 /*
  * P96ScreenCx (Aminet util/cdity/P96ScreenCx) moves the mouse between the
- * boards itself, from the monitors' tool types MulticastPrefs writes: if it
+ * boards itself, from the monitors' tool types PanoramaPrefs writes: if it
  * runs, it crosses over first (this does if it hasn't by the fourth push).
  * A commodity of that name can't be made twice, which tells.
  */
@@ -387,7 +387,7 @@ static BOOL p96screencx_runs(void)
 	nb.nb_Version = NB_VERSION;
 	nb.nb_Name = (STRPTR)"P96ScreenCx";
 	nb.nb_Title = (STRPTR)"P96ScreenCx";
-	nb.nb_Descr = (STRPTR)"(MulticastDesktop checking)";
+	nb.nb_Descr = (STRPTR)"(PanoramaDesk checking)";
 	nb.nb_Unique = NBU_UNIQUE;
 	b = CxBroker(&nb, &err);
 	if (b) {
@@ -538,9 +538,9 @@ static int commodity(void)
 
 	memset(&nb, 0, sizeof(nb));
 	nb.nb_Version = NB_VERSION;
-	nb.nb_Name = (STRPTR)"MulticastDesktop";
-	nb.nb_Title = (STRPTR)"MulticastDesktop " MD_VERSION;
-	nb.nb_Descr = (STRPTR)"One screen over Multicast windows";
+	nb.nb_Name = (STRPTR)"PanoramaDesk";
+	nb.nb_Title = (STRPTR)"PanoramaDesk " MD_VERSION;
+	nb.nb_Descr = (STRPTR)"One screen over Panorama windows";
 	nb.nb_Unique = NBU_UNIQUE | NBU_NOTIFY;
 	nb.nb_Port = port;
 	broker = CxBroker(&nb, &err);
@@ -556,7 +556,7 @@ static int commodity(void)
 	    !add_hotkey(broker, port, quals, "cursor_up", HK_UP) ||
 	    !add_hotkey(broker, port, quals, "cursor_down", HK_DOWN) ||
 	    !add_hotkey(broker, port, quals, "m", HK_SWAP))
-		say("some hotkeys could not be made (HOTKEYS= in MulticastPrefs).");
+		say("some hotkeys could not be made (HOTKEYS= in PanoramaPrefs).");
 	for (i = 1; i <= cols * rows && i <= 4; i++) {
 		char key[2] = { (char)('0' + i), 0 };
 
@@ -679,7 +679,7 @@ static int command(LONG *args)
 			Signal(port->mp_SigTask, SIGBREAKF_CTRL_C);
 		Permit();
 		if (!port && Output() && IsInteractive(Output()))
-			printf("MulticastDesktop: is not running.\n");
+			printf("PanoramaDesk: is not running.\n");
 		return port ? RETURN_OK : RETURN_WARN;
 	}
 	if (args[A_INFO]) {
@@ -719,7 +719,7 @@ static int command(LONG *args)
 		char cmd[200];
 		BPTR nil = Open((STRPTR)"NIL:", MODE_OLDFILE);
 
-		snprintf(cmd, sizeof(cmd), "NewShell \"CON:%d/%d/%d/%d/Multicast Shell/CLOSE/SCREEN%s\"",
+		snprintf(cmd, sizeof(cmd), "NewShell \"CON:%d/%d/%d/%d/Panorama Shell/CLOSE/SCREEN%s\"",
 		         (scr->Width - w) / 2, (scr->Height - h) / 2, w, h, pubname);
 		if (SystemTags((STRPTR)cmd, SYS_Input, nil, SYS_Output, NULL, TAG_END) == -1)
 			say("cannot start the Shell.");
@@ -771,7 +771,7 @@ int main(int argc, char **argv)
 	if (!from_wb) {
 		rda = ReadArgs((STRPTR)template, args, NULL);
 		if (!rda) {
-			PrintFault(IoErr(), (STRPTR)"MulticastDesktop");
+			PrintFault(IoErr(), (STRPTR)"PanoramaDesk");
 			rc = RETURN_FAIL;
 			goto out;
 		}

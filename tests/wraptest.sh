@@ -1,5 +1,5 @@
 #!/bin/sh
-# P96Multicast - run tests/wraptest.c under vamos: the built Wrap.card wraps
+# Panorama - run tests/wraptest.c under vamos: the built Wrap.card wraps
 # Fake.card, once with DRAW=1 and once with DRAW=0.
 #
 # vamos only loads libraries whose file names end in .library, so the cards

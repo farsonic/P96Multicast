@@ -1,34 +1,38 @@
-P96Multicast 2.0 - a P96 graphics card that is the network
-============================================================
+Panorama 3.1 - a P96 graphics card that is the network
+======================================================
 
-Multicast.card is a Picasso96 (P96) card driver without hardware. Its
+(Called P96Multicast before 3.1. PanoramaPrefs' Install takes over the
+settings in Multicast.prefs and moves the old Multicast.card, its monitor
+and MulticastDesktop out of the way.)
+
+Panorama.card is a Picasso96 (P96) card driver without hardware. Its
 video memory is a block of Fast RAM, and a background task sends what is
 on screen as UDP packets, by default to the multicast group 239.255.96.1,
-port 9696. Watch it on another machine with Client/p96view.py.
+port 9696. Watch it on another machine with Client/panoview.py.
 
 New in 2.0: Copper, a protocol of drawing orders. What is drawn (fills,
 window moves, scrolling, text, patterns) goes out as a few bytes for the
 viewer to draw, pixels only for the rest, and the viewer draws the mouse
 pointer. The viewer tells the card what it missed, so nothing is resent
-blindly. Use the p96view.py from this package: older viewers speak
-protocol 1 only, and Multicast.card 2 no longer does.
+blindly. Use the panoview.py from this package: older viewers speak
+protocol 1 only, and Panorama.card 2 no longer does.
 
 Needs: a 68020 or better, P96 (or AROS m68k), and a running TCP/IP stack
 with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
 
 Contents
 --------
-  MulticastPrefs                   settings and installation (see below);
+  PanoramaPrefs                   settings and installation (see below);
                                    its window needs MUI 3.8 or later
                                    (else a plain GadTools one)
-  Libs/Picasso96/Multicast.card    the driver
+  Libs/Picasso96/Panorama.card    the driver
   Libs/Picasso96/Wrap.card         experimental: wraps another card driver
-  Devs/Monitors/Multicast.info     monitor icon, ToolType BOARDTYPE=Multicast
-  Prefs/Multicast.prefs            example settings
+  Devs/Monitors/Panorama.info     monitor icon, ToolType BOARDTYPE=Panorama
+  Prefs/Panorama.prefs            example settings
   Prefs/Wrap.prefs                 example settings for Wrap.card
   C/mctest                         test tool (see below)
   C/wrapstat                       shows what Wrap.card wraps
-  C/MulticastDesktop               the shared desktop, with hotkeys (below)
+  C/PanoramaDesk               the shared desktop, with hotkeys (below)
   C/Boing                          the ball, bouncing over the desktop
   Scripts/                         the desktop without typing (double-click,
                                    or by name in a Shell once installed):
@@ -39,7 +43,7 @@ Contents
   Client/desktop.command           on a Mac: both halves, a window each
                                    (FS-UAE's NAT; desktop-lan.command for
                                    multicast on a real network)
-  Client/p96view.py                viewer for Linux, macOS, Windows (Python 3)
+  Client/panoview.py                viewer for Linux, macOS, Windows (Python 3)
   Client/fake_sender.py            sends a test picture, to try a viewer
                                    without the Amiga
   Docs/                            README, COPPER (the protocol), BUILD,
@@ -49,65 +53,65 @@ Contents
 Quick start
 -----------
 Unpack, then in a Shell, inside this drawer:
-  MulticastPrefs INSTALL SETUP=SINGLE      one Multicast screen
-  MulticastPrefs INSTALL SETUP=TWO         two Multicast screens
-  MulticastPrefs INSTALL SETUP=MIRROR      your display card's screen (e.g.
+  PanoramaPrefs INSTALL SETUP=SINGLE      one Panorama screen
+  PanoramaPrefs INSTALL SETUP=TWO         two Panorama screens
+  PanoramaPrefs INSTALL SETUP=MIRROR      your display card's screen (e.g.
                                            uaegfx: the Workbench) also on
                                            the network
-  MulticastPrefs INSTALL SETUP=SPAN        your display card's screen split
-                                           over two Multicast boards, left
+  PanoramaPrefs INSTALL SETUP=SPAN        your display card's screen split
+                                           over two Panorama boards, left
                                            and right half: one desktop on two
                                            monitors, drag windows across
                                            (SETUP=SPAN2x2: four)
-  MulticastPrefs INSTALL SETUP=DESKTOP     a Multicast screen of its own,
+  PanoramaPrefs INSTALL SETUP=DESKTOP     a Panorama screen of its own,
                                            split in two (SPLIT=2x1), a window
                                            for each half: one desktop, drag
                                            windows from one to the other; the
                                            Workbench stays put. After the reboot:
-    Run >NIL: MulticastDesktop                   (opens the desktop)
-    python3 p96view.py --span 2x1                (on your computer)
+    Run >NIL: PanoramaDesk                   (opens the desktop)
+    python3 panoview.py --span 2x1                (on your computer)
                                            (DESKTOP2x2: four windows)
-  Or do it all in MulticastPrefs' Desktop page (below).
+  Or do it all in PanoramaPrefs' Desktop page (below).
 and say y when it asks to reboot (REBOOT reboots without asking,
 NOREBOOT never does). Add DRY to see first what it would do. INSTALL sets up
 everything for the next boot: the cards in LIBS:Picasso96, mctest and
-wrapstat in C:, MulticastPrefs in SYS:Prefs, the monitor and its icon,
-screen modes if Picasso96Mode has none for Multicast, and DEST=10.0.2.2 if
+wrapstat in C:, PanoramaPrefs in SYS:Prefs, the monitor and its icon,
+screen modes if Picasso96Mode has none for Panorama, and DEST=10.0.2.2 if
 the Amiga is on UAE's NAT network (start the TCP/IP stack before, so it
 can tell). It ends with what to run on your computer. Switching setups
 later puts back the monitors an earlier one moved aside.
 
-The shared desktop: MulticastPrefs' Desktop page, MulticastDesktop, Boing
+The shared desktop: PanoramaPrefs' Desktop page, PanoramaDesk, Boing
 -------------------------------------------------------------------------
-One Multicast screen shown in parts, a viewer window for each part, like
+One Panorama screen shown in parts, a viewer window for each part, like
 monitors side by side: windows are dragged from one to the other.
 
-MulticastPrefs, Desktop page (the first): a picture of your monitors.
+PanoramaPrefs, Desktop page (the first): a picture of your monitors.
   Monitors       one, two side by side or one above the other, three or
                  four side by side, four 2 x 2
   Each monitor   its size: 640 x 480 ... 1920 x 1080
   Colours        8, 16 or 32 bit
   Programs open on it   the desktop is the default public screen
-  Open at boot   MulticastDesktop in SYS:WBStartup
+  Open at boot   PanoramaDesk in SYS:WBStartup
   Behind Workbench      opens it behind, not in front
   Open now / Close      start or stop it now
 Install (or Save, then reboot) sets the card up: the desktop's size as a
 mode, enough video memory. On your computer:
-  python3 p96view.py --span 2x1 --group 127.0.0.1   (for two side by side)
+  python3 panoview.py --span 2x1 --group 127.0.0.1   (for two side by side)
 
-MulticastDesktop (C:) opens the desktop and keeps it open; a commodity
+PanoramaDesk (C:) opens the desktop and keeps it open; a commodity
 (Exchange shows it). Hotkeys, for the active window on the desktop:
   ctrl alt cursor keys   to the next monitor left/right/up/down, at the same
                          place on it
   ctrl alt 1 ... 4       to the middle of monitor 1 ... 4
   ctrl alt m             the desktop in front, or the Workbench again
-HOTKEYS=ctrl+alt in Multicast.prefs changes the qualifiers.
+HOTKEYS=ctrl+alt in Panorama.prefs changes the qualifiers.
 The Workbench keeps its own display while the desktop is in front with
 WBMONITOR=1 ("Workbench own monitor"; SETUP=DESKTOP sets it): Wrap.card
 wraps the Workbench's card (uaegfx in FS-UAE) only to keep its display on
 (KEEPDISPLAY=1 in Wrap.prefs), and the monitors get DISPLAYCHAIN=NO. For the
 mouse to move between the Workbench and the desktop, install P96ScreenCx
-(Aminet util/cdity/P96ScreenCx): MulticastPrefs writes the monitor tool
+(Aminet util/cdity/P96ScreenCx): PanoramaPrefs writes the monitor tool
 types it reads (RIGHT_OF=... from WORKBENCH=).
 The Workbench sits next to the desktop where WORKBENCH= says (LEFT1: left of
 monitor 1; RIGHT2, ABOVE1, BELOW2, ...; NONE: the hotkey only), as the
@@ -116,63 +120,63 @@ the mouse over that edge and the Workbench comes to the front with the
 pointer on its matching edge, and the window you last used there active;
 over the Workbench's edge back to the desktop the same way.
 From a Shell:
-  MulticastDesktop MOVE=RIGHT       (LEFT, UP, DOWN)
-  MulticastDesktop CENTRE=2
-  MulticastDesktop SWAP
-  MulticastDesktop CLOSE            quits it (once no windows are left)
-  MulticastDesktop SHELL            a Shell in the middle of the desktop
-  MulticastDesktop INFO             the desktop's size and display mode
+  PanoramaDesk MOVE=RIGHT       (LEFT, UP, DOWN)
+  PanoramaDesk CENTRE=2
+  PanoramaDesk SWAP
+  PanoramaDesk CLOSE            quits it (once no windows are left)
+  PanoramaDesk SHELL            a Shell in the middle of the desktop
+  PanoramaDesk INFO             the desktop's size and display mode
 
 Boing (C:) bounces the ball over the whole desktop, from monitor to
 monitor: Boing [SIZE=100] [SPEED=5] [SECS=n] [PUBSCREEN=name].
 Click the ball or Ctrl-C to stop it.
 
-The easy way: MulticastPrefs
+The easy way: PanoramaPrefs
 ----------------------------
-Double-click MulticastPrefs (in this package's top drawer, or run it from
+Double-click PanoramaPrefs (in this package's top drawer, or run it from
 a Shell). It sets everything up without P96's own tools:
   Network    where to send, port, rate, updates per second, log file
   Display    boards, video memory, and the screen modes: P96's own
              (Picasso96Mode), or a list of sizes the card adds itself
   Wrap.card  wrap another card, mirror it, or one screen over 2-4 monitors
   Status     what the running cards say, and what is installed
-Install copies the cards to LIBS:Picasso96, makes DEVS:Monitors/Multicast
+Install copies the cards to LIBS:Picasso96, makes DEVS:Monitors/Panorama
 (or Wrap) from a P96 monitor you have, with its icon, moves monitors that
 would set a card up twice to SYS:Storage/Monitors, and saves the
 settings. Then reboot. Save and Use work as in the system prefs editors.
 
 From a Shell, for scripts:
-  MulticastPrefs SHOW                     the settings and their defaults
-  MulticastPrefs SET FPS=10 MODES=640x480,1280x960
-  MulticastPrefs SET CARD=Multicast.card SPAN=2x2 HEAD=Multicast.card
+  PanoramaPrefs SHOW                     the settings and their defaults
+  PanoramaPrefs SET FPS=10 MODES=640x480,1280x960
+  PanoramaPrefs SET CARD=Panorama.card SPAN=2x2 HEAD=Panorama.card
                                           (also sets BOARDS=5 to match)
-  MulticastPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY]
-  MulticastPrefs STATUS
+  PanoramaPrefs INSTALL [SETUP=SINGLE|TWO|MIRROR] [DRY]
+  PanoramaPrefs STATUS
 
 Installing by hand on P96 (AmigaOS 3.x)
 ---------------------------------------
-1. Copy Libs/Picasso96/Multicast.card to LIBS:Picasso96/
+1. Copy Libs/Picasso96/Panorama.card to LIBS:Picasso96/
 2. Every P96 monitor in DEVS:Monitors is a copy of the same small program
    with an icon that names the board. Copy one you already have, e.g.
-     Copy DEVS:Monitors/uaegfx DEVS:Monitors/Multicast
-   and copy Devs/Monitors/Multicast.info to DEVS:Monitors/
-   (or give the copied monitor's icon the ToolType BOARDTYPE=Multicast).
+     Copy DEVS:Monitors/uaegfx DEVS:Monitors/Panorama
+   and copy Devs/Monitors/Panorama.info to DEVS:Monitors/
+   (or give the copied monitor's icon the ToolType BOARDTYPE=Panorama).
 3. Optional: settings (see below). Without a prefs file the defaults
    are used. To make one:
-     Copy Prefs/Multicast.prefs ENVARC:
-     Copy Prefs/Multicast.prefs ENV:
+     Copy Prefs/Panorama.prefs ENVARC:
+     Copy Prefs/Panorama.prefs ENV:
    and remove the '#' in front of the lines you change.
-4. Reboot. Multicast modes appear in ScreenMode prefs; open a screen in
+4. Reboot. Panorama modes appear in ScreenMode prefs; open a screen in
    one (or use mctest), start your TCP/IP stack as usual.
 
 Installing on AROS m68k
 -----------------------
-1. Copy Multicast.card to LIBS:Picasso96/
-2. Copy DEVS:Monitors/P96 DEVS:Monitors/Multicast  (AROS's P96 monitor
+1. Copy Panorama.card to LIBS:Picasso96/
+2. Copy DEVS:Monitors/P96 DEVS:Monitors/Panorama  (AROS's P96 monitor
    driver loads the card named after itself; no icon needed)
 3. As above for the prefs. AROS may put the Workbench itself on the card.
 
-Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
+Settings (ENV:Panorama.prefs, or ToolTypes of the monitor icon)
 -----------------------------------------------------------------
   DEST=239.255.96.1   destination, multicast or unicast address
   PORT=9696           UDP port
@@ -190,15 +194,15 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   INPUT=0             1: the mouse and keys in the viewer's windows work
                       the Amiga (the card's screen comes to the front);
                       anyone who can reach the card could, so it is off
-                      unless set; SETUP=DESKTOP sets it. p96view.py
+                      unless set; SETUP=DESKTOP sets it. panoview.py
                       --no-input keeps a viewer's to itself
   INPUTFROM=          with INPUT=1: only from this address
   SPLIT=1x1           the screen in CxR parts (at most 4), each sent to a
                       port of its own, PORT, PORT+1, ..., and with a
                       multicast DEST to a group of its own, DEST, DEST+1,
                       ... (239.255.96.1, .2, ...): a window each with
-                      p96view.py --span CxR, or each part on another
-                      device: p96view.py --part 2
+                      panoview.py --span CxR, or each part on another
+                      device: panoview.py --part 2
   DEST2= DEST3= DEST4=  where part 2, 3, 4 go instead (e.g. another
                       machine's address)
   VRAM=8              video memory in MB (read at boot)
@@ -206,9 +210,9 @@ Settings (ENV:Multicast.prefs, or ToolTypes of the monitor icon)
   MAXHEIGHT=1200
   BOARDTYPE=6         P96 board type reported (6 = PicassoII)
   PRI=-1              sender task priority
-  LOG=T:Multicast.log log file: stack found, modes, send errors, throughput
+  LOG=T:Panorama.log log file: stack found, modes, send errors, throughput
   BOARDS=1            boards to offer (1-8): board n sends to PORT+n, its
-                      modes are called Multicast2:..., and it logs to LOG.2
+                      modes are called Panorama2:..., and it logs to LOG.2
                       (P96; AROS takes one board per card, see Wrap.card).
                       VRAM= is for each board
   MODES=...           screen modes the card adds for P96, e.g.
@@ -226,37 +230,37 @@ TCP/IP stack appears, so the card can start before the network.
 Testing
 -------
   mctest STATUS     is the card loaded, is its sender running, is there a stack
-  mctest LIST       list the display modes (look for "Multicast:")
+  mctest LIST       list the display modes (look for "Panorama:")
   mctest WIDTH=640 HEIGHT=480 DEPTH=8 SECS=20
                     open a screen on the card with colour bars; depth 8, 16
                     or 32 (16 and 32 need cybergraphics.library)
 
 A second screen on the card, next to your Workbench on another board:
-  Run >NIL: mctest PUBSCREEN=MULTICAST WIDTH=800 HEIGHT=600 DEPTH=8 DEFAULT
-                    opens a Workbench-like public screen named MULTICAST on
+  Run >NIL: mctest PUBSCREEN=PANORAMA WIDTH=800 HEIGHT=600 DEPTH=8 DEFAULT
+                    opens a Workbench-like public screen named PANORAMA on
                     the card; with DEFAULT it is the default public screen
                     while open, so new shells and windows go there:
   Add BACK to open it behind your other screens: Intuition shows only
   the front screen on the Amiga's own display, but the card keeps
   streaming its screen while it is behind. Left-Amiga M / N cycles
   screens; the mouse works on whichever screen is in front.
-  NewShell "CON:20/20/600/200/Multicast Shell/CLOSE"
+  NewShell "CON:20/20/600/200/Panorama Shell/CLOSE"
                     Programs with a PUBSCREEN option can be pointed at it
                     directly. To close it: close its windows, then
                     Break <process number> (see Status) or Ctrl-C.
 
 On the receiving machine:
-  python3 p96view.py                       window; joins 239.255.96.1:9696
+  python3 panoview.py                       window; joins 239.255.96.1:9696
                                            (no tkinter, as with Homebrew's
                                            Python: opens a web browser view)
-  python3 p96view.py --web                 web browser view, http://127.0.0.1:8096/
-  python3 p96view.py --span 2x1            SETUP=SPAN: a window for each board,
+  python3 panoview.py --web                 web browser view, http://127.0.0.1:8096/
+  python3 panoview.py --span 2x1            SETUP=SPAN: a window for each board,
                                            like two monitors (ports 9696, 9697);
                                            --one-window puts them in one
-  python3 p96view.py --iface 192.168.1.10  join on a particular interface
-  python3 p96view.py --snapshot amiga.png --duration 30
+  python3 panoview.py --iface 192.168.1.10  join on a particular interface
+  python3 panoview.py --snapshot amiga.png --duration 30
   python3 fake_sender.py --dest 127.0.0.1 --seconds 0
-                    with "p96view.py --group 127.0.0.1" in another window:
+                    with "panoview.py --group 127.0.0.1" in another window:
                     checks the viewer without the Amiga
 numpy makes the viewer much faster but is optional. The viewer answers the
 card (what it lost, the whole picture when it starts) at the address the
@@ -266,8 +270,8 @@ Under FS-UAE
 ------------
 * With FS-UAE's built-in network (slirp, uaenet.device unit 0 or the
   A2065), multicast does not reach the host. Send unicast to the host
-  instead: DEST=10.0.2.2 in ENV:Multicast.prefs, and on the host
-    python3 p96view.py --group 127.0.0.1
+  instead: DEST=10.0.2.2 in ENV:Panorama.prefs, and on the host
+    python3 panoview.py --group 127.0.0.1
   (any non-multicast --group just listens on the port).
 * With FS-UAE bridged to your LAN (Riptide's uaenet pcap patch) the
   default multicast works, but the host running FS-UAE cannot see the
@@ -278,7 +282,7 @@ Wrap.card (experimental)
 Wrap.card loads another card driver and passes every call between it and
 rtg.library through, counting the calls and recording what is on display.
 It can show the screen on other boards ("heads"): MIRROR= puts the same
-screen on a second board, e.g. a Multicast board, so the screen of a real
+screen on a second board, e.g. a Panorama board, so the screen of a real
 graphics card goes out on the network too; SPAN=2x2 shows one big screen
 on four monitors, a tile on each, so windows are dragged from monitor to
 monitor. Docs/WRAP.md has the details.
@@ -289,15 +293,15 @@ monitor. Docs/WRAP.md has the details.
 3. Copy Prefs/Wrap.prefs to ENVARC: and ENV:, and set CARD= to the real
    card, e.g. CARD=uaegfx.card
 4. Reboot, then run wrapstat.
-Mirror: add MIRROR=Multicast.card to Wrap.prefs. If CARD= is also
-Multicast.card, put BOARDS=2 in Multicast.prefs: the mirror then streams
-to port 9697 (python3 p96view.py --port 9697).
+Mirror: add MIRROR=Panorama.card to Wrap.prefs. If CARD= is also
+Panorama.card, put BOARDS=2 in Panorama.prefs: the mirror then streams
+to port 9697 (python3 panoview.py --port 9697).
 Span: SPAN=2x2 and HEAD=<card> (or HEAD1= ... HEAD4=) in Wrap.prefs, then
 open a screen twice as wide and high as its mode (1280x960 in a 640x480
-mode for 2x2), or use a mode that big. With CARD=Multicast.card and
-HEAD=Multicast.card, BOARDS=5: the heads stream to ports 9697-9700.
+mode for 2x2), or use a mode that big. With CARD=Panorama.card and
+HEAD=Panorama.card, BOARDS=5: the heads stream to ports 9697-9700.
 Try it: mctest SPAN=2x2 WIDTH=640 HEIGHT=480 DEPTH=16
-Mirroring to Multicast.card with HEADSHARE=1 (what SETUP=MIRROR sets up),
+Mirroring to Panorama.card with HEADSHARE=1 (what SETUP=MIRROR sets up),
 Wrap.card passes the real card's drawing on, so the mirror sends orders
 too. wrapstat says "hears the wrapped board's drawing" for it.
 

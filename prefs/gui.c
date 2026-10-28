@@ -1,9 +1,9 @@
 /*
- * P96Multicast - MulticastPrefs: the window.
+ * Panorama - PanoramaPrefs: the window.
  *
  * GadTools, so it runs on AmigaOS 3.x and AROS alike. Five pages, chosen
  * with the cycle gadget at the top, each its own gadget list swapped in
- * and out: Desktop (the shared screen over several Multicast windows, with
+ * and out: Desktop (the shared screen over several Panorama windows, with
  * a picture of the monitors), Network, Display (with the screen modes),
  * Wrap.card and Status.
  * Save writes ENVARC: and ENV:, Use only ENV:, Install also copies the
@@ -600,7 +600,7 @@ static void draw_map(void)
 	mp_trace("map: the text under it");
 	SetAPen(rp, plain);
 	snprintf(buf, sizeof(buf), "Desktop %d x %d%s", (int)c * mw, (int)r * mh,
-	         c * r > 1 ? ": windows move across" : ": one Multicast screen");
+	         c * r > 1 ? ": windows move across" : ": one Panorama screen");
 	{
 		WORD l = TextLength(rp, (STRPTR)buf, strlen(buf));
 
@@ -844,7 +844,7 @@ static BOOL set_or_say(const struct Setting *s, const char *v)
 		char buf[160];
 
 		snprintf(buf, sizeof(buf), "%s %s", s->key, why);
-		tell("MulticastPrefs", buf);
+		tell("PanoramaPrefs", buf);
 		return FALSE;
 	}
 	return TRUE;
@@ -897,9 +897,9 @@ static BOOL collect(void)
 	wb_name(buf, sizeof(buf), wb_side[wb_sel], wb_mon[wb_sel]);
 	prefs_set(find_setting("WORKBENCH"), buf);
 	if (layout_sel && wrap >= 2) {
-		/* a desktop over several windows is one plain Multicast board */
+		/* a desktop over several windows is one plain Panorama board */
 		wrap = 0;
-		note("Wrap.card off: the desktop is one Multicast board, split in parts.");
+		note("Wrap.card off: the desktop is one Panorama board, split in parts.");
 	}
 
 	/* the cycles say which of the fields count */
@@ -909,7 +909,7 @@ static BOOL collect(void)
 		prefs_set(find_setting("SPAN"), "");
 	} else {
 		if (!*prefs_value(find_setting("CARD"))) {
-			tell("MulticastPrefs", "Wrap card: which card should Wrap.card wrap?\n(e.g. uaegfx.card, or Multicast.card)");
+			tell("PanoramaPrefs", "Wrap card: which card should Wrap.card wrap?\n(e.g. uaegfx.card, or Panorama.card)");
 			return FALSE;
 		}
 		if (wrap != 2)
@@ -917,11 +917,11 @@ static BOOL collect(void)
 		if (wrap != 3)
 			prefs_set(find_setting("SPAN"), "");
 		if (wrap == 2 && !*prefs_value(find_setting("MIRROR"))) {
-			tell("MulticastPrefs", "Mirror on: which card should show the same screen?");
+			tell("PanoramaPrefs", "Mirror on: which card should show the same screen?");
 			return FALSE;
 		}
 		if (wrap == 3 && !*prefs_value(find_setting("SPAN"))) {
-			tell("MulticastPrefs", "Span: how many heads, columns x rows (e.g. 2x2)?");
+			tell("PanoramaPrefs", "Span: how many heads, columns x rows (e.g. 2x2)?");
 			return FALSE;
 		}
 	}
@@ -930,7 +930,7 @@ static BOOL collect(void)
 	} else {
 		modes_to(buf, sizeof(buf));
 		if (!nmodes) {
-			tell("MulticastPrefs", "Screen modes: the list is empty.\nAdd sizes, or choose P96's settings.");
+			tell("PanoramaPrefs", "Screen modes: the list is empty.\nAdd sizes, or choose P96's settings.");
 			return FALSE;
 		}
 		if (!set_or_say(find_setting("MODES"), buf))
@@ -950,7 +950,7 @@ static void add_mode(void)
 		return;
 	why = prefs_check(find_setting("MODES"), (char *)str);
 	if (why || !mp_stricmp((char *)str, "none")) {
-		tell("MulticastPrefs", "A size is width x height, e.g. 1280x960");
+		tell("PanoramaPrefs", "A size is width x height, e.g. 1280x960");
 		return;
 	}
 	if (nmodes >= MAXLISTED)
@@ -993,7 +993,7 @@ static void run_desktop(const char *cmd, BOOL async)
 	}
 }
 
-/* the settings as they are in the window (Use), and MulticastDesktop started */
+/* the settings as they are in the window (Use), and PanoramaDesk started */
 static void open_desktop(void)
 {
 	int i;
@@ -1009,14 +1009,14 @@ static void open_desktop(void)
 			                  prefs_value(find_setting(fields[i].key))[0] == '1', TAG_END);
 	prefs_fix(note);
 	if (!prefs_write(FALSE)) {
-		tell("MulticastPrefs", "Could not write the settings to ENV:");
+		tell("PanoramaPrefs", "Could not write the settings to ENV:");
 		return;
 	}
 	if (report[0]) {
-		tell("MulticastPrefs: Desktop", report);
+		tell("PanoramaPrefs: Desktop", report);
 		report[0] = 0;
 	}
-	run_desktop("C:MulticastDesktop", TRUE);
+	run_desktop("C:PanoramaDesk", TRUE);
 }
 
 /* ---------------------------------------------------------------- the loop */
@@ -1032,7 +1032,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 37);
 	GadToolsBase = OpenLibrary("gadtools.library", 37);
 	if (!IntuitionBase || !GfxBase || !GadToolsBase) {
-		printf("MulticastPrefs: needs intuition, graphics and gadtools.library V37\n");
+		printf("PanoramaPrefs: needs intuition, graphics and gadtools.library V37\n");
 		rc = RETURN_FAIL;
 		goto out;
 	}
@@ -1051,7 +1051,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	if (scr)
 		dri = GetScreenDrawInfo(scr);
 	if (!scr || !(vi = GetVisualInfo(scr, TAG_END)) || !make_gadgets(scr)) {
-		printf("MulticastPrefs: cannot make the window's gadgets\n");
+		printf("PanoramaPrefs: cannot make the window's gadgets\n");
 		rc = RETURN_FAIL;
 		if (scr)
 			UnlockPubScreen(NULL, scr);
@@ -1065,7 +1065,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 			for (g = glist[i]; g; g = g->NextGadget)
 				if (g->LeftEdge + g->Width > w)
 					w = g->LeftEdge + g->Width;
-		win = OpenWindowTags(NULL, WA_Title, (ULONG)"MulticastPrefs " MP_VERSION,
+		win = OpenWindowTags(NULL, WA_Title, (ULONG)"PanoramaPrefs " MP_VERSION,
 		                     WA_InnerWidth, w + 12 - scr->WBorLeft,
 		                     WA_Height, page_bottom, WA_DragBar, TRUE, WA_DepthGadget, TRUE,
 		                     WA_CloseGadget, TRUE, WA_Activate, TRUE, WA_PubScreen, (ULONG)scr,
@@ -1080,7 +1080,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	dscr = scr;   /* dri is freed with the window */
 	UnlockPubScreen(NULL, scr);
 	if (!win) {
-		printf("MulticastPrefs: cannot open the window\n");
+		printf("PanoramaPrefs: cannot open the window\n");
 		rc = RETURN_FAIL;
 		goto out;
 	}
@@ -1140,7 +1140,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					prefs_fix(note);
 					mp_trace("save/use: write");
 					if (!prefs_write(g->GadgetID == ID_SAVE)) {
-						tell("MulticastPrefs", "Could not write the settings to ENV: or ENVARC:");
+						tell("PanoramaPrefs", "Could not write the settings to ENV: or ENVARC:");
 						break;
 					}
 					mp_trace("save/use: written, %d bytes of report", (int)strlen(report));
@@ -1148,10 +1148,10 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					if (report[0]) {
 						/* changes that the card only takes at boot: offer it */
 						if (strstr(report, "reboot") && g->GadgetID == ID_SAVE) {
-							if (ask("MulticastPrefs", report, "Reboot now|Later"))
+							if (ask("PanoramaPrefs", report, "Reboot now|Later"))
 								mp_reboot();
 						} else {
-							tell("MulticastPrefs", report);
+							tell("PanoramaPrefs", report);
 						}
 					}
 					done = TRUE;
@@ -1162,7 +1162,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					report[0] = 0;
 					prefs_fix(note);
 					install(note, TRUE, NULL, NULL);
-					if (!ask("MulticastPrefs: Install", report, "Install|Cancel"))
+					if (!ask("PanoramaPrefs: Install", report, "Install|Cancel"))
 						break;
 					report[0] = 0;
 					{
@@ -1177,10 +1177,10 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						/* it all starts at the next boot: offer one now */
 						if (ok) {
 							note("\nReboot now?");
-							if (ask("MulticastPrefs: Install", report, "Reboot now|Later"))
+							if (ask("PanoramaPrefs: Install", report, "Reboot now|Later"))
 								mp_reboot();
 						} else {
-							tell("MulticastPrefs: Install", report);
+							tell("PanoramaPrefs: Install", report);
 						}
 					}
 					if (page == PAGE_STATUS)
@@ -1218,7 +1218,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 						} else if (fields[i].what == F_OPEN) {
 							open_desktop();
 						} else if (fields[i].what == F_CLOSE) {
-							run_desktop("C:MulticastDesktop CLOSE", FALSE);
+							run_desktop("C:PanoramaDesk CLOSE", FALSE);
 						} else if (fields[i].what == F_MODESRC && code == 1 && !nmodes) {
 							modes_from(standard_modes);
 							modes_show();

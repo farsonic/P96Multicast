@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Wrap.card's heads: the first wrapped board's screen on up
+ * Panorama - Wrap.card's heads: the first wrapped board's screen on up
  * to WRAP_MAXHEADS other boards.
  *
  * Each head is one board of a card driver (MIRROR=, HEAD=, HEAD1= ...),
@@ -19,7 +19,7 @@
  * room for a shadow, a head compares with its video memory instead.
  *
  * HEADSHARE=1 skips all of that for heads that can show any memory, like
- * Multicast.card's boards: such a head is panned onto its part of the
+ * Panorama.card's boards: such a head is panned onto its part of the
  * wrapped board's bitmap itself (SetPanning with the bitmap's width and the
  * tile's offset), and nothing is compared or copied at all.
  *
@@ -183,11 +183,11 @@ static void set_palette(struct Heads *hs, struct Head *hd)
 	((SetColorArrayFn)bi->SetColorArray)(bi, 0, 256, hd->h->lib);
 }
 
-/* Multicast.card 2 and up: it can hear what is drawn and what is copied */
+/* Panorama.card 2 and up: it can hear what is drawn and what is copied */
 BOOL wrap_is_copper(struct Library *card)
 {
 	const char *n = card ? card->lib_Node.ln_Name : NULL;
-	const char *m = "Multicast.card";
+	const char *m = "Panorama.card";
 
 	if (!n || card->lib_Version < 2)
 		return FALSE;
@@ -350,7 +350,7 @@ static void copy_changes(struct Heads *hs, struct Head *hd)
 	UBYTE *dst = h->mem;
 	UBYTE *sh = hd->shadow;
 	ULONG copied = 0, y, off, run, n;
-	/* Multicast.card 2: what changed, in bands of rows, so it compares only that */
+	/* Panorama.card 2: what changed, in bands of rows, so it compares only that */
 	McDamageFn damage = wrap_is_copper(h->lib) ? WRAP_LVO(h->lib, WRAP_LVO_MCDAMAGE) : NULL;
 	ULONG lo = len, hi = 0, band = 0;
 

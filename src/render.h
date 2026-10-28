@@ -1,9 +1,9 @@
 /*
- * P96Multicast - Copper's reference renderer (render.c).
+ * Panorama - Copper's reference renderer (render.c).
  *
  * The card draws every order it sends into its shadow, the copy of what
  * the viewers have, with these functions. Viewers draw them the same way
- * (client/p96view.py), so the shadow stays what they show, and comparing
+ * (client/panoview.py), so the shadow stays what they show, and comparing
  * the screen with the shadow finds whatever the orders got wrong. Plain C,
  * built for the Amiga and, for tests, natively.
  *

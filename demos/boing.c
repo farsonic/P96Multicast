@@ -1,13 +1,13 @@
 /*
- * P96Multicast - Boing: the ball, bouncing over the whole shared desktop.
+ * Panorama - Boing: the ball, bouncing over the whole shared desktop.
  *
  * A small window without a border, with the red and white ball in it,
- * moved around the public screen MulticastDesktop opens: over a desktop
+ * moved around the public screen PanoramaDesk opens: over a desktop
  * split in parts (SPLIT=2x1), it bounces from one viewer window to the
- * other. Moving a window is a copy within the screen, so on Multicast.card
+ * other. Moving a window is a copy within the screen, so on Panorama.card
  * each step goes out as a few COPY orders, not as pixels.
  *
- *   Boing                       on the shared desktop (PUBSCREEN=, MULTICAST)
+ *   Boing                       on the shared desktop (PUBSCREEN=, PANORAMA)
  *   Boing PUBSCREEN=Workbench   ... or any public screen
  *   Boing SIZE=120 SPEED=6      the ball's size, and how fast it goes
  *   Boing SECS=30               stop by itself after 30 seconds
@@ -119,7 +119,7 @@ int main(void)
 {
 	LONG args[A_COUNT] = { 0 };
 	struct RDArgs *rda;
-	const char *name = "MULTICAST";
+	const char *name = "PANORAMA";
 	struct Screen *scr;
 	struct Window *win = NULL;
 	struct BitMap *frames[PHASES] = { 0 };
@@ -159,7 +159,7 @@ int main(void)
 	if (!scr && !args[A_PUBSCREEN])
 		scr = LockPubScreen(NULL);
 	if (!scr) {
-		printf("Boing: no public screen %s (MulticastDesktop opens it)\n", name);
+		printf("Boing: no public screen %s (PanoramaDesk opens it)\n", name);
 		FreeArgs(rda);
 		goto out;
 	}

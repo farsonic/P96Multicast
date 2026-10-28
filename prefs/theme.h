@@ -1,5 +1,5 @@
 /*
- * P96Multicast - theme.h: MulticastPrefs' look, as Easel's: a dark palette
+ * Panorama - theme.h: PanoramaPrefs' look, as Easel's: a dark palette
  * obtained as pens on the window's screen, flat drawing, and icons drawn in
  * code from short vector descriptions (none copied from other programs).
  */

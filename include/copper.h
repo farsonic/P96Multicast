@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Copper, the display protocol (see docs/COPPER.md).
+ * Panorama - Copper, the display protocol (see docs/COPPER.md).
  *
  * The Amiga's Copper runs a list of display instructions; this protocol
  * streams one: what was drawn (a fill, a copy, a line of text) whenever the

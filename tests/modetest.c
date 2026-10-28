@@ -1,9 +1,9 @@
 /*
- * P96Multicast - modetest: runs the built Multicast.card under vamos, with
+ * Panorama - modetest: runs the built Panorama.card under vamos, with
  * this program in the place of rtg.library, and checks the screen modes it
  * puts in bi->ResolutionsList (src/modes.c).
  *
- *   modetest PATH COUNT [WxH [PRE]]  PATH: Multicast.card's file
+ *   modetest PATH COUNT [WxH [PRE]]  PATH: Panorama.card's file
  *                               COUNT: the resolutions the card is to add
  *                               WxH: one that must be among them (- for none)
  *                               PRE: P96 has a 640x480 of its own already
@@ -43,8 +43,8 @@ int main(int argc, char **argv)
 
 	if (argc > 3 && argv[3][0] != '-')
 		sscanf(argv[3], "%hux%hu", &fw, &fh);
-	card = OpenLibrary((STRPTR)(argc > 1 ? argv[1] : "LIBS:Picasso96/Multicast.card"), 0);
-	check(card != NULL, "Multicast.card opens");
+	card = OpenLibrary((STRPTR)(argc > 1 ? argv[1] : "LIBS:Picasso96/Panorama.card"), 0);
+	check(card != NULL, "Panorama.card opens");
 	if (!card)
 		return 20;
 	bi = AllocMem(sizeof(*bi) + 4096, MEMF_PUBLIC | MEMF_CLEAR);
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 		printf("\n");
 		/* IDs from the top of the range (0xc0 and up), apart from P96's own */
 		if (!n || res->BoardInfo != bi || !(res->Flags & P96F_PUBLIC) ||
-		    strncmp(res->Node.ln_Name, "P96-0:Multicast:", 16) ||
+		    strncmp(res->Node.ln_Name, "P96-0:Panorama:", 15) ||
 		    (res->DisplayID & 0xff00ffffUL) != 0x50001000UL ||
 		    ((res->DisplayID >> 16) & 0xff) < 0xc0)
 			good = 0;

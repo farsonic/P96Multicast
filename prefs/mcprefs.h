@@ -1,8 +1,8 @@
 /*
- * P96Multicast - MulticastPrefs: settings for Multicast.card and Wrap.card
+ * Panorama - PanoramaPrefs: settings for Panorama.card and Wrap.card
  * without P96's own tools.
  *
- * settings.c  the settings (ENV:Multicast.prefs, ENV:Wrap.prefs): read,
+ * settings.c  the settings (ENV:Panorama.prefs, ENV:Wrap.prefs): read,
  *             check, change, write, keeping lines it doesn't know
  * install.c   copies the cards, makes the monitor and its icon
  * status.c    what the running cards say about themselves
@@ -14,11 +14,11 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "3.0"
+#define MP_VERSION "3.1"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
-#define FILE_MC   0   /* Multicast.prefs */
+#define FILE_MC   0   /* Panorama.prefs */
 #define FILE_WRAP 1   /* Wrap.prefs */
 #define NFILES    2
 
@@ -47,7 +47,7 @@ extern const int nsettings;
 #define MP_LINELEN 200
 
 struct PrefsFile {
-	const char *name;           /* "Multicast.prefs" */
+	const char *name;           /* "Panorama.prefs" */
 	char  lines[MP_LINES][MP_LINELEN];
 	int   nlines;
 	BOOL  loaded;               /* read from ENV: or ENVARC: */

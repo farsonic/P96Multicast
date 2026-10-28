@@ -1,10 +1,10 @@
 #!/bin/sh
-# P96Multicast - Wrap.card in FS-UAE with AROS m68k: Wrap.card wraps
-# Multicast.card, and mctest opens and draws a screen on it in each depth.
+# Panorama - Wrap.card in FS-UAE with AROS m68k: Wrap.card wraps
+# Panorama.card, and mctest opens and draws a screen on it in each depth.
 #
-# Installs build/Wrap.card and build/Multicast.card in LIBS:Picasso96, a copy
+# Installs build/Wrap.card and build/Panorama.card in LIBS:Picasso96, a copy
 # of AROS's P96 monitor driver as Devs:Monitors/Wrap (it opens the card named
-# after itself) and no Devs:Monitors/Multicast, and CARD=Multicast.card in
+# after itself) and no Devs:Monitors/Panorama, and CARD=Panorama.card in
 # ENVARC:Wrap.prefs. No network: the checks are what Wrap.card, the card and
 # mctest report, written to the Work: disk.
 #
@@ -19,7 +19,7 @@ TIMEOUT=${2:-240}
 AROSFS=${AROSFS:-/tmp/claude-0/arosfs}
 OUT=${OUT:-build/emu-wrap}
 
-for f in build/Wrap.card build/Multicast.card build/mctest build/wrapstat \
+for f in build/Wrap.card build/Panorama.card build/mctest build/wrapstat \
          "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
@@ -31,17 +31,17 @@ work=$(cd "$OUT/work" && pwd)
 
 # ---- install into AROS
 mkdir -p "$AROSFS/Libs/Picasso96" "$AROSFS/Prefs/Env-Archive"
-cp build/Wrap.card build/Multicast.card "$AROSFS/Libs/Picasso96/"
+cp build/Wrap.card build/Panorama.card "$AROSFS/Libs/Picasso96/"
 cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Wrap"
-rm -f "$AROSFS/Devs/Monitors/Multicast"
+rm -f "$AROSFS/Devs/Monitors/Panorama"
 cat > "$AROSFS/Prefs/Env-Archive/Wrap.prefs" <<EOF
 # written by emu/wrap_test.sh
-CARD=Multicast.card
+CARD=Panorama.card
 ${WRAP_PREFS:-}
 EOF
-cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
+cat > "$AROSFS/Prefs/Env-Archive/Panorama.prefs" <<EOF
 # written by emu/wrap_test.sh
-LOG=RAM:Multicast.log
+LOG=RAM:Panorama.log
 EOF
 if ! grep -q waitwork "$AROSFS/S/User-Startup" 2>/dev/null; then
 	cat >> "$AROSFS/S/User-Startup" <<'EOF'
@@ -120,7 +120,7 @@ show() {
 }
 show wrapstat-boot.txt
 show status.txt
-echo "---- modes (Multicast, first 4)"
+echo "---- modes (Panorama, first 4)"
 tr -d '\r' < "$work/modes.txt" 2>/dev/null | grep -i multicast | head -4
 for d in $DEPTHS; do
 	show "mctest-$d.log"
@@ -140,7 +140,7 @@ need() {
 count() {
 	tr -d '\r' < "$ws" 2>/dev/null | awk -v f="$1" '$1 == f { print $2 }'
 }
-need "wrapping Multicast.card" "$ws" "Wrap.card wraps Multicast.card"
+need "wrapping Panorama.card" "$ws" "Wrap.card wraps Panorama.card"
 need "board 0: set up" "$ws" "the board is set up through Wrap.card"
 need "last error: none" "$ws" "no error"
 for d in $DEPTHS; do

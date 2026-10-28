@@ -1,6 +1,6 @@
 /*
- * P96Multicast - theme.c: see theme.h. The palette is Easel's dark one;
- * the icons are MulticastPrefs' own.
+ * Panorama - theme.c: see theme.h. The palette is Easel's dark one;
+ * the icons are PanoramaPrefs' own.
  */
 #include <string.h>
 #include <stdio.h>

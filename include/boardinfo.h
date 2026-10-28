@@ -1,5 +1,5 @@
 /*
- * P96Multicast - the P96 BoardInfo structure, as far as a card driver uses it.
+ * Panorama - the P96 BoardInfo structure, as far as a card driver uses it.
  *
  * Written from the interface description at
  * https://wiki.icomp.de/wiki/P96_Driver_Development and the published field
@@ -140,7 +140,7 @@ struct ModeInfo {
  * class (CHUNKY ... TRUEALPHA) it can be shown in. P96 makes these from its
  * settings (Picasso96Mode), but a card may also put its own in
  * bi->ResolutionsList in InitCard, as UAE's uaegfx.card does. ln_Name
- * points at P96ID, which runs on into Name ("P96-0:Multicast:640x480").
+ * points at P96ID, which runs on into Name ("P96-0:Panorama:640x480").
  */
 #define MAXRESOLUTIONNAMELENGTH 22
 #define P96B_PUBLIC 1               /* offered to programs */

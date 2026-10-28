@@ -1,5 +1,5 @@
 /*
- * P96Multicast - muigui.c: MulticastPrefs' window, in MUI, drawn the way
+ * Panorama - muigui.c: PanoramaPrefs' window, in MUI, drawn the way
  * Easel draws its interface: dark, flat, with its own controls and icons.
  *
  *  +-----------+--------------------------------------------+
@@ -561,7 +561,7 @@ static void map_draw(Object *obj)
 		}
 	}
 	snprintf(buf, sizeof(buf), "Desktop %d x %d%s", (int)(c * mw), (int)(r * mh),
-	         c * r > 1 ? ": windows move across" : ": one Multicast screen");
+	         c * r > 1 ? ": windows move across" : ": one Panorama screen");
 	i = theme_textlen(rp, buf, FALSE);
 	theme_text(rp, _mleft(obj) + (_mwidth(obj) - i) / 2, _mbottom(obj) - fh - 2, buf,
 	           tpen(C_DIM), FALSE);
@@ -1413,7 +1413,7 @@ static BOOL set_or_say(const struct Setting *s, const char *v)
 	if ((why = prefs_set(s, v)) == NULL)
 		return TRUE;
 	snprintf(buf, sizeof(buf), "%s %s", s->key, why);
-	tell("MulticastPrefs", buf);
+	tell("PanoramaPrefs", buf);
 	return FALSE;
 }
 
@@ -1452,9 +1452,9 @@ static BOOL collect(void)
 
 	wrap = xget(ch_wrap, MUIA_Choice_Active);
 	if (layout_sel && wrap >= 2) {
-		/* a desktop over several windows is one plain Multicast board */
+		/* a desktop over several windows is one plain Panorama board */
 		wrap = 0;
-		note("Wrap.card's mirror or span off: the desktop is one Multicast board, split in parts.");
+		note("Wrap.card's mirror or span off: the desktop is one Panorama board, split in parts.");
 	}
 	if (wrap == 0) {
 		prefs_set(find_setting("CARD"), "");
@@ -1462,8 +1462,8 @@ static BOOL collect(void)
 		prefs_set(find_setting("SPAN"), "");
 	} else {
 		if (!*prefs_value(find_setting("CARD"))) {
-			tell("MulticastPrefs", "Card to wrap: which card should Wrap.card wrap?\n"
-			     "(e.g. uaegfx.card, or Multicast.card)");
+			tell("PanoramaPrefs", "Card to wrap: which card should Wrap.card wrap?\n"
+			     "(e.g. uaegfx.card, or Panorama.card)");
 			return FALSE;
 		}
 		if (wrap != 2)
@@ -1471,11 +1471,11 @@ static BOOL collect(void)
 		if (wrap != 3)
 			prefs_set(find_setting("SPAN"), "");
 		if (wrap == 2 && !*prefs_value(find_setting("MIRROR"))) {
-			tell("MulticastPrefs", "Mirror on: which card should show the same screen?");
+			tell("PanoramaPrefs", "Mirror on: which card should show the same screen?");
 			return FALSE;
 		}
 		if (wrap == 3 && !*prefs_value(find_setting("SPAN"))) {
-			tell("MulticastPrefs", "Span: how many heads, columns x rows (e.g. 2x2)?");
+			tell("PanoramaPrefs", "Span: how many heads, columns x rows (e.g. 2x2)?");
 			return FALSE;
 		}
 	}
@@ -1485,7 +1485,7 @@ static BOOL collect(void)
 	} else {
 		modes_to(buf, sizeof(buf));
 		if (!nmodes) {
-			tell("MulticastPrefs", "Screen modes: the list is empty.\n"
+			tell("PanoramaPrefs", "Screen modes: the list is empty.\n"
 			     "Add sizes, or choose P96's settings.");
 			return FALSE;
 		}
@@ -1529,7 +1529,7 @@ static void add_mode(void)
 	if (!s || !*s)
 		return;
 	if (prefs_check(find_setting("MODES"), s) || !mp_stricmp(s, "none")) {
-		tell("MulticastPrefs", "A size is width x height, e.g. 1280x960");
+		tell("PanoramaPrefs", "A size is width x height, e.g. 1280x960");
 		return;
 	}
 	if (nmodes >= MAXMODES)
@@ -1564,7 +1564,7 @@ static BOOL save(BOOL envarc)
 	prefs_fix(note);
 	mp_trace("save/use: write");
 	if (!prefs_write(envarc)) {
-		tell("MulticastPrefs", "Could not write the settings to ENV: or ENVARC:");
+		tell("PanoramaPrefs", "Could not write the settings to ENV: or ENVARC:");
 		return FALSE;
 	}
 	place_monitors(note);
@@ -1572,10 +1572,10 @@ static BOOL save(BOOL envarc)
 	if (report[0]) {
 		/* changes that the card only takes at boot: offer it */
 		if (strstr(report, "reboot") && envarc) {
-			if (ask("MulticastPrefs", report, "_Reboot now|_Later"))
+			if (ask("PanoramaPrefs", report, "_Reboot now|_Later"))
 				mp_reboot();
 		} else {
-			tell("MulticastPrefs", report);
+			tell("PanoramaPrefs", report);
 		}
 	}
 	return TRUE;
@@ -1590,7 +1590,7 @@ static void do_install(void)
 	report[0] = 0;
 	prefs_fix(note);
 	install(note, TRUE, NULL, NULL);
-	if (!ask("MulticastPrefs: Install", report, "_Install|_Cancel"))
+	if (!ask("PanoramaPrefs: Install", report, "_Install|_Cancel"))
 		return;
 	report[0] = 0;
 	set(app, MUIA_Application_Sleep, TRUE);
@@ -1604,10 +1604,10 @@ static void do_install(void)
 	set(app, MUIA_Application_Sleep, FALSE);
 	if (ok) {
 		note("\nReboot now?");
-		if (ask("MulticastPrefs: Install", report, "_Reboot now|_Later"))
+		if (ask("PanoramaPrefs: Install", report, "_Reboot now|_Later"))
 			mp_reboot();
 	} else {
-		tell("MulticastPrefs: Install", report);
+		tell("PanoramaPrefs: Install", report);
 	}
 	status_show();
 }
@@ -1629,12 +1629,12 @@ static void open_desktop(void)
 	}
 	prefs_fix(note);
 	if (!prefs_write(FALSE)) {
-		tell("MulticastPrefs", "Could not write the settings to ENV:");
+		tell("PanoramaPrefs", "Could not write the settings to ENV:");
 		return;
 	}
 	if (report[0])
-		tell("MulticastPrefs: Desktop", report);
-	run_desktop("C:MulticastDesktop", TRUE);
+		tell("PanoramaPrefs: Desktop", report);
+	run_desktop("C:PanoramaDesk", TRUE);
 }
 
 /* ================================================================ the window */
@@ -1750,7 +1750,7 @@ static Object *make_window(int start, const char *pubscreen)
 
 	mp_trace("mui: pages %s; making the window", pages ? "made" : "NOT made");
 	w = WindowObject,
-		MUIA_Window_Title, (ULONG)"MulticastPrefs " MP_VERSION,
+		MUIA_Window_Title, (ULONG)"PanoramaPrefs " MP_VERSION,
 		MUIA_Window_ID, MAKE_ID('M', 'C', 'P', 'R'),
 		(ULONG)(pubscreen ? MUIA_Window_PublicScreen : TAG_IGNORE), (ULONG)pubscreen,
 		WindowContents, VGroup, MUIA_Background, (ULONG)theme_back(), MUIA_InnerLeft, 0,
@@ -1821,7 +1821,7 @@ static long gui_on_stack(void *a)
 }
 
 /*
- * MulticastPrefs' window in MUI; -1 if MUI (muimaster.library 19) isn't
+ * PanoramaPrefs' window in MUI; -1 if MUI (muimaster.library 19) isn't
  * there, for the GadTools one instead. MUI wants a big stack: one of 64 KB
  * is swapped in when the Shell gave less than 32 KB.
  */
@@ -1873,19 +1873,19 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	from_settings();
 	mp_trace("mui: settings read");
 	if (!classes_make()) {
-		printf("MulticastPrefs: MUI couldn't make its classes\n");
+		printf("PanoramaPrefs: MUI couldn't make its classes\n");
 		rc = -1;
 		goto out;
 	}
 	app = ApplicationObject,
-		MUIA_Application_Title, (ULONG)"MulticastPrefs",
-		MUIA_Application_Version, (ULONG)"$VER: MulticastPrefs " MP_VERSION " (" MP_DATE ")",
-		MUIA_Application_Description, (ULONG)"Settings for Multicast.card",
+		MUIA_Application_Title, (ULONG)"PanoramaPrefs",
+		MUIA_Application_Version, (ULONG)"$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")",
+		MUIA_Application_Description, (ULONG)"Settings for Panorama.card",
 		MUIA_Application_Base, (ULONG)"MCPREFS",
 	End;
 	mp_trace("mui: classes made, application %s", app ? "made" : "NOT made");
 	if (!app || !(win = make_window(start, pubscreen))) {
-		printf("MulticastPrefs: the window could not be made\n");
+		printf("PanoramaPrefs: the window could not be made\n");
 		rc = RETURN_FAIL;
 		goto out;
 	}
@@ -1895,7 +1895,7 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	mp_trace("mui: window %s (MUI_Error %ld)", xget(win, MUIA_Window_Open) ? "open" : "NOT open",
 	         MUI_Error());
 	if (!xget(win, MUIA_Window_Open)) {
-		printf("MulticastPrefs: the window could not be opened\n");
+		printf("PanoramaPrefs: the window could not be opened\n");
 		rc = RETURN_FAIL;
 		goto out;
 	}
@@ -1953,7 +1953,7 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 			open_desktop();
 			break;
 		case ID_CLOSE:
-			run_desktop("C:MulticastDesktop CLOSE", FALSE);
+			run_desktop("C:PanoramaDesk CLOSE", FALSE);
 			break;
 		case ID_ADD:
 			add_mode();

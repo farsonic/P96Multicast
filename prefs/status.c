@@ -1,5 +1,5 @@
 /*
- * P96Multicast - MulticastPrefs: what the running cards say about
+ * Panorama - PanoramaPrefs: what the running cards say about
  * themselves (the status blocks mctest STATUS and wrapstat read), and
  * what is installed where.
  */
@@ -43,7 +43,7 @@ int status_lines(char lines[][80], int max)
 	int n = 0, i;
 
 	Forbid();
-	mc = (struct McBase *)FindName(&SysBase->LibList, "Multicast.card");
+	mc = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
 	if (mc) {
 		ms = mc->status;
 		mcver = mc->lib.lib_Version;
@@ -61,16 +61,16 @@ int status_lines(char lines[][80], int max)
 			inner[sizeof(inner) - 1] = 0;
 		}
 	}
-	sender = FindTask("Multicast.card sender");
+	sender = FindTask("Panorama.card sender");
 	stack = FindName(&SysBase->LibList, "bsdsocket.library") != NULL;
 	Permit();
 
 	if (!mc) {
-		LINE("Multicast.card: not running");
+		LINE("Panorama.card: not running");
 	} else {
 		int boards = ms.magic == MC_STATUS_MAGIC ? ms.cards : 1;
 
-		LINE("Multicast.card %u.%u: %d board(s)", mcver, mcrev, boards);
+		LINE("Panorama.card %u.%u: %d board(s)", mcver, mcrev, boards);
 		if (ms.magic == MC_STATUS_MAGIC) {
 			if (ms.error)
 				LINE("  setup failed: error %u", ms.error);
@@ -104,11 +104,11 @@ int status_lines(char lines[][80], int max)
 		}
 	}
 	LINE("Installed:");
-	LINE("  LIBS:Picasso96/Multicast.card: %s", exists("LIBS:Picasso96/Multicast.card") ? "yes" : "no");
+	LINE("  LIBS:Picasso96/Panorama.card: %s", exists("LIBS:Picasso96/Panorama.card") ? "yes" : "no");
 	LINE("  LIBS:Picasso96/Wrap.card: %s", exists("LIBS:Picasso96/Wrap.card") ? "yes" : "no");
-	LINE("  DEVS:Monitors/Multicast: %s", exists("DEVS:Monitors/Multicast") ? "yes" : "no");
+	LINE("  DEVS:Monitors/Panorama: %s", exists("DEVS:Monitors/Panorama") ? "yes" : "no");
 	LINE("  DEVS:Monitors/Wrap: %s", exists("DEVS:Monitors/Wrap") ? "yes" : "no");
-	LINE("  ENVARC:Multicast.prefs: %s", exists("ENVARC:Multicast.prefs") ? "yes" : "no");
+	LINE("  ENVARC:Panorama.prefs: %s", exists("ENVARC:Panorama.prefs") ? "yes" : "no");
 	LINE("  ENVARC:Wrap.prefs: %s", exists("ENVARC:Wrap.prefs") ? "yes" : "no");
 	return n;
 }

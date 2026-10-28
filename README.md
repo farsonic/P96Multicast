@@ -1,7 +1,11 @@
-# P96Multicast
+# Panorama
+
+*Your Amiga's screen, on every screen.* (Called P96Multicast before 3.1:
+PanoramaPrefs' Install takes over its settings, `Multicast.prefs`, and
+moves the old card, monitor and commodity out of the way.)
 
 A P96 (Picasso96) graphics card driver for AmigaOS whose "graphics card"
-is the network. `Multicast.card` gives rtg.library a board with its video
+is the network. `Panorama.card` gives rtg.library a board with its video
 memory in Fast RAM, and a background process streams the screen as UDP to a
 multicast group (or one machine), in **Copper**, a protocol of drawing
 orders: what was drawn (fills, copies, text, patterns) goes out as a few
@@ -49,15 +53,15 @@ loads a real card driver (`CARD=uaegfx.card` in `ENV:Wrap.prefs`) and sits
 between it and rtg.library, putting a thunk in front of every BoardInfo
 function. It passes every call through unchanged, counts them and records
 what is on display (`wrapstat` shows it). It can show the screen on other
-boards ("heads"): `MIRROR=Multicast.card` streams a real board's screen to
+boards ("heads"): `MIRROR=Panorama.card` streams a real board's screen to
 the network too, and `SPAN=2x2` shows one big screen across four monitors,
 a tile on each, so windows are dragged from monitor to monitor. A
-Multicast.card head hears what is drawn on the wrapped board, so mirroring
+Panorama.card head hears what is drawn on the wrapped board, so mirroring
 uaegfx.card or a real card streams orders too. See [docs/WRAP.md](docs/WRAP.md).
 
 ## Installing
 
-The easy way is **MulticastPrefs** (`prefs/`), in the package's top
+The easy way is **PanoramaPrefs** (`prefs/`), in the package's top
 drawer: a prefs editor for everything below, without P96's own tools. Its
 window is MUI (3.8 or later; AROS's Zune too), drawn in the dark, flat look
 of Easel (`prefs/muigui.c`, `prefs/theme.c`): pages for the desktop, the
@@ -68,29 +72,29 @@ Install button copies the cards to `LIBS:Picasso96`, makes the monitor and
 its icon from a P96 monitor already there, moves monitors that would set a
 card up twice to `SYS:Storage/Monitors`, and saves the settings. The card
 can offer its own screen modes (`MODES=`), so P96 needs no Picasso96Mode
-setup either if you give it a mode list. From a Shell: `MulticastPrefs SHOW`, `SET KEY=VALUE ...`,
+setup either if you give it a mode list. From a Shell: `PanoramaPrefs SHOW`, `SET KEY=VALUE ...`,
 `INSTALL [SETUP=SINGLE|TWO|MIRROR|SPAN] [DRY]`, `STATUS`. `INSTALL` sets up
 everything for the next boot: the cards, `mctest`/`wrapstat` in `C:`,
-MulticastPrefs in `SYS:Prefs`, the monitor, screen modes if Picasso96Mode
-has none for Multicast, `DEST=10.0.2.2` on UAE's NAT network, and with
-`SETUP=` one or two Multicast screens, the display card mirrored, or its
-screen split over two (SPAN) or four (SPAN2x2) Multicast boards as one
+PanoramaPrefs in `SYS:Prefs`, the monitor, screen modes if Picasso96Mode
+has none for Panorama, `DEST=10.0.2.2` on UAE's NAT network, and with
+`SETUP=` one or two Panorama screens, the display card mirrored, or its
+screen split over two (SPAN) or four (SPAN2x2) Panorama boards as one
 desktop (it finds the card); switching setups puts back the monitors it moved aside.
 
 By hand:
 
-1. Copy `Multicast.card` to `LIBS:Picasso96/`.
+1. Copy `Panorama.card` to `LIBS:Picasso96/`.
 2. P96: copy a monitor file in `DEVS:Monitors` and set its `BOARDTYPE`
-   ToolType to `Multicast`. AROS: copy `DEVS:Monitors/P96` to
-   `DEVS:Monitors/Multicast` (the monitor driver opens the card named after
+   ToolType to `Panorama`. AROS: copy `DEVS:Monitors/P96` to
+   `DEVS:Monitors/Panorama` (the monitor driver opens the card named after
    itself).
-3. Optionally put settings in `ENVARC:Multicast.prefs` (below).
+3. Optionally put settings in `ENVARC:Panorama.prefs` (below).
 4. Start your TCP/IP stack as usual. The card starts sending as soon as it
    finds the stack.
 
 ## Settings
 
-`KEY=VALUE`, one per line, in `ENV:Multicast.prefs` (read at boot and again
+`KEY=VALUE`, one per line, in `ENV:Panorama.prefs` (read at boot and again
 when the TCP/IP stack appears), or as ToolTypes of the monitor icon under
 P96. `ENV:` wins over ToolTypes.
 
@@ -106,26 +110,26 @@ P96. `ENV:` wins over ToolTypes.
 | `HISTORY` | 512 | KB of sent datagrams kept, to repair what viewers lost |
 | `REFRESH` | 10 | while no viewer talks back: seconds between whole screens (0 = never) |
 | `POINTER` | 1 | a hardware pointer, drawn by the viewers (0: rtg.library draws it) |
-| `INPUT` | 0 | 1: the mouse and keys in the viewer windows work the Amiga, on the card's screen (`INPUTFROM=` an address: only from there). Off unless set, since anyone who can reach the card could type on the Amiga; `SETUP=DESKTOP` and MulticastPrefs' Open set it. The card takes it (and `INPUTFROM=`) from ENV: while it runs, no reboot |
-| `SPLIT` | 1x1 | the screen in CxR parts (at most 4), each sent to a port of its own (PORT, PORT+1, ...) and, with a multicast DEST, a group of its own (DEST, DEST+1, ...): with `p96view.py --span CxR`, a window for each, like monitors, and windows dragged from one to the other; `p96view.py --part N` shows one part, e.g. on another device. `SETUP=DESKTOP` sets it up |
-| `DEST2` ... `DEST4` | | where parts 2-4 go instead (MulticastPrefs: Network, "Monitor 2 to" ...); the viewer then takes them with `--groups DEST,DEST2,...` |
+| `INPUT` | 0 | 1: the mouse and keys in the viewer windows work the Amiga, on the card's screen (`INPUTFROM=` an address: only from there). Off unless set, since anyone who can reach the card could type on the Amiga; `SETUP=DESKTOP` and PanoramaPrefs' Open set it. The card takes it (and `INPUTFROM=`) from ENV: while it runs, no reboot |
+| `SPLIT` | 1x1 | the screen in CxR parts (at most 4), each sent to a port of its own (PORT, PORT+1, ...) and, with a multicast DEST, a group of its own (DEST, DEST+1, ...): with `panoview.py --span CxR`, a window for each, like monitors, and windows dragged from one to the other; `panoview.py --part N` shows one part, e.g. on another device. `SETUP=DESKTOP` sets it up |
+| `DEST2` ... `DEST4` | | where parts 2-4 go instead (PanoramaPrefs: Network, "Monitor 2 to" ...); the viewer then takes them with `--groups DEST,DEST2,...` |
 | `VRAM` | 8 | video memory in MB (read at boot only) |
 | `MAXWIDTH`, `MAXHEIGHT` | 1920, 1200 | largest screen mode offered |
 | `BOARDTYPE` | 6 | P96 board type reported to rtg.library (6 = PicassoII) |
 | `PRI` | -1 | sender task priority |
-| `LOG` | (none) | log file for the sender, e.g. `T:Multicast.log` |
+| `LOG` | (none) | log file for the sender, e.g. `T:Panorama.log` |
 | `QUIET` | 0 | set BIF_QUIET |
 | `MODES` | (none) | screen modes the card adds for P96: `640x480,800x600,...`, so no Picasso96Mode setup is needed. Without it (or `NONE`) the modes are P96's own, from Picasso96Mode. With both, remove the board's modes in Picasso96Mode, or sizes show twice. AROS uses its own fixed list |
 | `BLITTER` | 1 | send the drawing as orders (0: compare the screen and send pixels only) |
-| `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Multicast<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
+| `BOARDS` | 1 | boards to offer (1-8); board n sends to PORT+n and is named `Panorama<n+1>` from the second on. AROS takes one board per card driver, so there the others are only for Wrap.card's heads. `VRAM` applies to each |
 
 ## The shared desktop
 
 `SPLIT=2x1` sends the screen in two halves, each to a port of its own, and
-`p96view.py --span 2x1` shows each in its own window: one desktop over two
-"monitors", windows dragged from one to the other. MulticastPrefs' Desktop
+`panoview.py --span 2x1` shows each in its own window: one desktop over two
+"monitors", windows dragged from one to the other. PanoramaPrefs' Desktop
 page sets it up with a picture of the monitors (layout, size, colours,
-open at boot). `MulticastDesktop` (prefs/desktop.c) opens the desktop as a
+open at boot). `PanoramaDesk` (prefs/desktop.c) opens the desktop as a
 public screen and is a commodity with hotkeys: ctrl alt + cursor keys
 moves the active window to the next monitor, ctrl alt 1-4 centres it on
 one, ctrl alt m swaps the desktop and the Workbench. `WORKBENCH=` (LEFT1,
@@ -138,11 +142,11 @@ its last active window active again, and back the same way. `Boing`
 ## Watching
 
 ```
-python3 client/p96view.py                       # a window (tkinter)
-python3 client/p96view.py --group 127.0.0.1     # UAE's NAT (slirp): the card sends to 10.0.2.2
-python3 client/p96view.py --iface 192.168.1.10  # join on this interface
-python3 client/p96view.py --span 2x1            # Wrap.card's SPAN=2x1: a window per board
-python3 client/p96view.py --snapshot amiga.png --duration 30
+python3 client/panoview.py                       # a window (tkinter)
+python3 client/panoview.py --group 127.0.0.1     # UAE's NAT (slirp): the card sends to 10.0.2.2
+python3 client/panoview.py --iface 192.168.1.10  # join on this interface
+python3 client/panoview.py --span 2x1            # Wrap.card's SPAN=2x1: a window per board
+python3 client/panoview.py --snapshot amiga.png --duration 30
 ```
 
 numpy makes the viewer much faster, but is optional. The viewer answers
@@ -154,15 +158,15 @@ let UDP from the Amiga's address in and back.
 vbcc, vasm, vlink and the NDK 3.2; see [docs/BUILD.md](docs/BUILD.md).
 
 ```
-make            # build/Multicast.card, build/Wrap.card, mctest, wrapstat
+make            # build/Panorama.card, build/Wrap.card, mctest, wrapstat
 make check      # BoardInfo offsets, library header checks, Wrap.card under vamos,
                 # the viewer against the card's renderer, packet loss
 make emu-test   # AROS + Riptide in FS-UAE, end to end
-make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Multicast.card
-make emu-mirror # ... mirroring it to a second Multicast board, over the network
-make emu-span   # ... one 1280x960 screen on four Multicast boards, a window moved between them
+make emu-wrap   # AROS in FS-UAE: Wrap.card wrapping Panorama.card
+make emu-mirror # ... mirroring it to a second Panorama board, over the network
+make emu-span   # ... one 1280x960 screen on four Panorama boards, a window moved between them
 make emu-copper # everyday work on AROS; the viewer must show exactly the card's screen
-make emu-prefs  # MulticastPrefs: install on a clean AROS, its window, a second boot
+make emu-prefs  # PanoramaPrefs: install on a clean AROS, its window, a second boot
 ```
 
 ## Layout
@@ -176,12 +180,12 @@ make emu-prefs  # MulticastPrefs: install on a clean AROS, its window, a second 
 | `src/render.c` | Copper's reference renderer (the shadow; the viewer must match it) |
 | `src/config.c` | settings |
 | `src/modes.c` | the screen modes the card offers P96 |
-| `prefs/` | MulticastPrefs: settings and installation, GadTools window and Shell |
+| `prefs/` | PanoramaPrefs: settings and installation, GadTools window and Shell |
 | `src/wrapstart.s`, `src/wrap.c`, `src/mirror.c` | Wrap.card: library header and thunks, the wrapper, the mirror |
 | `include/wrap_status.h` | Wrap.card's slot table and status block |
 | `include/boardinfo.h` | the P96 BoardInfo structure |
 | `include/copper.h` | the wire protocol |
-| `client/p96view.py` | viewer / receiver |
+| `client/panoview.py` | viewer / receiver |
 | `tests/` | offset test, hunk checks, viewer tests (`test_client.py`, `test_copper.py` with `rendertest.c`, `fake_sender.py`), `mctest` and `wrapstat` (Amiga), `wraptest` with `Fake.card` (vamos) |
 | `emu/run_test.sh`, `emu/copper_test.sh` | end-to-end tests on FS-UAE |
 | `emu/wrap_test.sh`, `emu/mirror_test.sh`, `emu/span_test.sh` | Wrap.card on FS-UAE, its mirror and span over the network |

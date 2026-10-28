@@ -1,11 +1,11 @@
 #!/bin/sh
-# P96Multicast - MulticastPrefs on real AmigaOS with MUI 3.8, in FS-UAE: an
+# Panorama - PanoramaPrefs on real AmigaOS with MUI 3.8, in FS-UAE: an
 # A1200 with a Kickstart ROM (KICK=) booting a system directory made from the
 # AmigaOS install disks (OS3SYS=), MUI 3.8's user archive (MUI38=) added and
-# assigned as its installer does. MulticastPrefs opens its window with
+# assigned as its installer does. PanoramaPrefs opens its window with
 # TRACE=; the screen is photographed (OUT/shot-N.png) while it is open, and
 # the trace shows how far it got if it hangs. Neither the ROM nor the OS
-# comes with P96Multicast: bring your own.
+# comes with Panorama: bring your own.
 #
 #   emu/os3_test.sh [TIMEOUT] [PAGE...]
 set -u
@@ -18,7 +18,7 @@ OS3SYS=${OS3SYS:-/home/user/toolchain/os32/sys}
 MUI38=${MUI38:-/home/user/toolchain/mui/usr/MUI}
 OUT=${OUT:-build/emu-os3}
 
-for f in build/MulticastPrefs "$KICK" "$OS3SYS/C/LoadWB" "$MUI38/Libs/muimaster.library"; do
+for f in build/PanoramaPrefs "$KICK" "$OS3SYS/C/LoadWB" "$MUI38/Libs/muimaster.library"; do
 	[ -e "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
 command -v fs-uae >/dev/null 2>&1 || { echo "SKIP: fs-uae not installed"; exit 0; }
@@ -28,7 +28,7 @@ cp -r "$OS3SYS" "$OUT/sys"
 sys=$(cd "$OUT/sys" && pwd)
 work=$(cd "$OUT/work" && pwd)
 cp -r "$MUI38" "$sys/MUI"
-cp build/MulticastPrefs "$work/"
+cp build/PanoramaPrefs "$work/"
 [ -f build/muitest ] && cp build/muitest "$work/"
 cat > "$sys/S/User-Startup" <<'EOF'
 Assign MUI: SYS:MUI
@@ -52,7 +52,7 @@ EOF
 	echo '  Work:muitest >>Work:mui.txt'
 	echo 'EndIf'
 	for n in $PAGES; do
-		echo "Run >Work:prefs-$n.log Work:MulticastPrefs PAGE=$n TIMEOUT=14 TRACE=Work:trace-$n.txt"
+		echo "Run >Work:prefs-$n.log Work:PanoramaPrefs PAGE=$n TIMEOUT=14 TRACE=Work:trace-$n.txt"
 		echo 'Wait 8'
 		echo "Echo >Work:shot-$n x"
 		echo 'Wait 10'

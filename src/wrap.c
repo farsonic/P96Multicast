@@ -1,5 +1,5 @@
 /*
- * P96Multicast - Wrap.card: a P96 card driver that wraps another one.
+ * Panorama - Wrap.card: a P96 card driver that wraps another one.
  *
  * rtg.library loads Wrap.card as the board's driver. Wrap.card opens the
  * real driver named by CARD= in ENV:Wrap.prefs, calls its FindCard and
@@ -399,7 +399,7 @@ static LONG blit_kind(ULONG slot)
 /*
  * A drawing call or a pointer change of the wrapped board, to each head
  * that shows the board's bitmap itself and can send it as an order
- * (WrapHead.orders): McRecord and McPointer of Multicast.card 2.
+ * (WrapHead.orders): McRecord and McPointer of Panorama.card 2.
  */
 static void pass_on(ULONG slot, ULONG *regs)
 {
@@ -448,7 +448,7 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 
 	/*
 	 * KEEPDISPLAY=1: the wrapped card is a monitor of its own (the
-	 * Workbench's, beside a Multicast desktop): P96 switching it off when
+	 * Workbench's, beside a Panorama desktop): P96 switching it off when
 	 * another board's screen comes to the front would blank it, so it is
 	 * told "on" instead, and keeps showing its screen.
 	 */
@@ -495,7 +495,7 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 		break;
 	}
 
-	/* the first board's drawing, to heads that send it on (Multicast.card 2) */
+	/* the first board's drawing, to heads that send it on (Panorama.card 2) */
 	if (b == &boards[0] && mirror.nheads)
 		pass_on(slot, regs);
 
@@ -543,7 +543,7 @@ BOOL FindCard(__reg("a0") struct BoardInfo *bi)
 	/*
 	 * With heads, one board: rtg.library asks until FindCard says no, and
 	 * further boards of the card may be meant for the heads (CARD= and
-	 * MIRROR= or HEAD= both Multicast.card).
+	 * MIRROR= or HEAD= both Panorama.card).
 	 */
 	if (status->nboards && mirror.nheads)
 		return FALSE;

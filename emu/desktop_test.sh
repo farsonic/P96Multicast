@@ -1,9 +1,9 @@
 #!/bin/sh
-# P96Multicast - the shared desktop, end to end: Multicast.card with
-# SPLIT=2x1 in FS-UAE with AROS m68k and Riptide, MulticastDesktop opening a
+# Panorama - the shared desktop, end to end: Panorama.card with
+# SPLIT=2x1 in FS-UAE with AROS m68k and Riptide, PanoramaDesk opening a
 # 640x480 desktop of two 320x480 monitors, Boing bouncing over it, and a
-# window moved from monitor to monitor with MulticastDesktop's moves. The
-# viewer (client/p96view.py --span 2x1) keeps a picture of both monitors;
+# window moved from monitor to monitor with PanoramaDesk's moves. The
+# viewer (client/panoview.py --span 2x1) keeps a picture of both monitors;
 # at each step the test keeps one, and checks the ball in each half, and
 # the window where it was sent. Needs FSUAE_PCAP and root, like
 # emu/run_test.sh.
@@ -21,7 +21,7 @@ GROUP=239.255.96.1
 AMIGA_IP=192.168.96.2
 HOST_IP=192.168.96.1
 
-for f in build/Multicast.card build/mctest build/MulticastDesktop build/Boing "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
+for f in build/Panorama.card build/mctest build/PanoramaDesk build/Boing "$RIPTIDE" "$AROSFS/Devs/Monitors/P96"; do
 	[ -f "$f" ] || { echo "SKIP: $f missing"; exit 0; }
 done
 if [ -z "${FSUAE_PCAP:-}" ] || [ ! -x "$FSUAE_PCAP" ] || [ "$(id -u)" != 0 ]; then
@@ -45,18 +45,18 @@ work=$(cd "$OUT/work" && pwd)
 
 # ---- install into AROS: the card on its own
 mkdir -p "$AROSFS/Libs/Picasso96" "$AROSFS/Prefs/Env-Archive"
-cp build/Multicast.card "$AROSFS/Libs/Picasso96/"
+cp build/Panorama.card "$AROSFS/Libs/Picasso96/"
 rm -f "$AROSFS/Devs/Monitors/Wrap"
-cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Multicast"
-cat > "$AROSFS/Prefs/Env-Archive/Multicast.prefs" <<EOF
+cp "$AROSFS/Devs/Monitors/P96" "$AROSFS/Devs/Monitors/Panorama"
+cat > "$AROSFS/Prefs/Env-Archive/Panorama.prefs" <<EOF
 # written by emu/desktop_test.sh
 DEST=$GROUP
 PORT=9696
-LOG=RAM:Multicast.log
+LOG=RAM:Panorama.log
 SPLIT=2x1
 MONITOR=320x480
 COLOURS=16
-PUBSCREEN=MULTICAST
+PUBSCREEN=PANORAMA
 DEFAULTSCREEN=1
 INPUT=0
 WORKBENCH=LEFT1
@@ -78,7 +78,7 @@ EOF
 fi
 
 # ---- the Work: disk
-cp build/mctest build/MulticastDesktop build/Boing "$RIPTIDE" "$work/"
+cp build/mctest build/PanoramaDesk build/Boing "$RIPTIDE" "$work/"
 cat > "$work/riptide.conf" <<EOF
 hostname p96test
 loglevel 2
@@ -90,7 +90,7 @@ EOF
 	echo 'FailAt 21'
 	echo 'Run >Work:riptide.log Work:Riptide CONFIG=Work:riptide.conf'
 	echo 'Wait 5'
-	echo 'Run >Work:desktop.log Work:MulticastDesktop'
+	echo 'Run >Work:desktop.log Work:PanoramaDesk'
 	echo 'Wait 6'
 	echo 'Echo >Work:mark-open x'
 	echo 'Wait 4'
@@ -100,28 +100,28 @@ EOF
 		echo "Echo >Work:mark-boing$i x"
 	done
 	echo 'Wait 12'
-	echo 'Run >CON:20/40/200/120/MoveMe/SCREENMULTICAST Wait 60'
+	echo 'Run >CON:20/40/200/120/MoveMe/SCREENPANORAMA Wait 60'
 	echo 'Wait 5'
 	echo "Echo >Work:mark-left x"
 	echo 'Wait 4'
-	echo 'Work:MulticastDesktop MOVE=RIGHT WINDOW=MoveMe >Work:move.log'
+	echo 'Work:PanoramaDesk MOVE=RIGHT WINDOW=MoveMe >Work:move.log'
 	echo 'Wait 5'
 	echo "Echo >Work:mark-right x"
 	echo 'Wait 4'
-	echo 'Work:MulticastDesktop CENTRE=1 WINDOW=MoveMe >>Work:move.log'
+	echo 'Work:PanoramaDesk CENTRE=1 WINDOW=MoveMe >>Work:move.log'
 	echo 'Wait 5'
 	echo "Echo >Work:mark-centre x"
 	echo 'Wait 4'
-	echo 'Work:MulticastDesktop INFO >Work:info.log'
-	echo 'Run >NIL: Work:MulticastDesktop >>Work:info.log'
+	echo 'Work:PanoramaDesk INFO >Work:info.log'
+	echo 'Run >NIL: Work:PanoramaDesk >>Work:info.log'
 	echo 'Wait 50'
-	echo 'Work:MulticastDesktop SHELL >>Work:info.log'
+	echo 'Work:PanoramaDesk SHELL >>Work:info.log'
 	echo 'Wait 5'
 	echo "Echo >Work:mark-shell x"
 	echo 'Wait 4'
-	# INPUT=1, as MulticastPrefs' Open sets it, while the card runs: then the
+	# INPUT=1, as PanoramaPrefs' Open sets it, while the card runs: then the
 	# test types into the Shell from the viewer's side
-	echo 'Echo >>ENV:Multicast.prefs "INPUT=1"'
+	echo 'Echo >>ENV:Panorama.prefs "INPUT=1"'
 	echo 'Wait 4'
 	echo "Echo >Work:mark-input x"
 	for i in $(seq 1 40); do
@@ -132,7 +132,7 @@ EOF
 	echo 'Wait 2'
 	# WORKBENCH=LEFT1: the mouse over the desktop's left edge to the
 	# Workbench, and over the Workbench's right edge back
-	echo 'Work:MulticastDesktop'
+	echo 'Work:PanoramaDesk'
 	echo 'Wait 2'
 	echo 'Work:mctest WHERE >Work:where0.log'
 	# to the edge in one move, then small pushes over it
@@ -151,7 +151,7 @@ EOF
 	echo 'Wait 1'
 	echo 'Work:mctest WHERE >Work:where2.log'
 	echo 'Work:mctest STATUS >Work:status.txt'
-	echo 'Copy RAM:Multicast.log Work:card.log'
+	echo 'Copy RAM:Panorama.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
 } > "$work/autorun"
 
@@ -186,8 +186,8 @@ status=0
 SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae.log" 2>&1 &
 upid=$!
 # the viewer: both monitors
-python3 client/p96view.py --group $GROUP --port 9696 --iface $HOST_IP --span 2x1 \
-	--snapshot "$OUT/last.png" --duration "$TIMEOUT" 2>"$OUT/p96view.log" &
+python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP --span 2x1 \
+	--snapshot "$OUT/last.png" --duration "$TIMEOUT" 2>"$OUT/panoview.log" &
 vpid=$!
 start=$(date +%s)
 while [ ! -f "$work/autorun.done" ]; do
@@ -218,7 +218,7 @@ kill $upid $vpid 2>/dev/null
 wait $upid $vpid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-echo "---- MulticastDesktop"
+echo "---- PanoramaDesk"
 tr -d '\r' < "$work/desktop.log" 2>/dev/null
 tr -d '\r' < "$work/move.log" 2>/dev/null
 tr -d '\r' < "$work/info.log" 2>/dev/null
@@ -269,5 +269,5 @@ python3 tests/check_desktop.py "$OUT" || status=1
 echo "---- status"
 tr -d '\r' < "$work/status.txt" 2>/dev/null
 echo "---- viewer"
-cat "$OUT/p96view.log"
+cat "$OUT/panoview.log"
 exit $status
