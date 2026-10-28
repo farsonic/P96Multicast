@@ -22,7 +22,7 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Multicast.card"
-#define MC_VERSION_STR "2.3"
+#define MC_VERSION_STR "2.4"
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;

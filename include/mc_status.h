@@ -77,6 +77,9 @@ struct McStatus {
 	ULONG send_errors;
 	ULONG pointer_moves;
 	ULONG input_events;    /* INPUT=1: mouse and key events from viewers */
+	UWORD batches;         /* riptide.library 3: datagrams sent in batches */
+	ULONG batched;         /* ... how many went that way */
+	ULONG send_waits;      /* sends that found the interface full (Riptide 0.17 pacing) */
 };
 
 struct McBase {

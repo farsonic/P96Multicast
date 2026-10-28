@@ -307,6 +307,9 @@ static void status(void)
 			       st.sweep_secs, st.ring_lost);
 			printf("    pointer: %s, %lu moves\n", st.pointer ? "drawn by the viewers" :
 			       "not shown by the card", st.pointer_moves);
+			printf("    sending: %s; %lu datagrams in batches, %lu waits for the interface\n",
+			       st.batches ? "riptide.library batches" : "sendto()", st.batched,
+			       st.send_waits);
 			if (st.input_events)
 				printf("    INPUT: %lu mouse and key events from viewers\n", st.input_events);
 			printf("  BLITTER=%u: drawing calls the card hears about\n", st.blitter);

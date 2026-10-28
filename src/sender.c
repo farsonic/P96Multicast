@@ -38,11 +38,14 @@
 #include "mcard.h"
 #include "copper.h"
 #include "render.h"
+#include "riptide_mmsg.h"
 
 #define TILE_ROWBYTES 64             /* tile width in bytes (before clipping) */
 #define TILE_H        16
 #define MAX_BODY      (CU_MAX_DGRAM - CU_HDR_SIZE - 3)
 #define MAX_VIEWERS   8
+#define MM_SEND       16             /* datagrams per RiptideSendMMsg() */
+#define MM_RECV       8              /* viewer messages per RiptideRecvMMsg() */
 #define TILE_BYTES    (TILE_ROWBYTES * TILE_H)
 
 struct Device *TimerBase;
@@ -132,8 +135,15 @@ struct Sender {
 	LONG   lasterror;
 	BOOL   logstarted;
 
+	/* riptide.library 3, if running: many datagrams per call */
+	struct Library *rtbase;
+	struct RtMMsgHdr mm[MM_SEND];
+	struct iovec iov[MM_SEND];
+	struct sockaddr_in from[MM_RECV];
+	ULONG  waits;                    /* sends that found the interface full */
+
 	UBYTE  tmp[TILE_BYTES + TILE_BYTES / 2 + 64];
-	UBYTE  ctrl[CU_CTRL_MAX];
+	UBYTE  ctrl[MM_RECV][CU_CTRL_MAX];
 };
 
 /*
@@ -282,31 +292,100 @@ static UBYTE *rect(UBYTE *p, LONG x, LONG y, LONG w, LONG h)
 	return p + 8;
 }
 
+static void sent(struct Sender *s, ULONG len)
+{
+	s->packets++;
+	s->bytes += len;
+	s->budget -= len;
+	if (first_board(s)) {
+		mc_status->datagrams++;
+		mc_status->sent_kb = s->bytes >> 10;
+	}
+}
+
+/*
+ * A send failed. With Riptide 0.17's pacing, a non-blocking socket says
+ * EWOULDBLOCK while the interface is full: not an error, the rest goes in
+ * the next pass.
+ */
+static void send_failed(struct Sender *s)
+{
+	struct Library *SocketBase = s->sockbase;
+	LONG e = Errno();
+
+	if (e == EWOULDBLOCK) {
+		s->waits++;
+		if (first_board(s))
+			mc_status->send_waits++;
+		return;
+	}
+	if (!s->errors++ || e != s->lasterror)
+		mc_log(s, "sendto failed: errno %ld (%ld errors so far)\n", e, s->errors, 0, 0);
+	s->lasterror = e;
+	if (first_board(s))
+		mc_status->send_errors++;
+}
+
 static BOOL send_dgram(struct Sender *s, UBYTE *d, ULONG len)
 {
 	struct Library *SocketBase = s->sockbase;
 
 	if (sendto(s->sock, d, len, 0, (struct sockaddr *)&s->to, sizeof(s->to)) == (LONG)len) {
-		s->packets++;
-		s->bytes += len;
-		s->budget -= len;
-		if (first_board(s)) {
-			mc_status->datagrams++;
-			mc_status->sent_kb = s->bytes >> 10;
-		}
+		sent(s, len);
 		return TRUE;
 	}
-	if (!s->errors++ || Errno() != s->lasterror)
-		mc_log(s, "sendto failed: errno %ld (%ld errors so far)\n", Errno(), s->errors, 0, 0);
-	s->lasterror = Errno();
-	if (first_board(s))
-		mc_status->send_errors++;
+	send_failed(s);
 	return FALSE;
+}
+
+/* with riptide.library 3: up to MM_SEND datagrams a call, as far as the budget goes */
+static void transmit_batches(struct Sender *s)
+{
+	while (s->seq_sent != s->seq_next && s->budget > 0) {
+		ULONG n = 0, seq = s->seq_sent, slot;
+		LONG budget = s->budget, k, i;
+
+		while (n < MM_SEND && seq != s->seq_next && budget > 0) {
+			slot = seq % s->nhist;
+			s->iov[n].iov_base = (APTR)(s->hist + slot * CU_MAX_DGRAM);
+			s->iov[n].iov_len = s->hlen[slot];
+			s->mm[n].name = (APTR)&s->to;
+			s->mm[n].namelen = sizeof(s->to);
+			s->mm[n].iov = (APTR)&s->iov[n];
+			s->mm[n].iovlen = 1;
+			s->mm[n].control = NULL;
+			s->mm[n].controllen = 0;
+			s->mm[n].flags = 0;
+			s->mm[n].len = 0;
+			budget -= s->hlen[slot];
+			n++;
+			seq++;
+		}
+		k = __RtSendMMsg(s->rtbase, s->sock, s->mm, n, 0);
+		for (i = 0; i < k; i++) {
+			sent(s, s->hlen[s->seq_sent % s->nhist]);
+			s->seq_sent++;
+		}
+		if (k > 1 && first_board(s))
+			mc_status->batched += k;
+		if (k < (LONG)n) {
+			/* full (EWOULDBLOCK) or failed: the rest in the next pass */
+			if (k <= 0)
+				send_failed(s);
+			else if (first_board(s))
+				mc_status->send_waits++;
+			break;
+		}
+	}
 }
 
 /* what is made, as far as the budget goes; the rest in the next pass */
 static void transmit(struct Sender *s)
 {
+	if (s->rtbase) {
+		transmit_batches(s);
+		return;
+	}
 	while (s->seq_sent != s->seq_next && s->budget > 0) {
 		ULONG slot = s->seq_sent % s->nhist;
 
@@ -1136,12 +1215,37 @@ static void read_viewers(struct Sender *s)
 	LONG n;
 	int i;
 
+	if (s->rtbase) {
+		/* riptide.library 3: what has come, MM_RECV a call */
+		LONG k, j;
+
+		for (i = 0; i < 4; i++) {
+			for (j = 0; j < MM_RECV; j++) {
+				s->iov[j].iov_base = (APTR)s->ctrl[j];
+				s->iov[j].iov_len = CU_CTRL_MAX;
+				s->mm[j].name = (APTR)&s->from[j];
+				s->mm[j].namelen = sizeof(s->from[j]);
+				s->mm[j].iov = (APTR)&s->iov[j];
+				s->mm[j].iovlen = 1;
+				s->mm[j].control = NULL;
+				s->mm[j].controllen = 0;
+				s->mm[j].flags = 0;
+				s->mm[j].len = 0;
+			}
+			k = __RtRecvMMsg(s->rtbase, s->sock, s->mm, MM_RECV, 0);
+			for (j = 0; j < k; j++)
+				message(s, s->ctrl[j], s->mm[j].len, &s->from[j]);
+			if (k < MM_RECV)
+				break;
+		}
+		return;
+	}
 	for (i = 0; i < 32; i++) {
 		fromlen = sizeof(from);
-		n = recvfrom(s->sock, s->ctrl, sizeof(s->ctrl), 0, (struct sockaddr *)&from, &fromlen);
+		n = recvfrom(s->sock, s->ctrl[0], CU_CTRL_MAX, 0, (struct sockaddr *)&from, &fromlen);
 		if (n <= 0)
 			break;
-		message(s, s->ctrl, n, &from);
+		message(s, s->ctrl[0], n, &from);
 	}
 }
 
@@ -1412,6 +1516,18 @@ static struct Library *open_running_stack(void)
 	return lib;
 }
 
+/* riptide.library 3, if Riptide is the stack running: batches of datagrams */
+static struct Library *open_riptide(void)
+{
+	struct Library *lib = NULL;
+
+	Forbid();
+	if (FindName(&SysBase->LibList, RIPTIDE_MMSG_LIB))
+		lib = OpenLibrary(RIPTIDE_MMSG_LIB, RIPTIDE_MMSG_VERSION);
+	Permit();
+	return lib;
+}
+
 static BOOL alloc_history(struct Sender *s)
 {
 	s->nhist = s->cfg->history / CU_MAX_DGRAM;
@@ -1467,6 +1583,12 @@ static void SenderMain(void)
 				       (d >> 8) & 255, d & 255);
 				mc_log(s, ":%ld, %ld fps, %ld KB/s\n", s->to.sin_port, mc->cfg.fps,
 				       mc->cfg.rate >> 10, 0);
+				s->rtbase = open_riptide();
+				if (s->rtbase)
+					mc_log(s, "riptide.library %ld: datagrams in batches of %ld\n",
+					       s->rtbase->lib_Version, MM_SEND, 0, 0);
+				if (first_board(s))
+					mc_status->batches = s->rtbase != NULL;
 				break;
 			}
 			mc_log(s, "socket() failed\n", 0, 0, 0, 0);
@@ -1534,6 +1656,8 @@ static void SenderMain(void)
 		struct Library *SocketBase = s->sockbase;
 
 		CloseSocket(s->sock);
+		if (s->rtbase)
+			CloseLibrary(s->rtbase);
 		CloseLibrary(SocketBase);
 	}
 	mc_log(s, "sender stopped\n", 0, 0, 0, 0);

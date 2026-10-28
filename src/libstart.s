@@ -23,7 +23,7 @@
 	xdef	_LibId
 
 VERSION		equ	2
-REVISION	equ	3
+REVISION	equ	4
 LIBSIZE		equ	512		; struct McBase, MC_LIBSIZE in mc_status.h
 RTF_AUTOINIT	equ	$80
 NT_LIBRARY	equ	9
@@ -101,5 +101,5 @@ dmg_common:
 _LibName:
 	dc.b	"Multicast.card",0
 _LibId:
-	dc.b	"Multicast.card 2.3 (27.10.2026)",13,10,0
+	dc.b	"Multicast.card 2.4 (28.10.2026)",13,10,0
 	even
