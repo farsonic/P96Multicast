@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "1.7"
+#define MP_VERSION "1.8"
 #define MP_DATE "26.10.2026"
 
 /* the two files */

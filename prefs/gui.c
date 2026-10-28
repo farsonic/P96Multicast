@@ -131,7 +131,7 @@ static const char *colour_value[] = { "8", "16", "32" };
 static int layout_sel, size_sel, colour_sel;
 
 /* where the Workbench can be: next to an outer edge of a monitor, or nowhere */
-#define MAXWBPOS 13
+#define MAXWBPOS 17
 static int wb_npos, wb_sel, wb_side[MAXWBPOS], wb_mon[MAXWBPOS];
 static char wb_text[MAXWBPOS][24];
 static const char *wb_labels[MAXWBPOS + 1];
@@ -305,38 +305,70 @@ static int layout_rows(void)
 	return layout_split[layout_sel][2] - '0';
 }
 
-/* the places for the Workbench around this layout; the one nearest side, mon */
+/* can the Workbench be at place n with this layout: an outer edge of a monitor it has? */
+static BOOL wb_fits(int n)
+{
+	int c = layout_cols(), r = layout_rows(), m = wb_mon[n];
+
+	if (wb_side[n] == WB_NONE)
+		return TRUE;
+	if (m >= c * r)
+		return FALSE;
+	switch (wb_side[n]) {
+	case WB_LEFT:
+		return m % c == 0;
+	case WB_RIGHT:
+		return m % c == c - 1;
+	case WB_ABOVE:
+		return m / c == 0;
+	default:
+		return m / c == r - 1;
+	}
+}
+
+/*
+ * Every place the Workbench can be, for any layout: the cycle's labels
+ * never change (GadTools before V42 can't change them); places a layout
+ * hasn't are skipped. Then the one nearest side, mon.
+ */
 static void wb_positions(int side, int mon)
 {
 	static const char *names[] = { "", "Left of", "Right of", "Above", "Below" };
-	int c = layout_cols(), r = layout_rows(), i, n = 0, sd;
+	int i, n = 0, sd;
 
-	for (sd = WB_LEFT; sd <= WB_BELOW; sd++) {
-		int count = sd <= WB_RIGHT ? r : c;
-
-		for (i = 0; i < count && n < MAXWBPOS - 1; i++, n++) {
-			wb_side[n] = sd;
-			wb_mon[n] = sd == WB_LEFT ? i * c : sd == WB_RIGHT ? i * c + c - 1 :
-			            sd == WB_ABOVE ? i : (r - 1) * c + i;
-			snprintf(wb_text[n], sizeof(wb_text[n]), "%s monitor %d", names[sd],
-			         wb_mon[n] + 1);
-		}
+	if (!wb_npos) {
+		for (sd = WB_LEFT; sd <= WB_BELOW; sd++)
+			for (i = 0; i < 4; i++, n++) {
+				wb_side[n] = sd;
+				wb_mon[n] = i;
+				snprintf(wb_text[n], sizeof(wb_text[n]), "%s monitor %d", names[sd], i + 1);
+			}
+		wb_side[n] = WB_NONE;
+		wb_mon[n] = 0;
+		snprintf(wb_text[n], sizeof(wb_text[n]), "Nowhere (hotkey only)");
+		n++;
+		wb_npos = n;
+		for (i = 0; i < n; i++)
+			wb_labels[i] = wb_text[i];
+		wb_labels[n] = NULL;
 	}
-	wb_side[n] = WB_NONE;
-	wb_mon[n] = 0;
-	snprintf(wb_text[n], sizeof(wb_text[n]), "Nowhere (hotkey only)");
-	n++;
-	wb_npos = n;
-	for (i = 0; i < n; i++)
-		wb_labels[i] = wb_text[i];
-	wb_labels[n] = NULL;
-
 	if (side != WB_NONE)
-		wb_fit(&side, &mon, c, r);
-	wb_sel = 0;
-	for (i = 0; i < n; i++)
+		wb_fit(&side, &mon, layout_cols(), layout_rows());
+	wb_sel = wb_npos - 1;
+	for (i = 0; i < wb_npos; i++)
 		if (wb_side[i] == side && (side == WB_NONE || wb_mon[i] == mon))
 			wb_sel = i;
+}
+
+/* the cycle went to n, from wb_sel: on to the next place this layout has */
+static int wb_step(int n)
+{
+	int back = n == (wb_sel + wb_npos - 1) % wb_npos && n != (wb_sel + 1) % wb_npos;
+	int k;
+
+	for (k = 0; k < wb_npos && !wb_fits(n); k++)
+		n = (n + (back ? wb_npos - 1 : 1)) % wb_npos;
+	return n;
 }
 
 static void desktop_from_settings(void)
@@ -357,6 +389,33 @@ static void desktop_from_settings(void)
 		mon = 0;
 	}
 	wb_positions(side, mon);
+}
+
+/*
+ * RectFill and a bevel box, only inside the map and never upside down: a
+ * fill with its corners the wrong way round can hang a graphics board.
+ */
+static void map_fill(struct RastPort *rp, WORD x1, WORD y1, WORD x2, WORD y2)
+{
+	if (x1 < map_x)
+		x1 = map_x;
+	if (y1 < map_y)
+		y1 = map_y;
+	if (x2 > map_x + map_w - 1)
+		x2 = map_x + map_w - 1;
+	if (y2 > map_y + map_h - 1)
+		y2 = map_y + map_h - 1;
+	if (x1 <= x2 && y1 <= y2)
+		RectFill(rp, x1, y1, x2, y2);
+}
+
+static void map_bevel(struct RastPort *rp, WORD x, WORD y, WORD w, WORD h, BOOL recessed)
+{
+	if (w < 4 || h < 4 || x < map_x || y < map_y || x + w > map_x + map_w ||
+	    y + h > map_y + map_h)
+		return;
+	DrawBevelBox(rp, x, y, w, h, GT_VisualInfo, (ULONG)vi, GTBB_Recessed, recessed,
+	             TAG_END);
 }
 
 /* the monitor size MONITOR= stands for */
@@ -436,7 +495,7 @@ static BOOL wb_click(WORD x, WORD y)
 	if (x >= ox && x < ox + layout_cols() * cw && y >= oy && y < oy + layout_rows() * ch)
 		return FALSE;   /* on the monitors */
 	for (i = 0; i < wb_npos; i++) {
-		if (wb_side[i] == WB_NONE)
+		if (wb_side[i] == WB_NONE || !wb_fits(i))
 			continue;
 		wb_box(i, ox, oy, cw, ch, &bx, &by, &bw, &bh);
 		d = (LONG)(x - bx - bw / 2) * (x - bx - bw / 2) + (LONG)(y - by - bh / 2) * (y - by - bh / 2);
@@ -475,7 +534,7 @@ static void draw_map(void)
 	monitor_size(&mw, &mh);
 
 	SetAPen(rp, back);
-	RectFill(rp, map_x, map_y, map_x + map_w - 1, map_y + map_h - 1);
+	map_fill(rp, map_x, map_y, map_x + map_w - 1, map_y + map_h - 1);
 	map_geometry(&ox, &oy, &cw, &ch);
 	SetDrMd(rp, JAM1);
 
@@ -486,9 +545,8 @@ static void draw_map(void)
 
 		wb_box(wb_sel, ox, oy, cw, ch, &bx, &by, &bw, &bh);
 		SetAPen(rp, shine);
-		RectFill(rp, bx + 2, by + 2, bx + bw - 3, by + bh - 3);
-		DrawBevelBox(rp, bx, by, bw, bh, GT_VisualInfo, (ULONG)vi, GTBB_Recessed, TRUE,
-		             TAG_END);
+		map_fill(rp, bx + 2, by + 2, bx + bw - 3, by + bh - 3);
+		map_bevel(rp, bx, by, bw, bh, TRUE);
 		SetAPen(rp, plain);
 		strcpy(buf, "Workbench");
 		l = TextLength(rp, (STRPTR)buf, strlen(buf));
@@ -504,8 +562,8 @@ static void draw_map(void)
 		WORD l;
 
 		SetAPen(rp, fill);
-		RectFill(rp, x + 3, y + 3, x + cw - 4, y + ch - 4);
-		DrawBevelBox(rp, x + 1, y + 1, cw - 2, ch - 2, GT_VisualInfo, (ULONG)vi, TAG_END);
+		map_fill(rp, x + 3, y + 3, x + cw - 4, y + ch - 4);
+		map_bevel(rp, x + 1, y + 1, cw - 2, ch - 2, FALSE);
 		SetAPen(rp, text);
 		snprintf(buf, sizeof(buf), "%d", (int)i + 1);
 		l = TextLength(rp, (STRPTR)buf, strlen(buf));
@@ -740,14 +798,13 @@ static BOOL make_gadgets(struct Screen *scr)
 	return TRUE;
 }
 
-/* the Workbench cycle, after the places changed */
+/* the Workbench cycle, after the place changed (its labels stay) */
 static void wb_show(void)
 {
 	int i = field_index(F_WBPOS);
 
 	if (i >= 0 && gad[i])
-		GT_SetGadgetAttrs(gad[i], win, NULL, GTCY_Labels, (ULONG)wb_labels,
-		                  GTCY_Active, wb_sel, TAG_END);
+		GT_SetGadgetAttrs(gad[i], win, NULL, GTCY_Active, wb_sel, TAG_END);
 }
 
 static void show_page(int n)
@@ -1117,7 +1174,11 @@ int gui(int start_page, int timeout, const char *pubscreen)
 							wb_show();
 							draw_map();
 						} else if (fields[i].what == F_WBPOS) {
-							wb_sel = code;
+							int n = wb_step(code);
+
+							wb_sel = n;
+							if (n != (int)code)
+								wb_show();
 							draw_map();
 						} else if (fields[i].what == F_MONSIZE) {
 							size_sel = code;
