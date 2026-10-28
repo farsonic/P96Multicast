@@ -223,25 +223,43 @@ static void renamed(const struct Setting *s)
 	}
 }
 
-void prefs_load(void)
+/* the settings from dir ("ENVARC:"), or (NULL) from ENV:, else ENVARC: */
+void prefs_load_from(const char *dir)
 {
 	int i;
 
 	for (i = 0; i < NFILES; i++) {
 		files[i].nlines = 0;
-		files[i].loaded = read_file(&files[i], "ENV:") || read_file(&files[i], "ENVARC:");
+		files[i].loaded = dir ? read_file(&files[i], dir) :
+		                  read_file(&files[i], "ENV:") || read_file(&files[i], "ENVARC:");
 	}
 	if (!files[FILE_MC].loaded) {
 		/* from before the rename: Multicast.prefs, saved as Panorama.prefs */
 		const char *name = files[FILE_MC].name;
 
 		files[FILE_MC].name = "Multicast.prefs";
-		files[FILE_MC].loaded = read_file(&files[FILE_MC], "ENV:") ||
+		files[FILE_MC].loaded = dir ? read_file(&files[FILE_MC], dir) :
+		                        read_file(&files[FILE_MC], "ENV:") ||
 		                        read_file(&files[FILE_MC], "ENVARC:");
 		files[FILE_MC].name = name;
 	}
 	for (i = 0; i < nsettings; i++)
 		renamed(&settings[i]);
+}
+
+/* the settings in use: ENV:, else ENVARC: */
+void prefs_load(void)
+{
+	prefs_load_from(NULL);
+}
+
+/* every setting back to its default (comments and lines not ours stay) */
+void prefs_defaults(void)
+{
+	int i;
+
+	for (i = 0; i < nsettings; i++)
+		prefs_set(&settings[i], "");
 }
 
 static BOOL write_file(struct PrefsFile *f, const char *dir)

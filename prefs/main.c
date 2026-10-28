@@ -29,6 +29,9 @@
  *                                       Then it asks to reboot (REBOOT: without
  *                                       asking, NOREBOOT: not at all)
  *   PanoramaPrefs STATUS               what the running cards say
+ *   PanoramaPrefs CMD=n                the window, then its command n (prefs/ids.h,
+ *                                       for tests: CMD=420 the dark theme)
+ *   PanoramaPrefs DEBUG=file           (or TRACE=) each step written to file
  *   PanoramaPrefs OPEN                 the window's Open: the viewers' mouse
  *                                       and keys on, P96ScreenCx started if
  *                                       it is installed, the desktop opened
@@ -40,12 +43,13 @@
 #include <proto/dos.h>
 #include <stdio.h>
 #include "mcprefs.h"
+#include "lang.h"
 
 static const char version[] = "$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")";
 
-static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE/K,NOMUI/S,OPEN/S";
+static const char template[] = "SHOW/S,SET/M,INSTALL/S,DRY/S,FROM/K,SETUP/K,USE/S,STATUS/S,PAGE/N,TIMEOUT/N,PUBSCREEN/K,REBOOT/S,NOREBOOT/S,TRACE=DEBUG/K,NOMUI/S,OPEN/S,CMD/N";
 enum { A_SHOW, A_SET, A_INSTALL, A_DRY, A_FROM, A_SETUP, A_USE, A_STATUS, A_PAGE, A_TIMEOUT, A_PUBSCREEN,
-       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI, A_OPEN,
+       A_REBOOT, A_NOREBOOT, A_TRACE, A_NOMUI, A_OPEN, A_CMD,
        A_COUNT };
 
 /*
@@ -79,9 +83,10 @@ static BOOL ask_yes(const char *question)
 	return FALSE;
 }
 
+/* a line of a report, in the Shell */
 static void print_note(const char *s)
 {
-	printf("%s\n", s);
+	printf("%s\n", tr(s));
 }
 
 static int prefs_main(int argc);
@@ -124,10 +129,11 @@ static int prefs_main(int argc)
 	struct RDArgs *rda;
 	int rc = RETURN_OK;
 
+	lang_init();
 	prefs_load();
 	if (argc == 0)
 	{
-		int rc = mui_gui(0, 0, NULL);   /* from Workbench */
+		int rc = mui_gui(0, 0, NULL, 0);   /* from Workbench */
 
 		return rc >= 0 ? rc : gui(0, 0, NULL);
 	}
@@ -232,7 +238,8 @@ static int prefs_main(int argc)
 		int timeout = args[A_TIMEOUT] ? *(LONG *)args[A_TIMEOUT] : 0;
 
 		mp_trace("window: %s", args[A_NOMUI] ? "GadTools (NOMUI)" : "MUI");
-		rc = args[A_NOMUI] ? -1 : mui_gui(page, timeout, (const char *)args[A_PUBSCREEN]);
+		rc = args[A_NOMUI] ? -1 : mui_gui(page, timeout, (const char *)args[A_PUBSCREEN],
+		                                  args[A_CMD] ? *(ULONG *)args[A_CMD] : 0);
 		if (rc < 0)
 			rc = gui(page, timeout, (const char *)args[A_PUBSCREEN]);
 	}

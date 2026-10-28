@@ -32,7 +32,7 @@ CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sende
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
-PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c \
+PREFS_SRC := prefs/main.c prefs/settings.c prefs/install.c prefs/status.c prefs/gui.c prefs/lang.c \
              prefs/muigui.c prefs/theme.c prefs/bigstack.s
 MUI ?= /home/user/toolchain/mui/include
 
@@ -69,8 +69,8 @@ $(BUILD)/PanoramaPrefs: $(PREFS_SRC) prefs/mcprefs.h prefs/theme.h $(HDRS) | $(B
 	$(VC) $(CFLAGS) -Iprefs -I$(MUI) -o $@ $(PREFS_SRC) -lamiga
 
 # the desktop commodity: the settings code is PanoramaPrefs'
-$(BUILD)/PanoramaDesk: prefs/desktop.c prefs/settings.c prefs/mcprefs.h | $(BUILD)
-	$(VC) $(CFLAGS) -Iprefs -o $@ prefs/desktop.c prefs/settings.c -lamiga
+$(BUILD)/PanoramaDesk: prefs/desktop.c prefs/settings.c prefs/lang.c prefs/mcprefs.h | $(BUILD)
+	$(VC) $(CFLAGS) -Iprefs -o $@ prefs/desktop.c prefs/settings.c prefs/lang.c -lamiga
 
 $(BUILD)/Boing: demos/boing.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lamiga

@@ -35,10 +35,12 @@ enum {
 void theme_setup(Object *obj);      /* from MUIM_Setup: the pens on its screen (counted) */
 void theme_cleanup(Object *obj);    /* from MUIM_Cleanup: given back with the last */
 LONG tpen(int which);
+void theme_set_dark(BOOL on);      /* light (the default) or dark; redraw after */
+BOOL theme_dark(void);
 const char *theme_back(void);       /* the window's colour as an MUI image spec */
 const char *theme_panel_back(void); /* the pane's and the button bar's */
 
-/* drawing: text with its top at y (bold: the soft style), outlines, fills (nothing if empty) */
+/* drawing: text (through tr()) with its top at y (bold: the soft style), outlines, fills */
 LONG theme_textlen(struct RastPort *rp, const char *s, BOOL bold);
 void theme_text(struct RastPort *rp, LONG x, LONG y, const char *s, LONG pen, BOOL bold);
 void theme_rect(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, LONG pen);
@@ -54,6 +56,6 @@ enum {
 };
 void theme_icon(struct RastPort *rp, int icon, LONG x, LONG y, LONG size, LONG pen);
 
-/* a help bubble: the name in bold, then the text wrapped (a static buffer) */
+/* a help bubble: the name in bold, then the text wrapped (both through tr(); a static buffer) */
 const char *theme_bubble(const char *name, const char *body);
 #endif

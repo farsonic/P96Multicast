@@ -59,6 +59,7 @@
 #include <string.h>
 #include "mcprefs.h"
 #include "copper.h"
+#include "lang.h"
 
 #define MD_VERSION "1.7"
 #define PORTNAME "PanoramaDesk"
@@ -128,12 +129,16 @@ static BOOL setting_on(const char *key)
 
 static void say(const char *text)
 {
+	text = tr(text);
 	/* from Workbench, or run with its output nowhere to be seen: a requester */
 	if ((from_wb || !Output() || !IsInteractive(Output())) && IntuitionBase) {
 		struct EasyStruct es = { sizeof(struct EasyStruct), 0, (UBYTE *)"PanoramaDesk",
-		                         (UBYTE *)text, (UBYTE *)"Ok" };
+		                         (UBYTE *)"%s", (UBYTE *)"OK" };
+		ULONG args[1];
 
-		EasyRequestArgs(NULL, &es, NULL, NULL);
+		args[0] = (ULONG)text;
+		es.es_GadgetFormat = (UBYTE *)tr("OK");
+		EasyRequestArgs(NULL, &es, NULL, args);
 	} else {
 		printf("PanoramaDesk: %s\n", text);
 	}
@@ -883,6 +888,7 @@ int main(int argc, char **argv)
 	if (!IntuitionBase || !GfxBase)
 		return RETURN_FAIL;
 	from_wb = argc == 0;
+	lang_init();
 	read_settings();
 	if (!from_wb) {
 		rda = ReadArgs((STRPTR)template, args, NULL);

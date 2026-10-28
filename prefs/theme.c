@@ -1,6 +1,7 @@
 /*
- * Panorama - theme.c: see theme.h. The palette is Easel's dark one;
- * the icons are PanoramaPrefs' own.
+ * Panorama - theme.c: see theme.h. Two tables of the same colours, light
+ * (the default, beside the Workbench) and dark (Easel's); the icons are
+ * PanoramaPrefs' own.
  */
 #include <string.h>
 #include <stdio.h>
@@ -10,8 +11,27 @@
 #include <libraries/mui.h>
 #include <proto/muimaster.h>
 #include "theme.h"
+#include "lang.h"
 
-static const ULONG rgb[C_NPENS] = {
+static const ULONG light[C_NPENS] = {
+	0xF3F3F3,   /* BACK */
+	0xE6E6E6,   /* PANEL */
+	0xFFFFFF,   /* FIELD */
+	0xC4C4C4,   /* BORDER */
+	0xD8D8D8,   /* HOVER */
+	0x1E1E1E,   /* TEXT */
+	0x666666,   /* DIM */
+	0xA8A8A8,   /* DISABLED */
+	0x3A3A3A,   /* ICON */
+	0x1473E6,   /* ACCENT */
+	0x0D5CB8,   /* ACCENTHOVER */
+	0xFFFFFF,   /* ONACCENT */
+	0x3B78C2,   /* MONITOR */
+	0x5B95D8,   /* MONITOR2 */
+	0xFFFFFF,   /* WB */
+	0xC83C3C, 0x2E9A5C, 0xD07A20
+};
+static const ULONG dark[C_NPENS] = {
 	0x262626,   /* BACK */
 	0x1E1E1E,   /* PANEL */
 	0x323232,   /* FIELD */
@@ -29,6 +49,7 @@ static const ULONG rgb[C_NPENS] = {
 	0xE6E6E6,   /* WB */
 	0xEE6A6A, 0x5BC08A, 0xF0A050
 };
+static const ULONG *rgb = light;
 static LONG pens[C_NPENS];
 static struct ColorMap *pencm;
 static int users;
@@ -40,6 +61,27 @@ static int nsetup;
  * one, or settles for the nearest; each goes back with ReleasePen. The
  * colour map wants 32 bits a gun: each 8-bit value repeated four times.
  */
+static void obtain_pens(void)
+{
+	int i;
+
+	for (i = 0; i < C_NPENS; i++) {
+		ULONG c = rgb[i];
+
+		pens[i] = ObtainBestPen(pencm, ((c >> 16) & 255) * 0x01010101UL,
+		                        ((c >> 8) & 255) * 0x01010101UL, (c & 255) * 0x01010101UL,
+		                        OBP_Precision, PRECISION_GUI, TAG_DONE);
+	}
+}
+
+static void release_pens(void)
+{
+	int i;
+
+	for (i = 0; i < C_NPENS; i++)
+		ReleasePen(pencm, pens[i]);
+}
+
 void theme_setup(Object *obj)
 {
 	int i;
@@ -52,13 +94,26 @@ void theme_setup(Object *obj)
 	if (users++)
 		return;
 	pencm = _screen(obj)->ViewPort.ColorMap;
-	for (i = 0; i < C_NPENS; i++) {
-		ULONG c = rgb[i];
+	obtain_pens();
+}
 
-		pens[i] = ObtainBestPen(pencm, ((c >> 16) & 255) * 0x01010101UL,
-		                        ((c >> 8) & 255) * 0x01010101UL, (c & 255) * 0x01010101UL,
-		                        OBP_Precision, PRECISION_GUI, TAG_DONE);
-	}
+/* light or dark: the pens given back and taken again in the other colours */
+void theme_set_dark(BOOL on)
+{
+	const ULONG *want = on ? dark : light;
+
+	if (want == rgb)
+		return;
+	if (users)
+		release_pens();
+	rgb = want;
+	if (users)
+		obtain_pens();
+}
+
+BOOL theme_dark(void)
+{
+	return rgb == dark;
 }
 
 /* MUI may send Cleanup without Setup, or Setup twice: each object counts once */
@@ -74,8 +129,7 @@ void theme_cleanup(Object *obj)
 	setup_objs[k] = setup_objs[--nsetup];
 	if (!users || --users)
 		return;
-	for (i = 0; i < C_NPENS; i++)
-		ReleasePen(pencm, pens[i]);
+	release_pens();
 }
 
 LONG tpen(int which)
@@ -108,6 +162,7 @@ LONG theme_textlen(struct RastPort *rp, const char *s, BOOL bold)
 {
 	LONG w;
 
+	s = tr(s);
 	SetSoftStyle(rp, bold ? FSF_BOLD : 0, FSF_BOLD | FSF_ITALIC | FSF_UNDERLINED);
 	w = TextLength(rp, (STRPTR)s, strlen(s));
 	SetSoftStyle(rp, 0, FSF_BOLD);
@@ -116,6 +171,7 @@ LONG theme_textlen(struct RastPort *rp, const char *s, BOOL bold)
 
 void theme_text(struct RastPort *rp, LONG x, LONG y, const char *s, LONG pen, BOOL bold)
 {
+	s = tr(s);
 	SetSoftStyle(rp, bold ? FSF_BOLD : 0, FSF_BOLD | FSF_ITALIC | FSF_UNDERLINED);
 	SetAPen(rp, pen);
 	SetDrMd(rp, JAM1);
@@ -306,6 +362,8 @@ const char *theme_bubble(const char *name, const char *body)
 	int col = 0;
 	size_t room;
 
+	name = tr(name);
+	body = tr(body);
 	snprintf(out, sizeof(out), "\33b%s\33n", name);
 	if (!body || !*body)
 		return out;

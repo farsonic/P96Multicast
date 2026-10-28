@@ -33,7 +33,7 @@ cp dist/scripts/desktop.command dist/scripts/desktop-lan.command "$PKG/Client/"
 chmod +x "$PKG/Client/"*.command
 cp README.md "$PKG/Docs/README.md"
 cp docs/COPPER.md docs/BUILD.md docs/WRAP.md "$PKG/Docs/"
-git ls-files | while read -r f; do
+git ls-files | grep -v "^docs/mui-guide/img/" | while read -r f; do
 	mkdir -p "$PKG/Source/$(dirname "$f")"
 	cp "$f" "$PKG/Source/$f"
 done
@@ -93,6 +93,18 @@ else
 	echo "warning: $RIPTIDE_SRC/tools/mkicon.py not found, no monitor icon" >&2
 fi
 
+# nothing that mustn't ship: the sandbox's test-only TLS certificate, keys
+# (the patterns made from pieces, so this script, shipped in Source/, doesn't match)
+CERT="BEGIN CERT""IFICATE\|BEGIN .*PRIVATE"" KEY\|sandbox-test""-only"
+if grep -rl "$CERT" "$PKG"; then
+	echo "mkpackage: a certificate or key in the package (above): not packaged" >&2
+	exit 1
+fi
+if find "$PKG" \( -name '*.crt' -o -name '*.pem' -o -name '*extra-ca*' \) | grep .; then
+	echo "mkpackage: certificate files in the package (above): not packaged" >&2
+	exit 1
+fi
+
 # Amiga line ends are LF already; make the scripts and docs plain files
 # an lha that can create archives, or our own writer (stored, level 2)
 if (cd "$STAGE" && lha a ../Panorama.lha Panorama >/dev/null 2>&1) && [ -s build/Panorama.lha ]; then
@@ -100,5 +112,11 @@ if (cd "$STAGE" && lha a ../Panorama.lha Panorama >/dev/null 2>&1) && [ -s build
 else
 	rm -f build/Panorama.lha
 	python3 dist/mklha.py build/Panorama.lha "$PKG" Panorama
+fi
+# and again on the finished archive
+if strings build/Panorama.lha | grep -q "$CERT"; then
+	echo "mkpackage: a certificate in build/Panorama.lha: removed" >&2
+	rm -f build/Panorama.lha
+	exit 1
 fi
 echo "built build/Panorama.lha"

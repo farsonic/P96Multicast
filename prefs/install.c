@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "mcprefs.h"
+#include "lang.h"
 
 struct Library *IconBase;
 struct Library *SocketBase;
@@ -42,11 +43,12 @@ static BOOL dry;
 static const char *source;   /* FROM= */
 static BOOL failed;
 
+/* a line of the report: the format translated as a whole, then filled in */
 static void notef(const char *fmt, const char *a, const char *b)
 {
 	char buf[160];
 
-	snprintf(buf, sizeof(buf), fmt, a, b);
+	snprintf(buf, sizeof(buf), tr(fmt), a, b);
 	say(buf);
 }
 

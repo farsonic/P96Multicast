@@ -14,7 +14,7 @@
 
 #include <exec/types.h>
 
-#define MP_VERSION "3.1"
+#define MP_VERSION "3.2"
 #define MP_DATE "26.10.2026"
 
 /* the two files */
@@ -58,6 +58,8 @@ extern struct PrefsFile files[NFILES];
 /* settings.c */
 const struct Setting *find_setting(const char *key);
 void prefs_load(void);
+void prefs_load_from(const char *dir);   /* "ENVARC:" (Last Saved), NULL: as prefs_load */
+void prefs_defaults(void);               /* every setting back to its default */
 BOOL prefs_write(BOOL envarc);          /* ENV:, and ENVARC: too */
 const char *prefs_get(const struct Setting *s);       /* NULL: not set */
 const char *prefs_value(const struct Setting *s);     /* set, or the default */
@@ -97,6 +99,6 @@ int status_lines(char lines[][80], int max);
 
 /* gui.c */
 int gui(int page, int timeout, const char *pubscreen);       /* GadTools, without MUI */
-int mui_gui(int page, int timeout, const char *pubscreen);   /* MUI; -1 if it isn't there */
+int mui_gui(int page, int timeout, const char *pubscreen, ULONG cmd);  /* MUI; -1 if it isn't there */
 
 #endif

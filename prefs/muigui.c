@@ -1,28 +1,45 @@
 /*
- * Panorama - muigui.c: PanoramaPrefs' window, in MUI, drawn the way
- * Easel draws its interface: dark, flat, with its own controls and icons.
+ * Panorama - muigui.c: PanoramaPrefs' window, in MUI, built as the family's
+ * guide says (docs/mui-guide/README.md): flat, in the theme's colours (light, or
+ * dark from the View menu), with its own controls and icons drawn in code.
  *
  *  +-----------+--------------------------------------------+
- *  | Desktop   |  Desktop                                   |
- *  | Network   |  One screen over several viewer windows    |
- *  | Display   |  [ the monitors, the Workbench beside them ]|
- *  | Wrap.card |  Monitors      < Two, side by side >       |
- *  | Status    |  ...           switches, buttons           |
+ *  | Desktop   |  Desktop   One screen over viewer windows  |
+ *  | Network   |  [ the monitors, the Workbench beside them ]|
+ *  | Display   |  Monitors      < Two, side by side >       |
+ *  | Wrap.card |  ...           switches                    |
+ *  | Status    |                                            |
  *  +-----------+--------------------------------------------+
- *  | Install                          Cancel   Use   Save   |
+ *  | Install  Open  Close                Cancel   Use   Save |
  *  +--------------------------------------------------------+
+ *
+ * Every command is in the menus (Project, Edit, Desktop, View), with its
+ * Amiga-key shortcut; the buttons are shortcuts to the same IDs (ids.h),
+ * and command() is the one place they all arrive, CMD=n too. Every string
+ * the user sees goes through tr() (lang.c): the theme's text and bubbles do
+ * it themselves, requesters and report lines here.
  *
  * Every control is one of the classes here, subclasses of MUI's Area:
  * the navigation pane, the picture of the monitors, a choice (< value >),
  * a switch, a button, a label and a list of rows. Text entry is MUI's
- * String. The settings are read back from the controls by collect(), as
- * the GadTools window (gui.c, used when MUI isn't there) does.
+ * String. Each class keeps a shown flag (MUIM_Show/Hide) and neither draws
+ * nor takes the mouse while hidden. The settings are read back from the
+ * controls by collect(), as the GadTools window (gui.c, used when MUI isn't
+ * there) does.
+ *
+ * Where it differs from the guide, and why: no splash window (it starts at
+ * once) and no fonts of its own (the screen's font, which the guide's
+ * fallback ends at anyway); Install shows the busy pointer but no Abort,
+ * because stopping half-way would leave the system half set up, and it
+ * takes a second or two; help bubbles can't be switched off (MUI's own
+ * settings can).
  *
  * For newcomers to MUI: a custom class is a BOOPSI class made with
  * MUI_CreateCustomClass; its dispatcher gets every method. MUIM_AskMinMax
- * says how big it wants to be, MUIM_Draw draws it, MUIM_HandleEvent gets
- * the mouse clicks its event handler asks for. Setting an attribute with
- * set() passes it on to the superclass too, which is what lets other
+ * says how big it wants to be (MUI 3.8 fills MinMaxInfo in during the
+ * superclass's method: read it after), MUIM_Draw draws it, MUIM_HandleEvent
+ * gets the mouse clicks its event handler asks for. Setting an attribute
+ * with set() passes it on to the superclass too, which is what lets other
  * objects (and the application, through MUIM_Application_ReturnID) watch
  * it with MUIM_Notify.
  */
@@ -35,6 +52,7 @@
 #include <devices/timer.h>
 #include <intuition/intuition.h>
 #include <graphics/gfxbase.h>
+#include <libraries/gadtools.h>
 #include <libraries/mui.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -45,6 +63,8 @@
 #include <clib/alib_protos.h>
 #include "mcprefs.h"
 #include "theme.h"
+#include "lang.h"
+#include "ids.h"
 
 struct Library *MUIMasterBase, *UtilityBase;
 extern struct IntuitionBase *IntuitionBase;
@@ -138,7 +158,7 @@ static LONG measure(Object *obj, const char *s, BOOL bold)
 	const WORD *space = (const WORD *)tf->tf_CharSpace, *kern = (const WORD *)tf->tf_CharKern;
 	LONG w = 0, n = 0;
 
-
+	s = tr(s);
 	for (; *s; s++, n++) {
 		UBYTE c = *s;
 		LONG i = (c >= tf->tf_LoChar && c <= tf->tf_HiChar ? c : tf->tf_HiChar + 1) -
@@ -263,21 +283,39 @@ static void modes_to(char *out, int len)
 		n += snprintf(out + n, len - n, "%s%s", i ? "," : "", mode_text[i]);
 }
 
+/* a line for the report a requester shows after Save, Use, Install or Open */
 static void note(const char *s)
 {
 	int n = strlen(report);
 
-	snprintf(report + n, sizeof(report) - n, "%s%s", n ? "\n" : "", s);
+	snprintf(report + n, sizeof(report) - n, "%s%s", n ? "\n" : "", tr(s));
+}
+
+static Object *root;    /* the window's contents */
+
+/*
+ * The whole window drawn again: MUI doesn't always repair what a requester
+ * covered over the classes' own drawing, and a new theme needs it too.
+ */
+static void redraw_window(void)
+{
+	if (root && win && xget(win, MUIA_Window_Open)) {
+		DoMethod(root, MUIM_Group_InitChange);
+		DoMethod(root, MUIM_Group_ExitChange);
+	}
 }
 
 /* a requester; returns the button, 1 the first (and 0 the last) */
 static LONG request(const char *title, const char *buttons, const char *text)
 {
 	ULONG args[1];
+	LONG r;
 
 	mp_trace("requester: %s", title);
-	args[0] = (ULONG)text;
-	return MUI_RequestA(app, win, 0, (STRPTR)title, (STRPTR)buttons, (STRPTR)"%s", args);
+	args[0] = (ULONG)tr(text);
+	r = MUI_RequestA(app, win, 0, (STRPTR)tr(title), (STRPTR)tr(buttons), (STRPTR)"%s", args);
+	redraw_window();
+	return r;
 }
 
 static void tell(const char *title, const char *text)
@@ -307,9 +345,20 @@ static const char *keep(const char *s)
 
 /* ================================================================ the classes */
 
+/*
+ * Every class's data starts with its shown flag: a hidden object (a page
+ * not in front) has no place on the window, so it neither draws nor takes
+ * the mouse (its old place may be under another page's controls).
+ */
+struct Shown {
+	int shown;
+};
+#define SHOWN(cl, obj) (((struct Shown *)INST_DATA(cl, obj))->shown)
+
 /* --------------------------------------------------------- the navigation pane */
 #define MUIA_Nav_Active (MTAG + 1)
 struct NavData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	struct MUI_EventHandlerNode ehn;
 	LONG active;
 };
@@ -363,6 +412,10 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 
 	trace_first("nav", msg->MethodID);
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case OM_NEW:
 		if (!(obj = (Object *)DoSuperMethodA(cl, obj, msg)))
 			return 0;
@@ -375,7 +428,8 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		d = INST_DATA(cl, obj);
 		if (t && (LONG)t->ti_Data != d->active) {
 			d->active = t->ti_Data;
-			MUI_Redraw(obj, MADF_DRAWOBJECT);
+			if (SHOWN(cl, obj))
+				MUI_Redraw(obj, MADF_DRAWOBJECT);
 		}
 		break;
 	}
@@ -450,7 +504,10 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		}
 		return 0;
 	}
-	case MUIM_HandleEvent: {
+	case MUIM_HandleEvent:
+		if (!SHOWN(cl, obj))
+			return 0;
+		{
 		struct IntuiMessage *im = ((struct MUIP_HandleEvent *)msg)->imsg;
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
@@ -470,6 +527,7 @@ static ULONG nav_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 /* --------------------------------------------------------- the monitors and the Workbench */
 #define MUIA_Map_Clicked (MTAG + 10)    /* (notify) the Workbench was put somewhere else */
 struct MapData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	struct MUI_EventHandlerNode ehn;
 	LONG clicked;
 };
@@ -600,6 +658,10 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 	trace_first("map", msg->MethodID);
 
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case MUIM_Setup:
 		if (!DoSuperMethodA(cl, obj, msg))
 			return FALSE;
@@ -636,13 +698,17 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 		if (((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE))
 			map_draw(obj);
 		return 0;
-	case MUIM_HandleEvent: {
+	case MUIM_HandleEvent:
+		if (!SHOWN(cl, obj))
+			return 0;
+		{
 		struct IntuiMessage *im = ((struct MUIP_HandleEvent *)msg)->imsg;
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
 		    _inside(obj, im->MouseX, im->MouseY)) {
 			if (map_click(obj, im->MouseX, im->MouseY)) {
-				MUI_Redraw(obj, MADF_DRAWOBJECT);
+				if (SHOWN(cl, obj))
+					MUI_Redraw(obj, MADF_DRAWOBJECT);
 				d = INST_DATA(cl, obj);
 				set(obj, MUIA_Map_Clicked, ++d->clicked);
 			}
@@ -659,6 +725,7 @@ static ULONG map_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *obj
 #define MUIA_Choice_Active (MTAG + 21)   /* (isg, notify) */
 #define MUIA_Choice_Valid  (MTAG + 22)   /* (init) BOOL (*)(int): the entries to offer */
 struct ChoiceData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	struct MUI_EventHandlerNode ehn;
 	const char *const *labels;
 	LONG n, active;
@@ -673,6 +740,10 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	trace_first("choice", msg->MethodID);
 
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case OM_NEW: {
 		struct TagItem *tags = ((struct opSet *)msg)->ops_AttrList;
 		struct TagItem more[] = { { MUIA_CycleChain, 1 }, { TAG_MORE, (ULONG)tags } };
@@ -694,7 +765,8 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		d = INST_DATA(cl, obj);
 		if (t && (LONG)t->ti_Data != d->active && (LONG)t->ti_Data < d->n) {
 			d->active = t->ti_Data;
-			MUI_Redraw(obj, MADF_DRAWUPDATE);
+			if (SHOWN(cl, obj))
+				MUI_Redraw(obj, MADF_DRAWUPDATE);
 		}
 		break;
 	}
@@ -764,7 +836,10 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		           FALSE);
 		return 0;
 	}
-	case MUIM_HandleEvent: {
+	case MUIM_HandleEvent:
+		if (!SHOWN(cl, obj))
+			return 0;
+		{
 		struct IntuiMessage *im = ((struct MUIP_HandleEvent *)msg)->imsg;
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
@@ -793,6 +868,7 @@ static ULONG choice_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 /* --------------------------------------------------------- a switch */
 #define MUIA_Switch_On (MTAG + 30)        /* (isg, notify) */
 struct SwitchData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	struct MUI_EventHandlerNode ehn;
 	LONG on;
 };
@@ -805,6 +881,10 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	trace_first("switch", msg->MethodID);
 
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case OM_NEW: {
 		struct TagItem *tags = ((struct opSet *)msg)->ops_AttrList;
 		struct TagItem more[] = { { MUIA_CycleChain, 1 }, { TAG_MORE, (ULONG)tags } };
@@ -822,7 +902,8 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		d = INST_DATA(cl, obj);
 		if (t && (t->ti_Data != 0) != d->on) {
 			d->on = t->ti_Data != 0;
-			MUI_Redraw(obj, MADF_DRAWUPDATE);
+			if (SHOWN(cl, obj))
+				MUI_Redraw(obj, MADF_DRAWUPDATE);
 		}
 		break;
 	}
@@ -881,7 +962,10 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		            y1 - 2, k / 2, tpen(d->on ? C_ONACCENT : C_DIM));
 		return 0;
 	}
-	case MUIM_HandleEvent: {
+	case MUIM_HandleEvent:
+		if (!SHOWN(cl, obj))
+			return 0;
+		{
 		struct IntuiMessage *im = ((struct MUIP_HandleEvent *)msg)->imsg;
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
@@ -906,6 +990,7 @@ static ULONG switch_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 #define LB_DIM   4      /* help under it */
 #define LB_FIT   8      /* as wide as its text, no wider */
 struct ButtonData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	char label[64];
 	LONG key, icon;
 	BOOL primary;
@@ -920,6 +1005,10 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	trace_first("button", msg->MethodID);
 
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case OM_NEW: {
 		struct TagItem *tags = ((struct opSet *)msg)->ops_AttrList;
 		const char *l = (const char *)GetTagData(MUIA_Button_Label, (ULONG)"", tags);
@@ -961,6 +1050,14 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		d->flags = flags;
 		return (ULONG)obj;
 	}
+	case OM_SET: {
+		/* dimmed or not: drawn again in its new colours */
+		ULONG r = DoSuperMethodA(cl, obj, msg);
+
+		if (FindTagItem(MUIA_Disabled, ((struct opSet *)msg)->ops_AttrList) && SHOWN(cl, obj))
+			MUI_Redraw(obj, MADF_DRAWOBJECT);
+		return r;
+	}
 	case MUIM_Setup:
 		if (!DoSuperMethodA(cl, obj, msg))
 			return FALSE;
@@ -1001,7 +1098,7 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 	case MUIM_Draw: {
 		struct RastPort *rp = _rp(obj);
 		LONG fh = ofont(obj)->tf_YSize, tw, x, y, iw;
-		ULONG sel = 0;
+		ULONG sel = 0, off = 0;
 
 		DoSuperMethodA(cl, obj, msg);
 		if (!(((struct MUIP_Draw *)msg)->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE)))
@@ -1020,6 +1117,9 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 			return 0;
 		}
 		get(obj, MUIA_Selected, &sel);
+		get(obj, MUIA_Disabled, &off);
+		if (off)
+			sel = 0;
 		theme_fill(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), tpen(C_PANEL));
 		if (d->primary) {
 			theme_round(rp, _mleft(obj), _mtop(obj), _mright(obj), _mbottom(obj), 3,
@@ -1035,9 +1135,12 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 		x = _mleft(obj) + (_mwidth(obj) - tw - iw) / 2;
 		y = _mtop(obj) + (_mheight(obj) - fh) / 2;
 		if (d->icon)
-			theme_icon(rp, d->icon, x, y, fh, d->primary ? tpen(C_ONACCENT) : -1);
-		theme_text(rp, x + iw, y, d->label, tpen(d->primary ? C_ONACCENT : C_TEXT), FALSE);
-		if (d->key >= 0) {
+			theme_icon(rp, d->icon, x, y, fh, off ? tpen(C_DISABLED) :
+			           d->primary ? tpen(C_ONACCENT) : -1);
+		theme_text(rp, x + iw, y, d->label,
+		           tpen(off ? C_DISABLED : d->primary ? C_ONACCENT : C_TEXT), FALSE);
+		/* the key's letter underlined (not in a translation: it may not be there) */
+		if (d->key >= 0 && tr(d->label) == (const char *)d->label) {
 			LONG ux = x + iw + TextLength(rp, (STRPTR)d->label, d->key);
 			LONG uw = TextLength(rp, (STRPTR)d->label + d->key, 1);
 
@@ -1057,6 +1160,7 @@ static ULONG button_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *
 #define MUIA_Rows_Active (MTAG + 53)   /* (isg) the one chosen, -1 none; selectable if given */
 #define MUIA_Rows_Visible (MTAG + 54)  /* (init) rows to make room for */
 struct RowsData {
+	int shown;                  /* between MUIM_Show and MUIM_Hide: drawing allowed */
 	struct MUI_EventHandlerNode ehn;
 	char *lines;
 	LONG width, count, active, visible;
@@ -1071,6 +1175,10 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 	trace_first("rows", msg->MethodID);
 
 	switch (msg->MethodID) {
+	case MUIM_Show:
+	case MUIM_Hide:
+		SHOWN(cl, obj) = msg->MethodID == MUIM_Show;
+		break;
 	case OM_NEW: {
 		struct TagItem *tags = ((struct opSet *)msg)->ops_AttrList;
 
@@ -1094,7 +1202,8 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 		if ((t = FindTagItem(MUIA_Rows_Active, tags)) != NULL)
 			d->active = t->ti_Data;
 		if (FindTagItem(MUIA_Rows_Count, tags) || FindTagItem(MUIA_Rows_Active, tags))
-			MUI_Redraw(obj, MADF_DRAWUPDATE);
+			if (SHOWN(cl, obj))
+				MUI_Redraw(obj, MADF_DRAWUPDATE);
 		break;
 	}
 	case OM_GET:
@@ -1173,7 +1282,10 @@ static ULONG rows_dispatch(__reg("a0") struct IClass *cl, __reg("a2") Object *ob
 		}
 		return 0;
 	}
-	case MUIM_HandleEvent: {
+	case MUIM_HandleEvent:
+		if (!SHOWN(cl, obj))
+			return 0;
+		{
 		struct IntuiMessage *im = ((struct MUIP_HandleEvent *)msg)->imsg;
 
 		if (im && im->Class == IDCMP_MOUSEBUTTONS && im->Code == SELECTDOWN &&
@@ -1639,15 +1751,60 @@ static void open_desktop(void)
 
 /* ================================================================ the window */
 
-enum {
-	ID_SAVE = 1, ID_USE, ID_INSTALL, ID_CANCEL, ID_LAYOUT, ID_REDRAW, ID_WB, ID_MAP, ID_OPEN,
-	ID_CLOSE, ID_ADD, ID_REMOVE, ID_PAGE, ID_REFRESH
+/*
+ * The menus: every command is here, the buttons are shortcuts to the same
+ * IDs (ids.h). Labels go through tr() when the strip is made.
+ */
+#define M(title)          { NM_TITLE, (STRPTR)(title), 0, 0, 0, 0 }
+#define I(label, key, id) { NM_ITEM, (STRPTR)(label), (STRPTR)(key), 0, 0, (APTR)(id) }
+#define T(label, key, id) { NM_ITEM, (STRPTR)(label), (STRPTR)(key), CHECKIT | MENUTOGGLE, 0, \
+                            (APTR)(id) }
+#define BAR               { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 }
+static struct NewMenu menus[] = {
+	M("Project"),
+	I("Save", "S", ID_SAVE), I("Use", "U", ID_USE), BAR,
+	I("Install...", "I", ID_INSTALL), BAR,
+	I("About...", "?", ID_ABOUT), BAR,
+	I("Quit", "Q", ID_QUIT),
+	M("Edit"),
+	I("Reset To Defaults", "D", ID_DEFAULTS), I("Last Saved", "L", ID_LASTSAVED),
+	I("Restore", "R", ID_RESTORE),
+	M("Desktop"),
+	I("Open Desktop", "O", ID_OPEN), I("Close Desktop", "K", ID_CLOSE), BAR,
+	I("Refresh Status", "F", ID_REFRESH),
+	M("View"),
+	I("Desktop", "1", ID_PAGE0), I("Network", "2", ID_PAGE1), I("Display", "3", ID_PAGE2),
+	I("Wrap.card", "4", ID_PAGE3), I("Status", "5", ID_PAGE4), BAR,
+	T("Dark Theme", "T", ID_DARK),
+	{ NM_END, 0, 0, 0, 0, 0 }
 };
+#undef M
+#undef I
+#undef T
+#undef BAR
+#define NMENUS (sizeof(menus) / sizeof(menus[0]))
+
+static Object *strip, *bar, *b_close, *b_refresh;
+
+/* the menu strip, its labels translated, the theme's item ticked to match */
+static Object *make_menus(void)
+{
+	static struct NewMenu m[NMENUS];
+	unsigned i;
+
+	for (i = 0; i < NMENUS; i++) {
+		m[i] = menus[i];
+		if (m[i].nm_Label && m[i].nm_Label != NM_BARLABEL)
+			m[i].nm_Label = (STRPTR)tr((const char *)m[i].nm_Label);
+		if ((ULONG)m[i].nm_UserData == ID_DARK && theme_dark())
+			m[i].nm_Flags |= CHECKED;
+	}
+	return MUI_MakeObject(MUIO_MenustripNM, (ULONG)m, 0);
+}
 
 static Object *make_window(int start, const char *pubscreen)
 {
-	Object *b_save, *b_use, *b_install, *b_cancel, *b_open, *b_close, *b_add, *b_remove,
-	       *b_refresh, *w;
+	Object *b_save, *b_use, *b_install, *b_cancel, *b_open, *b_add, *b_remove, *w;
 	static const char *lw_help, *ls_help, *lc_help, *lb_help, *lm_help, *lwr_help;
 
 	lw_help = keep(theme_bubble("Monitors", "How many viewer windows the desktop is split "
@@ -1749,11 +1906,14 @@ static Object *make_window(int start, const char *pubscreen)
 	End;
 
 	mp_trace("mui: pages %s; making the window", pages ? "made" : "NOT made");
+	strip = make_menus();
+	mp_trace("mui: menus %s", strip ? "made" : "NOT made");
 	w = WindowObject,
 		MUIA_Window_Title, (ULONG)"PanoramaPrefs " MP_VERSION,
 		MUIA_Window_ID, MAKE_ID('M', 'C', 'P', 'R'),
+		MUIA_Window_Menustrip, (ULONG)strip,
 		(ULONG)(pubscreen ? MUIA_Window_PublicScreen : TAG_IGNORE), (ULONG)pubscreen,
-		WindowContents, VGroup, MUIA_Background, (ULONG)theme_back(), MUIA_InnerLeft, 0,
+		WindowContents, root = VGroup, MUIA_Background, (ULONG)theme_back(), MUIA_InnerLeft, 0,
 		                MUIA_InnerRight, 0, MUIA_InnerTop, 0, MUIA_InnerBottom, 0,
 		                MUIA_Group_Spacing, 0,
 			Child, HGroup, MUIA_Group_Spacing, 0,
@@ -1763,7 +1923,7 @@ static Object *make_window(int start, const char *pubscreen)
 					Child, pages,
 				End,
 			End,
-			Child, HGroup, MUIA_Background, (ULONG)theme_panel_back(), MUIA_InnerLeft, 8,
+			Child, bar = HGroup, MUIA_Background, (ULONG)theme_panel_back(), MUIA_InnerLeft, 8,
 			               MUIA_InnerRight, 8, MUIA_InnerTop, 5, MUIA_InnerBottom, 5,
 				Child, b_install = MpButton("_Install", IC_INSTALL, FALSE),
 				Child, b_open = MpButton("_Open", IC_OPEN, FALSE),
@@ -1780,18 +1940,18 @@ static Object *make_window(int start, const char *pubscreen)
 
 #define RET(o, attr, val, id) DoMethod(o, MUIM_Notify, attr, val, (ULONG)app, 2, \
                                        MUIM_Application_ReturnID, id)
-	RET(w, MUIA_Window_CloseRequest, TRUE, ID_CANCEL);
+	RET(w, MUIA_Window_CloseRequest, TRUE, ID_QUIT);
 	RET(b_save, MUIA_Pressed, FALSE, ID_SAVE);
 	RET(b_use, MUIA_Pressed, FALSE, ID_USE);
 	RET(b_install, MUIA_Pressed, FALSE, ID_INSTALL);
-	RET(b_cancel, MUIA_Pressed, FALSE, ID_CANCEL);
+	RET(b_cancel, MUIA_Pressed, FALSE, ID_QUIT);
 	RET(b_open, MUIA_Pressed, FALSE, ID_OPEN);
 	RET(b_close, MUIA_Pressed, FALSE, ID_CLOSE);
-	RET(b_add, MUIA_Pressed, FALSE, ID_ADD);
-	RET(b_remove, MUIA_Pressed, FALSE, ID_REMOVE);
+	RET(b_add, MUIA_Pressed, FALSE, ID_ADDMODE);
+	RET(b_remove, MUIA_Pressed, FALSE, ID_REMOVEMODE);
 	RET(b_refresh, MUIA_Pressed, FALSE, ID_REFRESH);
 	RET(ch_layout, MUIA_Choice_Active, MUIV_EveryTime, ID_LAYOUT);
-	RET(ch_size, MUIA_Choice_Active, MUIV_EveryTime, ID_REDRAW);
+	RET(ch_size, MUIA_Choice_Active, MUIV_EveryTime, ID_SIZE);
 	RET(ch_wb, MUIA_Choice_Active, MUIV_EveryTime, ID_WB);
 	RET(map, MUIA_Map_Clicked, MUIV_EveryTime, ID_MAP);
 	RET(nav, MUIA_Nav_Active, MUIV_EveryTime, ID_PAGE);
@@ -1801,9 +1961,237 @@ static Object *make_window(int start, const char *pubscreen)
 	return w;
 }
 
+/* ================================================================ commands */
+
+/* the picture of the monitors drawn again, if its page is the one shown */
+static void map_redraw(void)
+{
+	if (map && SHOWN(map_cl->mcc_Class, map))
+		MUI_Redraw(map, MADF_DRAWOBJECT);
+}
+
+/* every control set from the settings (after Reset To Defaults, Last Saved, Restore) */
+static void refresh_controls(void)
+{
+	unsigned i;
+
+	from_settings();
+	for (i = 0; i < NFIELDS; i++) {
+		struct Field *f = &fields[i];
+		const struct Setting *s = find_setting(f->key);
+		const char *v = s ? prefs_value(s) : "";
+
+		if (!f->obj)
+			continue;
+		if (f->kind == K_BOOL)
+			nnset(f->obj, MUIA_Switch_On, v[0] == '1');
+		else
+			nnset(f->obj, MUIA_String_Contents, (ULONG)v);
+	}
+	nnset(ch_layout, MUIA_Choice_Active, layout_sel);
+	nnset(ch_size, MUIA_Choice_Active, size_sel);
+	nnset(ch_colours, MUIA_Choice_Active, colour_sel);
+	nnset(ch_wb, MUIA_Choice_Active, wb_sel);
+	nnset(ch_modesrc, MUIA_Choice_Active, nmodes && prefs_get(find_setting("MODES")) ? 1 : 0);
+	nnset(ch_wrap, MUIA_Choice_Active, wrap_mode());
+	modes_show();
+	map_redraw();
+}
+
+/* is PanoramaDesk running (its port there)? */
+static BOOL desk_running(void)
+{
+	struct MsgPort *p;
+
+	Forbid();
+	p = FindPort((STRPTR)"PanoramaDesk");
+	Permit();
+	return p != NULL;
+}
+
+/*
+ * Whether a command can run now: one answer for the menus, the buttons and
+ * command() itself (CMD= and the Amiga-key shortcuts don't go through the
+ * menus), so they never disagree.
+ */
+static BOOL command_enabled(ULONG id)
+{
+	LONG page = nav ? (LONG)xget(nav, MUIA_Nav_Active) : 0;
+
+	switch (id) {
+	case ID_CLOSE:
+		return desk_running();
+	case ID_REFRESH:
+		return page == PG_STATUS;
+	case ID_PAGE0: case ID_PAGE1: case ID_PAGE2: case ID_PAGE3: case ID_PAGE4:
+		return (LONG)(id - ID_PAGE0) != page;
+	}
+	return TRUE;
+}
+
+/* a menu item on or off, if it isn't already */
+static void menu_enable(ULONG id, BOOL on)
+{
+	Object *item = strip ? (Object *)DoMethod(strip, MUIM_FindUData, id) : NULL;
+
+	if (item && (xget(item, MUIA_Menuitem_Enabled) != 0) != on)
+		set(item, MUIA_Menuitem_Enabled, on);
+}
+
+/* the button for a command dimmed or not, if it isn't already */
+static void button_enable(Object *b, ULONG id)
+{
+	BOOL on = command_enabled(id);
+
+	if (b && (xget(b, MUIA_Disabled) != 0) == on)
+		set(b, MUIA_Disabled, !on);
+}
+
+/* menu items and buttons that depend on the state: after every command, and now and then */
+static void update_menus(void)
+{
+	static const ULONG ids[] = {
+		ID_CLOSE, ID_REFRESH, ID_PAGE0, ID_PAGE1, ID_PAGE2, ID_PAGE3, ID_PAGE4
+	};
+	unsigned i;
+
+	for (i = 0; i < sizeof(ids) / sizeof(ids[0]); i++)
+		menu_enable(ids[i], command_enabled(ids[i]));
+	button_enable(b_close, ID_CLOSE);
+	button_enable(b_refresh, ID_REFRESH);
+}
+
+/* PROGDIR:PanoramaPrefs.prefs: the window's own preferences (the theme) */
+static void own_prefs(BOOL write)
+{
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR oldwin = me->pr_WindowPtr;
+	char line[40];
+	BPTR fh;
+
+	me->pr_WindowPtr = (APTR)-1;
+	fh = Open((STRPTR)"PROGDIR:PanoramaPrefs.prefs", write ? MODE_NEWFILE : MODE_OLDFILE);
+	me->pr_WindowPtr = oldwin;
+	if (!fh)
+		return;
+	if (write) {
+		FPuts(fh, (STRPTR)(theme_dark() ? "theme=dark\n" : "theme=light\n"));
+	} else {
+		while (FGets(fh, (STRPTR)line, sizeof(line)))
+			if (!strncmp(line, "theme=", 6))
+				theme_set_dark(!strncmp(line + 6, "dark", 4));
+	}
+	Close(fh);
+}
+
+/* light or dark: new pens, the backgrounds in the new colours, everything drawn again */
+static void switch_theme(BOOL dark)
+{
+	theme_set_dark(dark);
+	set(root, MUIA_Background, (ULONG)theme_back());
+	set(nav, MUIA_Background, (ULONG)theme_panel_back());
+	set(bar, MUIA_Background, (ULONG)theme_panel_back());
+	redraw_window();
+	own_prefs(TRUE);
+}
+
+static void about(void)
+{
+	char text[400];
+
+	snprintf(text, sizeof(text), "%s %s (%s)\n\n%s\n\n%s", "PanoramaPrefs", MP_VERSION, MP_DATE,
+	         tr("Settings for Panorama.card, Wrap.card and the Panorama desktop: one Amiga "
+	            "screen shown in viewer windows on other computers, over the network."),
+	         tr("Panorama.card's protocol is Copper (Docs/COPPER.md)."));
+	tell("About PanoramaPrefs", text);
+}
+
+/*
+ * Every command, from the menus, the buttons, the controls or CMD=; TRUE:
+ * the window is done.
+ */
+static BOOL command(ULONG id)
+{
+	if (!command_enabled(id))
+		return FALSE;
+	switch (id) {
+	case MUIV_Application_ReturnID_Quit:
+	case ID_QUIT:
+		return TRUE;
+	case ID_SAVE:
+	case ID_USE:
+		return save(id == ID_SAVE);
+	case ID_INSTALL:
+		do_install();
+		break;
+	case ID_ABOUT:
+		about();
+		break;
+	case ID_DEFAULTS:
+		prefs_defaults();
+		refresh_controls();
+		mp_trace("defaults: SPLIT %s, controls set", prefs_value(find_setting("SPLIT")));
+		break;
+	case ID_LASTSAVED:
+		prefs_load_from("ENVARC:");
+		refresh_controls();
+		break;
+	case ID_RESTORE:
+		prefs_load();
+		refresh_controls();
+		break;
+	case ID_OPEN:
+		open_desktop();
+		break;
+	case ID_CLOSE:
+		run_desktop("C:PanoramaDesk CLOSE", FALSE);
+		break;
+	case ID_PAGE0: case ID_PAGE1: case ID_PAGE2: case ID_PAGE3: case ID_PAGE4:
+		set(nav, MUIA_Nav_Active, id - ID_PAGE0);
+		break;
+	case ID_DARK:
+		switch_theme(!theme_dark());
+		break;
+	case ID_LAYOUT: {
+		int side = wb_side[wb_sel], mon = wb_mon[wb_sel];
+
+		layout_sel = xget(ch_layout, MUIA_Choice_Active);
+		wb_places(side, mon);
+		set(ch_wb, MUIA_Choice_Active, wb_sel);
+		map_redraw();
+		break;
+	}
+	case ID_SIZE:
+		size_sel = xget(ch_size, MUIA_Choice_Active);
+		map_redraw();
+		break;
+	case ID_WB:
+		wb_sel = xget(ch_wb, MUIA_Choice_Active);
+		map_redraw();
+		break;
+	case ID_MAP:
+		/* the picture moved the Workbench: the choice follows (no notify loop: same value) */
+		set(ch_wb, MUIA_Choice_Active, wb_sel);
+		break;
+	case ID_ADDMODE:
+		add_mode();
+		break;
+	case ID_REMOVEMODE:
+		remove_mode();
+		break;
+	case ID_PAGE:
+	case ID_REFRESH:
+		mp_trace("page %ld", (LONG)xget(nav, MUIA_Nav_Active));
+		if (xget(nav, MUIA_Nav_Active) == PG_STATUS)
+			status_show();
+		break;
+	}
+	return FALSE;
+}
+
 /* ================================================================ the loop */
 
-static int window_loop(int start, int timeout, const char *pubscreen);
+static int window_loop(int start, int timeout, const char *pubscreen, ULONG cmd);
 
 /* (bigstack.s) fn(arg) on the stack ss describes */
 long run_on_stack(struct StackSwapStruct *ss, long (*fn)(void *), void *arg);
@@ -1811,21 +2199,23 @@ long run_on_stack(struct StackSwapStruct *ss, long (*fn)(void *), void *arg);
 struct GuiArgs {
 	int start, timeout;
 	const char *pubscreen;
+	ULONG cmd;
 };
 
 static long gui_on_stack(void *a)
 {
 	struct GuiArgs *g = a;
 
-	return window_loop(g->start, g->timeout, g->pubscreen);
+	return window_loop(g->start, g->timeout, g->pubscreen, g->cmd);
 }
 
 /*
  * PanoramaPrefs' window in MUI; -1 if MUI (muimaster.library 19) isn't
  * there, for the GadTools one instead. MUI wants a big stack: one of 64 KB
- * is swapped in when the Shell gave less than 32 KB.
+ * is swapped in when the Shell gave less than 32 KB. cmd: a command (ids.h)
+ * run once the window is open (CMD=, for tests), 0 none.
  */
-int mui_gui(int start, int timeout, const char *pubscreen)
+int mui_gui(int start, int timeout, const char *pubscreen, ULONG cmd)
 {
 	struct Task *me = FindTask(NULL);
 	ULONG have = (ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower;
@@ -1837,9 +2227,10 @@ int mui_gui(int start, int timeout, const char *pubscreen)
 	g.start = start;
 	g.timeout = timeout;
 	g.pubscreen = pubscreen;
+	g.cmd = cmd;
 	mp_trace("mui: stack %lu bytes", have);
 	if (have >= 32768 || !(stack = AllocVec(65536, MEMF_ANY)))
-		return window_loop(start, timeout, pubscreen);
+		return window_loop(start, timeout, pubscreen, cmd);
 	ss.stk_Lower = stack;
 	ss.stk_Upper = (ULONG)stack + 65536;
 	ss.stk_Pointer = (APTR)ss.stk_Upper;
@@ -1848,7 +2239,7 @@ int mui_gui(int start, int timeout, const char *pubscreen)
 	return rc;
 }
 
-static int window_loop(int start, int timeout, const char *pubscreen)
+static int window_loop(int start, int timeout, const char *pubscreen, ULONG cmd)
 {
 	struct MsgPort *tport = NULL;
 	struct timerequest *treq = NULL;
@@ -1870,22 +2261,24 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 		UtilityBase = OpenLibrary("utility.library", 37);
 	if (start < 0 || start >= NPAGES)
 		start = 0;
+	lang_init();
+	own_prefs(FALSE);
 	from_settings();
 	mp_trace("mui: settings read");
 	if (!classes_make()) {
-		printf("PanoramaPrefs: MUI couldn't make its classes\n");
+		printf("%s\n", tr("PanoramaPrefs: MUI couldn't make its classes"));
 		rc = -1;
 		goto out;
 	}
 	app = ApplicationObject,
 		MUIA_Application_Title, (ULONG)"PanoramaPrefs",
 		MUIA_Application_Version, (ULONG)"$VER: PanoramaPrefs " MP_VERSION " (" MP_DATE ")",
-		MUIA_Application_Description, (ULONG)"Settings for Panorama.card",
-		MUIA_Application_Base, (ULONG)"MCPREFS",
+		MUIA_Application_Description, (ULONG)tr("Settings for Panorama.card"),
+		MUIA_Application_Base, (ULONG)"PANORAMAPREFS",
 	End;
 	mp_trace("mui: classes made, application %s", app ? "made" : "NOT made");
 	if (!app || !(win = make_window(start, pubscreen))) {
-		printf("PanoramaPrefs: the window could not be made\n");
+		printf("%s\n", tr("PanoramaPrefs: the window could not be made"));
 		rc = RETURN_FAIL;
 		goto out;
 	}
@@ -1895,12 +2288,13 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 	mp_trace("mui: window %s (MUI_Error %ld)", xget(win, MUIA_Window_Open) ? "open" : "NOT open",
 	         MUI_Error());
 	if (!xget(win, MUIA_Window_Open)) {
-		printf("PanoramaPrefs: the window could not be opened\n");
+		printf("%s\n", tr("PanoramaPrefs: the window could not be opened"));
 		rc = RETURN_FAIL;
 		goto out;
 	}
+	update_menus();
 
-	/* a tick every half second: TIMEOUT=, and the Status page kept up to date */
+	/* a tick every half second: TIMEOUT=, the menus and the Status page kept up to date */
 	if ((tport = CreateMsgPort()) != NULL &&
 	    (treq = (struct timerequest *)CreateIORequest(tport, sizeof(*treq))) != NULL &&
 	    OpenDevice("timer.device", UNIT_VBLANK, (struct IORequest *)treq, 0) == 0) {
@@ -1910,62 +2304,19 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 		treq->tr_time.tv_micro = 500000;
 		SendIO((struct IORequest *)treq);
 	}
+	if (cmd) {
+		mp_trace("CMD=%lu", cmd);
+		done = command(cmd);
+		update_menus();
+	}
 
 	while (!done) {
 		ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
 
-		if (id)
+		if (id) {
 			mp_trace("id %lu", id);
-		switch (id) {
-		case MUIV_Application_ReturnID_Quit:
-		case ID_CANCEL:
-			done = TRUE;
-			break;
-		case ID_SAVE:
-		case ID_USE:
-			done = save(id == ID_SAVE);
-			break;
-		case ID_INSTALL:
-			do_install();
-			break;
-		case ID_LAYOUT: {
-			int side = wb_side[wb_sel], mon = wb_mon[wb_sel];
-
-			layout_sel = xget(ch_layout, MUIA_Choice_Active);
-			wb_places(side, mon);
-			set(ch_wb, MUIA_Choice_Active, wb_sel);
-			MUI_Redraw(map, MADF_DRAWOBJECT);
-			break;
-		}
-		case ID_REDRAW:
-			size_sel = xget(ch_size, MUIA_Choice_Active);
-			MUI_Redraw(map, MADF_DRAWOBJECT);
-			break;
-		case ID_WB:
-			wb_sel = xget(ch_wb, MUIA_Choice_Active);
-			MUI_Redraw(map, MADF_DRAWOBJECT);
-			break;
-		case ID_MAP:
-			/* the picture moved the Workbench: the choice follows (no notify loop: same value) */
-			set(ch_wb, MUIA_Choice_Active, wb_sel);
-			break;
-		case ID_OPEN:
-			open_desktop();
-			break;
-		case ID_CLOSE:
-			run_desktop("C:PanoramaDesk CLOSE", FALSE);
-			break;
-		case ID_ADD:
-			add_mode();
-			break;
-		case ID_REMOVE:
-			remove_mode();
-			break;
-		case ID_PAGE:
-		case ID_REFRESH:
-			if (xget(nav, MUIA_Nav_Active) == PG_STATUS)
-				status_show();
-			break;
+			done = command(id);
+			update_menus();
 		}
 		if (done || !sigs)
 			continue;
@@ -1977,8 +2328,11 @@ static int window_loop(int start, int timeout, const char *pubscreen)
 			ticks++;
 			if (timeout && ticks >= (ULONG)timeout * 2)
 				done = TRUE;
-			if (ticks % 4 == 0 && xget(nav, MUIA_Nav_Active) == PG_STATUS)
-				status_show();
+			if (ticks % 4 == 0) {
+				if (xget(nav, MUIA_Nav_Active) == PG_STATUS)
+					status_show();
+				update_menus();
+			}
 			treq->tr_time.tv_secs = 0;
 			treq->tr_time.tv_micro = 500000;
 			SendIO((struct IORequest *)treq);
@@ -1998,7 +2352,8 @@ out:
 		DeleteMsgPort(tport);
 	if (app)
 		MUI_DisposeObject(app);
-	app = win = NULL;
+	app = win = root = strip = bar = b_close = b_refresh = NULL;
+	nav = map = NULL;
 	classes_free();
 	CloseLibrary(MUIMasterBase);
 	MUIMasterBase = NULL;

@@ -7,7 +7,9 @@
 # the trace shows how far it got if it hangs. Neither the ROM nor the OS
 # comes with Panorama: bring your own.
 #
-#   emu/os3_test.sh [TIMEOUT] [PAGE...]
+#   emu/os3_test.sh [TIMEOUT] [PAGE...]     PAGE 0-4; 0d ... in the dark theme
+#                                           (dark ones last: the choice is kept);
+#                                           0:200 ... then command 200 (prefs/ids.h)
 set -u
 cd "$(dirname "$0")/.."
 TIMEOUT=${1:-300}
@@ -52,7 +54,15 @@ EOF
 	echo '  Work:muitest >>Work:mui.txt'
 	echo 'EndIf'
 	for n in $PAGES; do
-		echo "Run >Work:prefs-$n.log Work:PanoramaPrefs PAGE=$n TIMEOUT=14 TRACE=Work:trace-$n.txt"
+		# 0d: page 0 in the dark theme (its menu command, CMD=420); 0:200: page 0, then
+		# command 200 (prefs/ids.h)
+		page=${n%%[d:]*}
+		extra=
+		case $n in
+		*d) extra="CMD=420" ;;
+		*:*) extra="CMD=${n#*:}" ;;
+		esac
+		echo "Run >Work:prefs-$n.log Work:PanoramaPrefs PAGE=$page $extra TIMEOUT=14 TRACE=Work:trace-$n.txt"
 		echo 'Wait 8'
 		echo "Echo >Work:shot-$n x"
 		echo 'Wait 10'
