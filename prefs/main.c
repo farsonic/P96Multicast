@@ -97,6 +97,62 @@ static void print_note(const char *s)
 
 static int prefs_main(int argc);
 
+/*
+ * One window at a time: the first one opened has a public port of this
+ * name. A second start finds it, sends its task Ctrl-F (the window comes
+ * to the front) and stops. The command line's actions (SET, SHOW, INSTALL
+ * ...) work whether a window is open or not.
+ */
+#define WINDOW_PORT "PanoramaPrefs.window"
+static struct MsgPort *window_port;
+
+/* TRUE: this is the only window; FALSE: one is open already, and was told to come forward */
+static BOOL single_begin(void)
+{
+	struct MsgPort *p;
+
+	Forbid();
+	if ((p = FindPort((STRPTR)WINDOW_PORT)) != NULL) {
+		Signal(p->mp_SigTask, SIGBREAKF_CTRL_F);
+		Permit();
+		return FALSE;
+	}
+	if ((window_port = CreateMsgPort()) != NULL) {
+		window_port->mp_Node.ln_Name = (char *)WINDOW_PORT;
+		window_port->mp_Node.ln_Pri = 0;
+		AddPort(window_port);
+	}
+	Permit();
+	return TRUE;
+}
+
+static void single_end(void)
+{
+	if (window_port) {
+		RemPort(window_port);
+		DeleteMsgPort(window_port);
+		window_port = NULL;
+	}
+}
+
+/* the MUI window, or the GadTools one without MUI (or with GADTOOLS) */
+static int window(BOOL mui, int page, int timeout, const char *pubscreen, ULONG cmd, int dark)
+{
+	int rc;
+
+	if (!single_begin()) {
+		mp_trace("window: one is open already, brought to the front");
+		if (Output() && IsInteractive(Output()))
+			printf("%s\n", tr("PanoramaPrefs is open already: its window comes to the front."));
+		return RETURN_WARN;
+	}
+	rc = mui ? mui_gui(page, timeout, pubscreen, cmd, dark) : -1;
+	if (rc < 0)
+		rc = gui(page, timeout, pubscreen);
+	single_end();
+	return rc;
+}
+
 /* PAGE=: a page number, or its name (case does not matter); 0 when none */
 static int page_number(const char *s)
 {
@@ -155,9 +211,7 @@ static int prefs_main(int argc)
 	prefs_load();
 	if (argc == 0)
 	{
-		int rc = mui_gui(0, 0, NULL, 0, -1);   /* from Workbench */
-
-		return rc >= 0 ? rc : gui(0, 0, NULL);
+		return window(TRUE, 0, 0, NULL, 0, -1);   /* from Workbench */
 	}
 
 	rda = ReadArgs((STRPTR)template, args, NULL);
@@ -262,10 +316,8 @@ static int prefs_main(int argc)
 		int dark = !th ? -1 : !mp_stricmp(th, "dark") ? 1 : 0;
 
 		mp_trace("window: %s", args[A_NOMUI] ? "GadTools (GADTOOLS)" : "MUI");
-		rc = args[A_NOMUI] ? -1 : mui_gui(page, timeout, (const char *)args[A_PUBSCREEN],
-		                                  args[A_CMD] ? *(ULONG *)args[A_CMD] : 0, dark);
-		if (rc < 0)
-			rc = gui(page, timeout, (const char *)args[A_PUBSCREEN]);
+		rc = window(!args[A_NOMUI], page, timeout, (const char *)args[A_PUBSCREEN],
+		            args[A_CMD] ? *(ULONG *)args[A_CMD] : 0, dark);
 	}
 	FreeArgs(rda);
 	return rc;

@@ -2533,9 +2533,19 @@ static int window_loop(int start, int timeout, const char *pubscreen, ULONG cmd,
 		}
 		if (done || !sigs)
 			continue;
-		sigs = Wait(sigs | SIGBREAKF_CTRL_C | (timer ? 1UL << tport->mp_SigBit : 0));
+		sigs = Wait(sigs | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | (timer ? 1UL << tport->mp_SigBit : 0));
 		if (sigs & SIGBREAKF_CTRL_C)
 			done = TRUE;
+		if (sigs & SIGBREAKF_CTRL_F) {
+			/* PanoramaPrefs started again: this window to the front instead */
+			struct Screen *s = (struct Screen *)xget(win, MUIA_Window_Screen);
+
+			mp_trace("started again: to the front");
+			if (s)
+				ScreenToFront(s);
+			DoMethod(win, MUIM_Window_ToFront);
+			set(win, MUIA_Window_Activate, TRUE);
+		}
 		if (timer && CheckIO((struct IORequest *)treq)) {
 			WaitIO((struct IORequest *)treq);
 			ticks++;

@@ -1092,7 +1092,14 @@ int gui(int start_page, int timeout, const char *pubscreen)
 	draw_map();
 
 	while (!done) {
-		WaitPort(win->UserPort);
+		ULONG sigs = Wait((1UL << win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_F);
+
+		if (sigs & SIGBREAKF_CTRL_F) {
+			/* PanoramaPrefs started again: this window to the front instead */
+			ScreenToFront(win->WScreen);
+			WindowToFront(win);
+			ActivateWindow(win);
+		}
 		while ((msg = GT_GetIMsg(win->UserPort)) != NULL) {
 			ULONG class = msg->Class;
 			UWORD code = msg->Code;
