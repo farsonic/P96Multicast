@@ -60,6 +60,10 @@ $(BUILD)/Wrap.card: $(WRAP_OBJ)
 $(BUILD)/mctest: tests/mctest.c | $(BUILD)
 	$(VC) $(CFLAGS) -o $@ $< -lauto -lamiga
 
+# the mouse events going through commodities, printed (how an emulator moves the pointer)
+$(BUILD)/cxlog: tests/cxlog.c | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ $< -lamiga
+
 # libraries opened by hand (no -lauto): the command line runs without intuition
 $(BUILD)/PanoramaPrefs: $(PREFS_SRC) prefs/mcprefs.h prefs/theme.h $(HDRS) | $(BUILD)
 	$(VC) $(CFLAGS) -Iprefs -I$(MUI) -o $@ $(PREFS_SRC) -lamiga

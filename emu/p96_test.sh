@@ -188,6 +188,64 @@ Wait 2
 Echo >Work:boot3.done done
 EOF
 [ $status -eq 0 ] && boot boot3.done
+
+# ---- boot 4: FS-UAE grabbing the computer's mouse (its default), moved with
+# xdotool as a person would: the Amiga's own mouse, crossing to the desktop
+# (shown by the viewers) over the Workbench's edge and back. No clicks.
+grab=
+if command -v xdotool >/dev/null 2>&1; then
+	grab=1
+	sed 's/^automatic_input_grab = 0/automatic_input_grab = 1/' "$OUT/test.fs-uae" >"$OUT/grab.fs-uae"
+	{
+		echo 'FailAt 21'
+		echo 'Wait 10'
+		echo 'Work:pkg/PanoramaPrefs OPEN >NIL:'
+		echo 'Wait 8'
+		echo 'C:mctest WHERE >Work:grab0.txt'
+		for n in 1 2 3; do
+			echo "Echo >Work:mark-g$n x"
+			echo "Lab w$n"
+			echo "If NOT EXISTS Work:g$n"
+			echo '  Wait 1'
+			echo "  Skip w$n BACK"
+			echo 'EndIf'
+			echo "C:mctest WHERE >Work:grab$n.txt"
+		done
+		echo 'Echo >Work:boot4.done done'
+	} >"$work/autorun"
+	SDL_AUDIODRIVER=dummy fs-uae "$OUT/grab.fs-uae" >"$OUT/fs-uae-boot4.log" 2>&1 &
+	upid=$!
+	start=$(date +%s)
+	n=1
+	while [ ! -f "$work/boot4.done" ]; do
+		if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
+			echo "FAIL: timeout waiting for boot4.done"
+			status=1
+			break
+		fi
+		if [ $n -le 3 ] && [ -f "$work/mark-g$n" ]; then
+			case $n in
+			1)	# into the window, grabbed with a click; a small move
+				w=$(xdotool search --name "FS-UAE" 2>/dev/null | head -1)
+				eval $(xdotool getwindowgeometry --shell "$w")
+				xdotool mousemove $((X + WIDTH / 2)) $((Y + HEIGHT / 2)) click 1
+				sleep 1
+				for i in 1 2 3; do xdotool mousemove_relative -- 10 0; sleep 0.1; done ;;
+			2)	# right, over the Workbench's right edge
+				for i in $(seq 1 40); do xdotool mousemove_relative -- 30 0; sleep 0.05; done ;;
+			3)	# left, back over the desktop's left edge
+				for i in $(seq 1 40); do xdotool mousemove_relative -- -30 0; sleep 0.05; done ;;
+			esac
+			sleep 2
+			import -window root "$OUT/grab-$n.png" 2>/dev/null
+			touch "$work/g$n"
+			n=$((n + 1))
+		fi
+		sleep 1
+	done
+	kill $upid 2>/dev/null
+	wait $upid 2>/dev/null
+fi
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
 for f in install.txt show1.txt monitors1.txt wrapstat2.txt where-boot.txt open.txt where-open.txt \
@@ -228,5 +286,12 @@ x2=$(mousex where2.txt)
 check '[ "$(front where2.txt)" = "Panorama desktop" ] && [ -n "$x2" ] && [ "$x2" -le 12 ]' \
 	"... and over the Workbench's right edge: the desktop, at its left edge"
 check '[ "$(active where2.txt)" = DeskShell ]' "... the keys go with it: the desktop's Shell active again"
+if [ -n "$grab" ]; then
+	for n in 0 1 2 3; do tr -d '\r' < "$work/grab$n.txt" 2>/dev/null; done
+	check '[ "$(front grab0.txt)" = "Panorama desktop" ]' "FS-UAE grabbing the mouse: after Open, the desktop in front"
+	check '[ "$(front grab1.txt)" = Workbench ]' "... its mouse moves: the Workbench in front"
+	check '[ "$(front grab2.txt)" = "Panorama desktop" ]' "... pushed right, over the Workbench's edge: the desktop"
+	check '[ "$(front grab3.txt)" = Workbench ]' "... pushed left, over the desktop's edge: the Workbench"
+fi
 echo "screens: $OUT/shot-*.png"
 exit $status
