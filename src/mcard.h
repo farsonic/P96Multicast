@@ -23,6 +23,7 @@
 
 #define MC_CARDNAME "Multicast.card"
 #define MC_VERSION_STR "2.5"
+#define MC_REVISION    5      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "26.10.2026"
 
 extern struct ExecBase *SysBase;
