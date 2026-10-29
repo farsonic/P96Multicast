@@ -105,6 +105,9 @@ PanoramaDesk (C:) opens the desktop and keeps it open; a commodity
                          place on it
   ctrl alt 1 ... 4       to the middle of monitor 1 ... 4
   ctrl alt m             the desktop in front, or the Workbench again
+  ctrl alt s             the active window's program to the other screen:
+                         from the desktop to the Workbench, from the
+                         Workbench (or any screen) to the desktop
 HOTKEYS=ctrl+alt in Panorama.prefs changes the qualifiers.
 The Workbench keeps its own display while the desktop is in front with
 WBMONITOR=1 ("Workbench own monitor"; SETUP=DESKTOP sets it): Wrap.card
@@ -121,13 +124,15 @@ pointer on its matching edge, and the window you last used there active;
 over the Workbench's edge back to the desktop the same way.
 From a Shell:
   PanoramaDesk MOVE=RIGHT       (LEFT, UP, DOWN)
+  PanoramaDesk MOVE=SCREEN [WINDOW=title]   (as ctrl alt s)
   PanoramaDesk CENTRE=2
   PanoramaDesk SWAP
   PanoramaDesk CLOSE            quits it, closing the desktop
 Closing the desktop moves the programs on it to the Workbench, if they
 can: commodities (MUI programs are, unless they say otherwise) close their
 windows and open them again on the Workbench, as on Exchange's Hide and
-Show. Any other window (a Shell) has to be closed first: PanoramaDesk says
+Show. Ctrl alt s moves a program the same way, whenever you like. Any
+other window (a Shell) has to be closed first: PanoramaDesk says
 whose windows are left, and the desktop stays open until then.
   PanoramaDesk SHELL            a Shell in the middle of the desktop
   PanoramaDesk INFO             the desktop's size and display mode

@@ -12,6 +12,9 @@
  *                           at the same place on it
  *   ctrl alt 1 ... 4        to the middle of monitor 1 ... 4
  *   ctrl alt m              the desktop in front, or the Workbench again
+ *   ctrl alt s              the program to the other screen: on the desktop
+ *                           to the Workbench, elsewhere to the desktop
+ *                           (commodities only: most MUI programs)
  *
  * WORKBENCH= says where the Workbench is, next to the desktop: LEFT1 is
  * left of monitor 1, BELOW2 below monitor 2, and so on. Pushing the mouse
@@ -26,6 +29,9 @@
  *   PanoramaDesk                    the commodity (also from WBStartup)
  *   PanoramaDesk MOVE=RIGHT         the active window one monitor right;
  *                                       LEFT, UP, DOWN too
+ *   PanoramaDesk MOVE=SCREEN        the active window's program to the other
+ *                                       screen (the desktop's to the
+ *                                       Workbench, any other to the desktop)
  *   PanoramaDesk CENTRE=2           ... to the middle of monitor 2
  *   PanoramaDesk SWAP               the desktop or the Workbench in front
  *   PanoramaDesk CLOSE              tells the running one to quit
@@ -61,7 +67,7 @@
 #include "copper.h"
 #include "lang.h"
 
-#define MD_VERSION "1.8"
+#define MD_VERSION "1.9"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
@@ -559,6 +565,7 @@ static void whose_mouse(struct Screen *desk, struct InputEvent *ie)
 #define HK_SWAP   5
 #define HK_EDGE   6     /* a mouse move: over an edge? the keys after the screen? */
 #define HK_PTR    7     /* the pointer put somewhere (a viewer's mouse): the keys after it */
+#define HK_SCREEN 8     /* the active window's program to the other screen */
 #define HK_MON    10    /* + n: monitor n */
 
 static BOOL add_hotkey(CxObj *broker, struct MsgPort *port, const char *quals, const char *key,
@@ -642,6 +649,28 @@ static BOOL has_window(struct Screen *scr, struct Task *t)
 	return yes;
 }
 
+/* the name of t's commodity into name (CBD_NAMELEN), or "": FALSE */
+static BOOL broker_of(struct Task *t, char *name)
+{
+	struct List bl;
+	struct BrokerCopy *bc;
+
+	name[0] = 0;
+	if (CxBase->lib_Version < 37)
+		return FALSE;
+	NewList(&bl);
+	__CopyBrokerList(CxBase, &bl);
+	for (bc = (struct BrokerCopy *)bl.lh_Head; bc->bc_Node.ln_Succ;
+	     bc = (struct BrokerCopy *)bc->bc_Node.ln_Succ)
+		if (bc->bc_Task == t) {
+			memcpy(name, bc->bc_Name, CBD_NAMELEN - 1);
+			name[CBD_NAMELEN - 1] = 0;
+			break;
+		}
+	__FreeBrokerList(CxBase, &bl);
+	return name[0] != 0;
+}
+
 /*
  * Every program on scr that is a commodity: Hide, Show again on the
  * Workbench. The default public screen must be the Workbench already.
@@ -651,29 +680,14 @@ static int move_to_wb(struct Screen *scr)
 {
 	struct Task *task[MAXMOVE];
 	char name[MAXMOVE][CBD_NAMELEN];
-	struct List bl;
-	struct BrokerCopy *bc;
 	int n, i, moved = 0, wait;
 	BOOL hidden[MAXMOVE];
 
-	if (CxBase->lib_Version < 37)
-		return 0;
 	n = owners(scr, task, MAXMOVE);
 	if (!n)
 		return 0;
-	NewList(&bl);
-	__CopyBrokerList(CxBase, &bl);
-	for (i = 0; i < n; i++) {
-		name[i][0] = 0;
-		for (bc = (struct BrokerCopy *)bl.lh_Head; bc->bc_Node.ln_Succ;
-		     bc = (struct BrokerCopy *)bc->bc_Node.ln_Succ)
-			if (bc->bc_Task == task[i]) {
-				memcpy(name[i], bc->bc_Name, CBD_NAMELEN - 1);
-				name[i][CBD_NAMELEN - 1] = 0;
-				break;
-			}
-	}
-	__FreeBrokerList(CxBase, &bl);
+	for (i = 0; i < n; i++)
+		broker_of(task[i], name[i]);
 
 	/*
 	 * Hide all, wait (up to 10 s) until their windows have gone, then make
@@ -729,6 +743,84 @@ static void what_is_left(struct Screen *scr, char *buf, int len)
 		snprintf(buf + at, len - at, "%s%.28s", i ? ", " : "\n", nm && nm[0] ? nm : "?");
 		at = strlen(buf);
 	}
+}
+
+/* how many hold scr (public screens only; -1: not one) */
+static LONG visitors(struct Screen *scr)
+{
+	struct List *l = LockPubScreenList();
+	struct PubScreenNode *p;
+	LONG n = -1;
+
+	for (p = (struct PubScreenNode *)l->lh_Head; p->psn_Node.ln_Succ;
+	     p = (struct PubScreenNode *)p->psn_Node.ln_Succ)
+		if (p->psn_Screen == scr)
+			n = p->psn_VisitorCount;
+	UnlockPubScreenList();
+	return n;
+}
+
+/*
+ * The program with window w to the other screen: from the desktop to the
+ * Workbench, from anywhere else to the desktop; that screen in front with
+ * the program's window active. As closing the desktop does it: the other
+ * screen the default public screen for a moment, Hide, wait until its
+ * windows and its hold on the screen have gone, Show. Commodities only
+ * (most MUI programs): FALSE and a message for any other.
+ */
+static BOOL move_program(struct Window *w, struct Screen *desk)
+{
+	struct Task *t = w && w->UserPort ? w->UserPort->mp_SigTask : NULL;
+	struct Screen *from = w ? w->WScreen : NULL, *to;
+	const char *to_name = from == desk ? "Workbench" : pubname;
+	char name[CBD_NAMELEN], olddefault[MAXPUBSCREENNAME + 1], buf[160];
+	LONG held;
+	int wait;
+
+	if (!t || t == FindTask(NULL))
+		return FALSE;
+	if (!broker_of(t, name)) {
+		snprintf(buf, sizeof(buf), tr("%.40s cannot move to another screen: only commodities "
+		                              "(most MUI programs) can."),
+		         t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "?");
+		say(buf);
+		return FALSE;
+	}
+	to = LockPubScreen((STRPTR)to_name);
+	if (!to)
+		return FALSE;
+	GetDefaultPubScreen((UBYTE *)olddefault);
+	SetDefaultPubScreen((UBYTE *)to_name);
+	held = visitors(from);
+	__BrokerCommand(CxBase, (STRPTR)name, CXCMD_DISAPPEAR);
+	for (wait = 0; wait < 10 * TICKS_PER_SECOND / 5 && has_window(from, t); wait++)
+		Delay(5);
+	if (!has_window(from, t)) {
+		/* MUI lets go of the screen a moment after its windows: Show before
+		 * that and they open there again */
+		for (wait = 0; wait < 3 * TICKS_PER_SECOND / 5 && held > 0 && visitors(from) >= held; wait++)
+			Delay(5);
+		__BrokerCommand(CxBase, (STRPTR)name, CXCMD_APPEAR);
+		for (wait = 0; wait < 5 * TICKS_PER_SECOND / 5 && !has_window(to, t); wait++)
+			Delay(5);
+	}
+	SetDefaultPubScreen(olddefault[0] ? (UBYTE *)olddefault : NULL);
+	if (has_window(to, t)) {
+		struct Window *x;
+		ULONG lock;
+
+		ScreenToFront(to);
+		if (to == desk)
+			desk_owner = OWN_LOCAL;
+		lock = LockIBase(0);
+		for (x = to->FirstWindow; x && !(x->UserPort && x->UserPort->mp_SigTask == t); x = x->NextWindow)
+			;
+		UnlockIBase(lock);
+		if (x)
+			ActivateWindow(x);
+	}
+	UnlockPubScreen(NULL, to);
+	return TRUE;
 }
 
 /*
@@ -825,7 +917,8 @@ static int commodity(void)
 	    !add_hotkey(broker, port, quals, "cursor_right", HK_RIGHT) ||
 	    !add_hotkey(broker, port, quals, "cursor_up", HK_UP) ||
 	    !add_hotkey(broker, port, quals, "cursor_down", HK_DOWN) ||
-	    !add_hotkey(broker, port, quals, "m", HK_SWAP))
+	    !add_hotkey(broker, port, quals, "m", HK_SWAP) ||
+	    !add_hotkey(broker, port, quals, "s", HK_SCREEN))
 		say("some hotkeys could not be made (HOTKEYS= in PanoramaPrefs).");
 	for (i = 1; i <= cols * rows && i <= 4; i++) {
 		char key[2] = { (char)('0' + i), 0 };
@@ -903,7 +996,9 @@ static int commodity(void)
 			if (type == CXM_IEVENT) {
 				struct Window *w = target(scr, NULL);
 
-				if (id == HK_SWAP) {
+				if (id == HK_SCREEN) {
+					move_program(IntuitionBase->ActiveWindow, scr);
+				} else if (id == HK_SWAP) {
 					swap(scr);
 					desk_owner = OWN_LOCAL;
 				}
@@ -961,6 +1056,7 @@ static int command(LONG *args)
 	struct Screen *scr;
 	struct Window *w;
 	struct MsgPort *port;
+	int rc = RETURN_OK;
 
 	if (args[A_CLOSE]) {
 		Forbid();
@@ -1017,6 +1113,29 @@ static int command(LONG *args)
 			Close(nil);
 	} else if (args[A_SWAP]) {
 		swap(scr);
+	} else if (args[A_MOVE] && !mp_stricmp((const char *)args[A_MOVE], "screen")) {
+		/* a window on any screen: by its title, or the active one */
+		const char *title = (const char *)args[A_WINDOW];
+		struct Screen *s;
+		ULONG lock = LockIBase(0);
+
+		w = NULL;
+		if (title) {
+			for (s = IntuitionBase->FirstScreen; s && !w; s = s->NextScreen)
+				for (w = s->FirstWindow; w; w = w->NextWindow)
+					if (w->Title && !strcmp((char *)w->Title, title))
+						break;
+		} else {
+			w = IntuitionBase->ActiveWindow;
+		}
+		UnlockIBase(lock);
+		CxBase = OpenLibrary("commodities.library", 37);
+		if (!w)
+			say("no window with that title.");
+		else if (CxBase && !move_program(w, scr))
+			rc = RETURN_WARN;
+		if (CxBase)
+			CloseLibrary(CxBase);
 	} else {
 		w = target(scr, (const char *)args[A_WINDOW]);
 		if (!w) {
@@ -1039,11 +1158,11 @@ static int command(LONG *args)
 			else if (!mp_stricmp(m, "down"))
 				move_by(scr, w, 0, 1);
 			else
-				say("MOVE=LEFT, RIGHT, UP or DOWN");
+				say("MOVE=LEFT, RIGHT, UP, DOWN or SCREEN");
 		}
 	}
 	UnlockPubScreen(NULL, scr);
-	return RETURN_OK;
+	return rc;
 }
 
 int main(int argc, char **argv)

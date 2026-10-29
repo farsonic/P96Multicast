@@ -12,8 +12,9 @@
 #           over the Workbench's edge to the desktop and back
 #
 #   boot 4  FS-UAE grabbing the mouse: crossing with the Amiga's own mouse
-#   boot 5  (with MUI 3.8, MUI38=) PanoramaPrefs on the desktop; PanoramaDesk
-#           CLOSE moves it to the Workbench and closes the desktop
+#   boot 5  (with MUI 3.8, MUI38=) PanoramaPrefs on the desktop: ctrl alt s
+#           moves it to the Workbench, MOVE=SCREEN back; PanoramaDesk CLOSE
+#           moves it to the Workbench and closes the desktop
 #
 #   emu/p96_test.sh [TIMEOUT]
 set -u
@@ -266,7 +267,8 @@ if command -v xdotool >/dev/null 2>&1; then
 fi
 
 # ---- boot 5: a MUI program on the desktop (the default public screen) goes
-# to the Workbench when the desktop closes: Exchange's Hide, then Show
+# to the Workbench and back with the hotkey and MOVE=SCREEN, and to the
+# Workbench when the desktop closes: Exchange's Hide, then Show
 if [ -n "$mui" ] && [ $status -eq 0 ]; then
 	cat > "$work/autorun" <<'EOF'
 FailAt 21
@@ -277,7 +279,18 @@ Run >NIL: Work:pkg/PanoramaPrefs
 Wait 10
 C:mctest WINDOWS >Work:move0.txt
 C:mctest BROKERS >Work:brokers0.txt
+C:mctest WHERE >Work:where-move0.txt
 Echo >Work:mark-move0 x
+C:mctest KEY=33
+Wait 8
+C:mctest WINDOWS >Work:movekey.txt
+C:mctest WHERE >Work:where-movekey.txt
+Echo >Work:mark-movekey x
+C:PanoramaDesk MOVE=SCREEN WINDOW="Panorama Preferences"
+Wait 4
+C:mctest WINDOWS >Work:movecmd.txt
+C:mctest WHERE >Work:where-movecmd.txt
+Echo >Work:mark-movecmd x
 C:PanoramaDesk CLOSE
 Wait 10
 C:mctest WINDOWS >Work:move1.txt
@@ -336,9 +349,16 @@ if [ -n "$grab" ]; then
 	check '[ "$(front grab3.txt)" = Workbench ]' "... pushed left, over the desktop's edge: the Workbench"
 fi
 if [ -n "$mui" ]; then
-	for f in move0.txt brokers0.txt move1.txt move1-info.txt; do echo "---- $f"; tr -d '\r' < "$work/$f" 2>/dev/null; done
+	for f in move0.txt brokers0.txt where-move0.txt movekey.txt where-movekey.txt movecmd.txt \
+	         where-movecmd.txt move1.txt move1-info.txt; do echo "---- $f"; tr -d '\r' < "$work/$f" 2>/dev/null; done
 	check 'tr -d "\r" < "$work/move0.txt" | grep -q "^screen Panorama desktop:.*Panorama Preferences"' \
 		"PanoramaPrefs opens on the desktop (the default public screen)"
+	check 'tr -d "\r" < "$work/movekey.txt" | grep -q "^screen Workbench:.*Panorama Preferences" &&
+	       [ "$(front where-movekey.txt)" = Workbench ] && [ "$(active where-movekey.txt)" = "Panorama Preferences" ]' \
+		"ctrl alt s: PanoramaPrefs to the Workbench, in front and active"
+	check 'tr -d "\r" < "$work/movecmd.txt" | grep -q "^screen Panorama desktop:.*Panorama Preferences" &&
+	       [ "$(front where-movecmd.txt)" = "Panorama desktop" ]' \
+		"PanoramaDesk MOVE=SCREEN: back to the desktop, in front"
 	check 'tr -d "\r" < "$work/move1.txt" | grep -q "^screen Workbench:.*Panorama Preferences" &&
 	       ! tr -d "\r" < "$work/move1.txt" | grep -q "^screen Panorama desktop"' \
 		"PanoramaDesk CLOSE: PanoramaPrefs moved to the Workbench, the desktop closed"

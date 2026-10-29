@@ -132,7 +132,11 @@ page sets it up with a picture of the monitors (layout, size, colours,
 open at boot). `PanoramaDesk` (prefs/desktop.c) opens the desktop as a
 public screen and is a commodity with hotkeys: ctrl alt + cursor keys
 moves the active window to the next monitor, ctrl alt 1-4 centres it on
-one, ctrl alt m swaps the desktop and the Workbench. `WORKBENCH=` (LEFT1,
+one, ctrl alt m swaps the desktop and the Workbench, ctrl alt s moves the
+active window's program to the other screen (commodities, which most MUI
+programs are: Exchange's Hide and Show with the other screen the default
+public screen; closing the desktop moves its programs to the Workbench the
+same way). `WORKBENCH=` (LEFT1,
 BELOW2, ...; the Desktop page's picture, click to move it) says where the
 Workbench sits next to the desktop: pushing the mouse over that edge
 brings the Workbench to the front with the pointer on its matching edge and

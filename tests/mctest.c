@@ -89,9 +89,9 @@ void __UnLockBitMap(__reg("a6") void *, __reg("a0") APTR lock) = "\tjsr\t-174(a6
 #define LBMI_BYTESPERROW  0x84001006UL
 #define LBMI_BASEADDRESS  0x84001007UL
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S,WINDOWS/S,BROKERS/S";
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S,WINDOWS/S,BROKERS/S,KEY/K/N";
 enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_WINDOWS, A_BROKERS, A_COUNT };
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_WINDOWS, A_BROKERS, A_KEY, A_COUNT };
 
 static const char *blit_names[MC_BLIT_KINDS + 1] = {
 	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
@@ -763,6 +763,38 @@ static int pubscreen(char *name, ULONG id, UWORD w, UWORD h, UWORD depth, int co
  * MOUSE=dx,dy,n: n moves of the mouse by dx, dy, as from the Amiga's own
  * mouse (relative), a frame apart: for PanoramaDesk's crossing over.
  */
+/* KEY=n: raw key n pressed and let go with ctrl and alt held (a hotkey) */
+static int key_press(int code)
+{
+	struct MsgPort *port = CreateMsgPort();
+	struct IOStdReq *io = port ? (struct IOStdReq *)CreateIORequest(port, sizeof(*io)) : NULL;
+	struct InputEvent ie;
+	int up;
+
+	if (!io || OpenDevice("input.device", 0, (struct IORequest *)io, 0)) {
+		if (io)
+			DeleteIORequest((struct IORequest *)io);
+		if (port)
+			DeleteMsgPort(port);
+		return RETURN_FAIL;
+	}
+	for (up = 0; up < 2; up++) {
+		memset(&ie, 0, sizeof(ie));
+		ie.ie_Class = IECLASS_RAWKEY;
+		ie.ie_Code = code | (up ? IECODE_UP_PREFIX : 0);
+		ie.ie_Qualifier = IEQUALIFIER_CONTROL | IEQUALIFIER_LALT;
+		io->io_Command = IND_WRITEEVENT;
+		io->io_Data = &ie;
+		io->io_Length = sizeof(ie);
+		DoIO((struct IORequest *)io);
+		Delay(2);
+	}
+	CloseDevice((struct IORequest *)io);
+	DeleteIORequest((struct IORequest *)io);
+	DeleteMsgPort(port);
+	return RETURN_OK;
+}
+
 static int mouse_moves(const char *v)
 {
 	struct MsgPort *port = CreateMsgPort();
@@ -907,6 +939,12 @@ int main(void)
 
 	if (args[A_MOUSE]) {
 		int rc = mouse_moves((const char *)args[A_MOUSE]);
+
+		FreeArgs(rda);
+		return rc;
+	}
+	if (args[A_KEY]) {
+		int rc = key_press(*(LONG *)args[A_KEY]);
 
 		FreeArgs(rda);
 		return rc;
