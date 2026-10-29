@@ -11,6 +11,8 @@
 #   boot 3  the Workbench on uaegfx; PanoramaPrefs OPEN; the mouse pushed
 #           over the Workbench's edge to the desktop and back
 #
+#           Boing on the desktop: its ball as graphics.library sprites,
+#           which Panorama.card takes (SPRITES=1)
 #   boot 4  FS-UAE grabbing the mouse: crossing with the Amiga's own mouse
 #   boot 5  (with MUI 3.8, MUI38=) PanoramaPrefs on the desktop: ctrl alt s
 #           moves it to the Workbench, MOVE=SCREEN back; PanoramaDesk CLOSE
@@ -204,6 +206,10 @@ Wait 3
 C:mctest WHERE >Work:where2.txt
 Echo >Work:mark-back x
 Wait 2
+Run >NIL: C:Boing >Work:boing.txt SECS=8
+Wait 14
+C:mctest STATUS >Work:status-boing.txt
+Echo >Work:mark-boing x
 Echo >Work:boot3.done done
 EOF
 [ $status -eq 0 ] && boot boot3.done
@@ -341,6 +347,13 @@ x2=$(mousex where2.txt)
 check '[ "$(front where2.txt)" = "Panorama desktop" ] && [ -n "$x2" ] && [ "$x2" -le 12 ]' \
 	"... and over the Workbench's right edge: the desktop, at its left edge"
 check '[ "$(active where2.txt)" = DeskShell ]' "... the keys go with it: the desktop's Shell active again"
+for f in boing.txt status-boing.txt; do echo "---- $f"; tr -d '\r' < "$work/$f" 2>/dev/null; done
+sline() { tr -d '\r' < "$work/status-boing.txt" 2>/dev/null | sed -n "s/.*$1.*/&/p"; }
+check 'tr -d "\r" < "$work/boing.txt" | grep -q "as sprites"' "Boing on the desktop: the ball as sprites"
+check 'sline "sprites: graphics.library" | grep -q "[1-9][0-9]* moves"' \
+	"... Panorama.card has them: images and moves ($(sline "sprites: graphics" | sed "s/.*use, //"))"
+check 'sline "last sprite image" | grep -q "64x100, [1-9][0-9]* + [1-9][0-9]* + 0 pixels"' \
+	"... a sprite of the ball, 64 x 100, red and white ($(sline "last sprite image" | sed "s/.*image: //"))"
 if [ -n "$grab" ]; then
 	for n in 0 1 2 3; do tr -d '\r' < "$work/grab$n.txt" 2>/dev/null; done
 	check '[ "$(front grab0.txt)" = "Panorama desktop" ]' "FS-UAE grabbing the mouse: after Open, the desktop in front"

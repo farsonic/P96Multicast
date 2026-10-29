@@ -22,9 +22,9 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Panorama.card"
-#define MC_VERSION_STR "3.1"
-#define MC_REVISION    1      /* the library's lib_Revision: keep with the string and libstart.s */
-#define MC_DATE "26.10.2026"
+#define MC_VERSION_STR "3.2"
+#define MC_REVISION    2      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_DATE "29.10.2026"
 
 extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
@@ -54,6 +54,7 @@ struct McConfig {
 	UWORD blitter;     /* send the drawing functions as orders (BLITTER=1) */
 	UWORD split_cols, split_rows;  /* SPLIT=CxR: a stream for each part of the screen */
 	UWORD pointer;     /* a hardware pointer, drawn by the viewers (POINTER=1) */
+	UWORD sprites;     /* graphics.library's sprites on the board's screens, drawn by the viewers (SPRITES=1) */
 	UWORD scan;        /* seconds to compare the whole screen at most once */
 	UWORD cpu;         /* percent of the CPU the background comparing may take */
 	ULONG history;     /* bytes of sent datagrams kept for repairs */
@@ -178,6 +179,31 @@ struct McCard {
 
 #define MC_CARD(bi) ((struct McCard *)(bi)->CardData[0])
 
+/*
+ * SPRITES=1: graphics.library's sprites 1-7 on a Panorama screen (sprite.c).
+ * Written by the patches in the program's task under Forbid(), read by the
+ * senders under Forbid().
+ */
+#define MC_SPRITES     8
+#define MC_SPRITE_MAXH 512
+
+struct McSprite {
+	struct McCard *mc;           /* the board its ViewPort is on; NULL: not in use */
+	struct ViewPort *vp;
+	volatile ULONG serial;       /* image or colours changed */
+	volatile ULONG pos_serial;   /* moved, shown or hidden */
+	WORD   x, y;                 /* top left, in the screen's pixels */
+	UWORD  on;                   /* moved at least once */
+	UWORD  w, h;                 /* 16, 32 or 64 wide */
+	UBYTE  rgb[9];               /* colours 1-3 */
+	UWORD *data;                 /* h rows: plane 0 (w / 16 words), plane 1 */
+	ULONG  cap;                  /* words data has room for */
+};
+
+extern struct McSprite mc_sprite[MC_SPRITES];
+extern struct McCard *mc_cards[MC_MAXBOARDS];
+extern volatile ULONG mc_sprite_serial;   /* any sprite changed */
+
 /* card.c */
 ULONG mc_bytesperpixel(RGBFTYPE fmt);
 ULONG mc_bytesperrow(UWORD width, RGBFTYPE fmt);
@@ -195,6 +221,9 @@ void mc_pointer_image(struct McCard *mc, struct BoardInfo *bi);
 void mc_pointer_pos(struct McCard *mc, struct BoardInfo *bi);
 void mc_pointer_colour(struct McCard *mc, ULONG index, ULONG r, ULONG g, ULONG b);
 void mc_pointer_show(struct McCard *mc, ULONG on);
+
+/* sprite.c */
+void mc_sprites_install(void);
 
 /* config.c */
 void mc_config_defaults(struct McConfig *cfg);

@@ -14,7 +14,9 @@
 #   make emu-os3         PanoramaPrefs' window on AmigaOS 3.1.4 with MUI 3.8
 #   make emu-p96         the desktop install on AmigaOS with Picasso96 and
 #                        uaegfx: the mouse across to the Workbench and back
-#                        (these two: your own ROM, OS and P96, see the scripts)
+#   make emu-sprite      Boing's sprites over Riptide's multicast to panoview,
+#                        on AmigaOS with Picasso96 (FSUAE_PCAP, root; LOSS=5)
+#                        (these three: your own ROM, OS and P96, see the scripts)
 #
 # Toolchain locations (see docs/BUILD.md):
 VBCC ?= /home/user/toolchain/vbcc
@@ -28,7 +30,7 @@ VAMOS ?= vamos -C 68020
 BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
 
-CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/orders.o $(BUILD)/render.o $(BUILD)/modes.o
+CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/orders.o $(BUILD)/render.o $(BUILD)/modes.o $(BUILD)/sprite.o
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
 HDRS := $(wildcard include/*.h src/*.h)
 
@@ -138,7 +140,10 @@ emu-os3: all
 emu-p96: package
 	emu/p96_test.sh
 
+emu-sprite: package
+	emu/sprite_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite clean

@@ -443,6 +443,10 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 		mc_blitter_install(mc);
 	if (mc->cfg.pointer)
 		mc_pointer_install(mc);
+	if (mc->boardnum < MC_MAXBOARDS)
+		mc_cards[mc->boardnum] = mc;
+	if (mc->cfg.sprites)
+		mc_sprites_install();
 	mc_modes_build(mc);
 
 	if (!mc_sender_start(mc)) {

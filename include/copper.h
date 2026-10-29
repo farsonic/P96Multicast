@@ -48,6 +48,13 @@
 #define CU_POINTER    0x30     /* w u8, h u8, hotx s8, hoty s8, 3 * RGB, h rows of
                                   plane 0 then plane 1, (w + 15) / 16 words each */
 #define CU_POINTERPOS 0x31     /* x s16, y s16, visible u8, pad u8: top left on the surface */
+#define CU_SPRITE     0x32     /* n u8 (1-7), visible u8, x s16, y s16 (top left on the
+                                  surface), image u16: sprite n shows that image there */
+#define CU_SPRITEIMAGE 0x33    /* image u16 (0-63), w u8 (16, 32, 64), pad u8, h u16,
+                                  first u16, rows u16, 3 * RGB, rows of plane 0 then
+                                  plane 1, w / 16 words each: rows first ... of image's
+                                  h, the rest in further SPRITEIMAGEs; kept until replaced */
+#define CU_SPRITE_IMAGES 64
 
 /* TEXT and PATTERN draw modes, as graphics.library's */
 #define CU_JAM1       0
@@ -76,6 +83,9 @@
 
 #define CU_INPUT      4        /* ULONG stream, then up to 128 * (kind u8, a u8, x u16, y u16):
                                   the viewer's mouse and keys, with INPUT=1 */
+#define CU_WANTSPRITES 5       /* ULONG stream: send the pointer and every sprite and its
+                                  image again (one was lost: a shown sprite's image
+                                  isn't here) */
 
 /* CU_INPUT kinds */
 #define CU_IN_MOVE    1        /* the pointer to x, y on this part of the screen */

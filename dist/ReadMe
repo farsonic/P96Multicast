@@ -138,8 +138,11 @@ whose windows are left, and the desktop stays open until then.
   PanoramaDesk INFO             the desktop's size and display mode
 
 Boing (C:) bounces the ball over the whole desktop, from monitor to
-monitor: Boing [SIZE=100] [SPEED=5] [SECS=n] [PUBSCREEN=name].
-Click the ball or Ctrl-C to stop it.
+monitor: Boing [SIZE=100] [SPEED=5] [SECS=n] [PUBSCREEN=name] [WINDOW].
+On a Panorama screen the ball is made of sprites (graphics.library's, as
+on any Amiga; the card sends them, the viewers draw them over the screen):
+round, smooth, and nothing of the screen redrawn. Ctrl-C stops it. On any
+other screen, or with WINDOW, it is a window: click the ball or Ctrl-C.
 
 The easy way: PanoramaPrefs
 ----------------------------
@@ -201,6 +204,9 @@ Settings (ENV:Panorama.prefs, or ToolTypes of the monitor icon)
                       screens (0 = never)
   POINTER=1           the viewers draw the mouse pointer (0: P96 draws it
                       into the screen)
+  SPRITES=1           graphics.library's sprites (GetExtSprite, MoveSprite,
+                      ...) show on Panorama screens: the viewers draw them
+                      (0: they show nothing, as on other RTG boards)
   INPUT=0             1: the mouse and keys in the viewer's windows work
                       the Amiga (the card's screen comes to the front);
                       anyone who can reach the card could, so it is off

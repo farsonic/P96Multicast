@@ -151,5 +151,98 @@ class RecordTests(unittest.TestCase):
         self.assertEqual((w, h, got), (32, 48, rgb))
 
 
+class SpriteTests(unittest.TestCase):
+    """graphics.library's sprites (SPRITES=1): SPRITEIMAGE bands under an
+    id, SPRITE pointing a sprite at one."""
+    COLS = bytes((200, 0, 0, 255, 255, 255, 0, 0, 255))
+
+    def band(self, s, ident, w, h, first, rows, data):
+        s.apply(pv.SPRITEIMAGE, struct.pack(">HBBHHH", ident, w, 0, h, first, rows) + self.COLS + data)
+
+    def sprite(self, s, n, vis, x, y, ident):
+        s.apply(pv.SPRITE, struct.pack(">BBhhH", n, vis, x, y, ident))
+
+    def test_bands_make_the_image(self):
+        s = pv.Screen()
+        # 32 wide, 3 rows: row 0 colour 1 in the first pixel, row 1 colour 2
+        # in the last, row 2 colour 3 everywhere; each row plane 0 then plane 1
+        rows = [struct.pack(">II", 0x80000000, 0),
+                struct.pack(">II", 0, 0x00000001),
+                struct.pack(">II", 0xffffffff, 0xffffffff)]
+        self.sprite(s, 2, 1, 10, 20, 5)
+        self.band(s, 5, 32, 3, 0, 2, rows[0] + rows[1])
+        self.assertEqual(s.shown_sprites(), [])            # not all of it yet
+        serial = s.sprite_serial
+        self.band(s, 5, 32, 3, 2, 1, rows[2])
+        self.assertEqual(s.sprite_serial, serial + 1)
+        [(n, x, y, w, h, rgba)] = s.shown_sprites()
+        self.assertEqual((n, x, y, w, h), (2, 10, 20, 32, 3))
+        self.assertEqual(rgba[0:4], bytes((200, 0, 0, 255)))
+        self.assertEqual(rgba[4:8], bytes(4))                       # clear
+        self.assertEqual(rgba[(32 + 31) * 4:(32 + 32) * 4], bytes((255, 255, 255, 255)))
+        self.assertEqual(rgba[64 * 4:65 * 4], bytes((0, 0, 255, 255)))
+
+    def test_images_kept_and_shared(self):
+        # two sprites showing one image, then one of them another: no resending
+        s = pv.Screen()
+        self.band(s, 0, 16, 1, 0, 1, struct.pack(">HH", 0x8000, 0))
+        self.band(s, 1, 16, 1, 0, 1, struct.pack(">HH", 0, 0x8000))
+        self.sprite(s, 3, 1, 0, 0, 0)
+        self.sprite(s, 4, 1, 16, 0, 0)
+        self.assertEqual([t[0] for t in s.shown_sprites()], [4, 3])   # 3 in front
+        self.sprite(s, 3, 1, 0, 0, 1)
+        self.assertEqual(s.shown_sprites()[1][5][0:4], bytes((255, 255, 255, 255)))
+        self.sprite(s, 4, 0, 16, 0, 0)                                 # hidden
+        self.assertEqual([t[0] for t in s.shown_sprites()], [3])
+
+    def test_lost_image_asked_for(self):
+        # a shown sprite whose image never came: the viewer asks for the
+        # sprites again, once LACKING has passed, then at most once a second
+        sent = []
+        v = pv.Viewer(pv.Screen(), send=lambda data, addr: sent.append(data))
+        v.amiga, v.stream, v.expect = ("10.0.0.2", 9696), 7, 0
+        self.sprite(v.screen, 2, 1, 0, 0, 3)
+        types = lambda: [d[3] for d in sent]
+        v.tick(now=100.0)
+        self.assertNotIn(pv.WANTSPRITES, types())
+        v.tick(now=100.6)
+        self.assertEqual(types().count(pv.WANTSPRITES), 1)
+        v.tick(now=101.0)
+        self.assertEqual(types().count(pv.WANTSPRITES), 1)
+        self.band(v.screen, 3, 16, 1, 0, 1, bytes(4))      # it came
+        v.tick(now=103.0)
+        self.assertEqual(types().count(pv.WANTSPRITES), 1)
+
+    def test_bad_bands(self):
+        s = pv.Screen()
+        self.sprite(s, 3, 1, -5, 40, 7)
+        # rows past the height, and data too short: ignored
+        self.band(s, 7, 16, 2, 1, 2, bytes(8))
+        self.band(s, 7, 16, 2, 0, 2, bytes(4))
+        self.assertEqual(s.shown_sprites(), [])
+
+    def test_drawn_over_the_screen(self):
+        # the web view's picture: the screen with sprite 2 over it, clipped
+        s = pv.Screen()
+        mode(s, 4, 2, pv.R8G8B8, 3)
+        tile(s, 0, 0, 4, 2, b"\x10" * 24)
+        self.band(s, 9, 16, 1, 0, 1, struct.pack(">HH", 0xc000, 0x4000))
+        self.sprite(s, 2, 1, 2, 1, 9)
+        head = type("Head", (), {"screen": s, "col": 0, "row": 0})()
+        w, h, rgb = pv.composite([head], sprites=True)
+        self.assertEqual((w, h), (4, 2))
+        self.assertEqual(rgb[:12], b"\x10" * 12)                      # row 0: the screen
+        self.assertEqual(rgb[12:18], b"\x10" * 6)                     # row 1, x 0-1
+        self.assertEqual(rgb[18:24], bytes((200, 0, 0, 0, 0, 255)))   # x 2-3: the sprite
+        self.assertEqual(pv.composite([head])[2], b"\x10" * 24)      # without: the pixels
+
+    def test_pointer_still_the_same(self):
+        s = pv.Screen()
+        s.apply(pv.POINTER, struct.pack(">BBbb", 16, 1, 0, 0) + self.COLS +
+                struct.pack(">HH", 0xc000, 0x4000))
+        w, h, _hx, _hy, rgba = s.pointer
+        self.assertEqual(rgba[0:8], bytes((200, 0, 0, 255, 0, 0, 255, 255)))
+
+
 if __name__ == "__main__":
     unittest.main()

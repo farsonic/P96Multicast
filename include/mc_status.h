@@ -80,6 +80,15 @@ struct McStatus {
 	UWORD batches;         /* riptide.library 3: datagrams sent in batches */
 	ULONG batched;         /* ... how many went that way */
 	ULONG send_waits;      /* sends that found the interface full (Riptide 0.17 pacing) */
+	UWORD sprites;         /* SPRITES=1: graphics.library's sprite calls are patched */
+	UWORD sprites_sent;    /* sprites the first board's viewers have now (shown or not) */
+	ULONG sprite_changes;  /* new sprite images on the first board */
+	ULONG sprite_moves;    /* ... and moves */
+	UWORD sprite_num, sprite_w, sprite_h;  /* the last image: its sprite and size ... */
+	UWORD sprite_pad;
+	ULONG sprite_pixels[3];               /* ... and its pixels of colours 1, 2, 3 */
+	ULONG sprite_calls;    /* calls of the patched sprite functions, on any screen */
+	UWORD sprite_lastnum;  /* ... the last one's sprite number */
 };
 
 struct McBase {

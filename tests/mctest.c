@@ -314,6 +314,16 @@ static void status(void)
 			       st.send_waits);
 			if (st.input_events)
 				printf("    INPUT: %lu mouse and key events from viewers\n", st.input_events);
+			if (st.sprites)
+				printf("    sprites: graphics.library's are the card's; %u in use, %lu images, %lu moves\n",
+				       st.sprites_sent, st.sprite_changes, st.sprite_moves);
+			if (st.sprite_calls)
+				printf("    %lu calls of graphics.library's sprite functions, the last for sprite %u\n",
+				       st.sprite_calls, st.sprite_lastnum);
+			if (st.sprite_changes)
+				printf("    last sprite image: sprite %u, %ux%u, %lu + %lu + %lu pixels of colours 1, 2, 3\n",
+				       st.sprite_num, st.sprite_w, st.sprite_h, st.sprite_pixels[0],
+				       st.sprite_pixels[1], st.sprite_pixels[2]);
 			printf("  BLITTER=%u: drawing calls the card hears about\n", st.blitter);
 			for (k = 0; k <= MC_BLIT_KINDS; k++)
 				if (st.blit_calls[k])

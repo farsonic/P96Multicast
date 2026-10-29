@@ -21,6 +21,7 @@ window, or a web browser when there is no tkinter); numpy makes it faster
 when it is installed.
 """
 import argparse
+import random
 import socket
 import struct
 import sys
@@ -38,13 +39,14 @@ F_REPAIR = 1
 
 SURFACE, PALETTE, FRAME = 0x01, 0x02, 0x03
 FILL, INVERT, COPY, TEXT, PATTERN = 0x10, 0x11, 0x12, 0x13, 0x14
-PIXELS, POINTER, POINTERPOS = 0x20, 0x30, 0x31
+PIXELS, POINTER, POINTERPOS, SPRITE, SPRITEIMAGE = 0x20, 0x30, 0x31, 0x32, 0x33
 JAM2, COMPLEMENT, INVERSVID = 1, 2, 4
 RAW, SOLID, RLE = 0, 1, 2
-HELLO, NAK, WANT, INPUT = 1, 2, 3, 4
+HELLO, NAK, WANT, INPUT, WANTSPRITES = 1, 2, 3, 4, 5
 IN_MOVE, IN_BUTTON, IN_KEY, IN_LEAVE = 1, 2, 3, 4
 SF_INPUT = 1                    # SURFACE: the card takes our mouse and keys
 SF_BEHIND = 2                   # SURFACE: another screen is in front on the Amiga
+CU_SPRITE_IMAGES = 64           # sprite image ids the card uses
 
 # P96 RGBFTYPE numbers
 CLUT, R8G8B8, B8G8R8, R5G6B5PC, R5G5B5PC = 1, 2, 3, 4, 5
@@ -124,6 +126,9 @@ class Screen:
         self.pointer = None          # (w, h, hotx, hoty, rgba bytes)
         self.pointer_pos = (0, 0, 0)
         self.pointer_serial = 0
+        self.sprites = {}            # n: (x, y, visible, image id)
+        self.sprite_images = {}      # id: {"w", "h", "buf", "rgba" (once all of it came)}
+        self.sprite_serial = 0
         self.stats = {"records": {}, "bad": 0, "modes": set()}
         self._lut16 = {}
 
@@ -246,6 +251,15 @@ class Screen:
             x, y, vis = struct.unpack(">hhB", b[:5])
             self.pointer_pos = (x, y, vis)
             self.pointer_serial += 1
+            return True
+        if rtype == SPRITE:
+            if len(b) >= 8:
+                n, vis, x, y, image = struct.unpack(">BBhhH", b[:8])
+                self.sprites[n] = (x, y, vis, image)
+                self.sprite_serial += 1
+            return True
+        if rtype == SPRITEIMAGE:
+            self._sprite_image(b)
             return True
         if not self.width or len(b) < 8:
             return False
@@ -418,16 +432,50 @@ class Screen:
         if not w or not h or len(data) < h * 4 * words:
             self.pointer = None
             return
-        rgba = bytearray()
-        for r in range(h):
-            p0 = int.from_bytes(data[r * 4 * words:r * 4 * words + 2 * words], "big")
-            p1 = int.from_bytes(data[r * 4 * words + 2 * words:(r + 1) * 4 * words], "big")
-            for i in range(w):
-                shift = 16 * words - 1 - i
-                c = ((p0 >> shift) & 1) | (((p1 >> shift) & 1) << 1)
-                rgba += cols[c] + b"\xff" if c else b"\0\0\0\0"
-        self.pointer = (w, h, hx, hy, bytes(rgba))
+        self.pointer = (w, h, hx, hy, sprite_rgba(data, w, h, cols))
         self.pointer_serial += 1
+
+    def _sprite_image(self, b):
+        """A band of rows of a sprite image; the image is there once its last
+        band is (until then, and while the id is redefined, not shown)."""
+        if len(b) < 19:
+            return
+        ident, w, _pad, h, first, rows = struct.unpack(">HBBHHH", b[:10])
+        words = (w + 15) // 16
+        cols = [None, bytes(b[10:13]), bytes(b[13:16]), bytes(b[16:19])]
+        data = b[19:19 + rows * 4 * words]
+        if not w or not h or first + rows > h or len(data) < rows * 4 * words:
+            return
+        img = self.sprite_images.get(ident)
+        if first == 0 or img is None or (img["w"], img["h"]) != (w, h):
+            img = self.sprite_images[ident] = {"w": w, "h": h, "buf": bytearray(w * h * 4),
+                                               "rgba": None}
+        img["buf"][first * w * 4:(first + rows) * w * 4] = sprite_rgba(data, w, rows, cols)
+        if first + rows == h:
+            img["rgba"] = bytes(img["buf"])
+            self.sprite_serial += 1
+
+    def lacking_sprite(self):
+        """Is a shown sprite's image not (all) here?"""
+        for x, y, vis, image in self.sprites.values():
+            if vis:
+                img = self.sprite_images.get(image)
+                if not img or not img["rgba"]:
+                    return True
+        return False
+
+    def shown_sprites(self):
+        """The sprites to draw, back to front (7 first: lower numbers in
+        front, as the hardware's): (n, x, y, w, h, rgba)."""
+        out = []
+        for n in range(7, 0, -1):
+            sp = self.sprites.get(n)
+            if not sp or not sp[2]:
+                continue
+            img = self.sprite_images.get(sp[3])
+            if img and img["rgba"]:
+                out.append((n, sp[0], sp[1], img["w"], img["h"], img["rgba"]))
+        return out
 
     # ---- colours
 
@@ -487,16 +535,20 @@ class Viewer:
     NAK_AGAIN = 0.2
     GIVE_UP = 1.0        # then ask for the tiles instead
     HELLO_EVERY = 2.0
+    LACKING = 0.5        # a shown sprite's image not here this long: ask for the sprites
     HOLD = 4096          # datagrams kept while waiting for one
 
     def __init__(self, screen, send=None):
         self.screen = screen
         self.send = send
+        self.drop = 0.0              # --drop: the share of datagrams to lose
         self.stream = None
         self.expect = None
         self.held = {}
         self.gap_since = None
-        self.last_nak = self.last_hello = self.last_want = -1e9
+        self.last_nak = self.last_hello = self.last_want = self.last_want_sprites = -1e9
+        self.lacking_since = None    # a shown sprite's image isn't here, since
+        self.sprites_lost = False    # a gap given up on: sprite images may be lost
         self.last_pixels = 0
         self.amiga = None
         self.warned_old = False
@@ -506,7 +558,7 @@ class Viewer:
         self.stopped = False
         self.waiting = []
         self.stats = {"datagrams": 0, "bytes": 0, "repairs": 0, "naks": 0, "wants": 0,
-                      "gaps": 0, "dups": 0, "bad": 0}
+                      "want_sprites": 0, "gaps": 0, "dups": 0, "bad": 0}
 
     def feed(self, data, addr=None, now=None):
         """One datagram. Returns the record types applied, in order."""
@@ -647,6 +699,7 @@ class Viewer:
                     self.expect = (seq + 1) & 0xffffffff
                 self.gap_since = None
                 self.last_want = -1e9
+                self.sprites_lost = True
             elif waited >= self.NAK_DELAY and now - self.last_nak >= self.NAK_AGAIN:
                 ranges = self.missing()
                 if ranges:
@@ -654,6 +707,19 @@ class Viewer:
                     self.stats["naks"] += 1
                     self.last_nak = now
         scr = self.screen
+        # the pointer's and sprites' shapes come once: lost, they must be asked for
+        if scr.lacking_sprite():
+            if self.lacking_since is None:
+                self.lacking_since = now
+        else:
+            self.lacking_since = None
+        if ((self.sprites_lost or (self.lacking_since is not None and
+                                   now - self.lacking_since >= self.LACKING)) and
+                self.gap_since is None and now - self.last_want_sprites >= 1.0):
+            self._msg(WANTSPRITES)
+            self.stats["want_sprites"] += 1
+            self.last_want_sprites = now
+            self.sprites_lost = False
         if scr.width and self.gap_since is None and not all(scr.valid):
             quiet = now - self.last_pixels > 0.5
             if now - self.last_want > 3.0 or (quiet and now - self.last_want > 0.5):
@@ -664,6 +730,21 @@ class Viewer:
                 self._msg(WANT, b"".join(struct.pack(">HHHH", *r) for r in rects))
                 self.stats["wants"] += 1
                 self.last_want = now
+
+
+def sprite_rgba(data, w, rows, cols):
+    """Amiga sprite rows (plane 0 then plane 1, (w + 15) / 16 words each)
+    as RGBA: colour 0 clear, 1-3 from cols."""
+    words = (w + 15) // 16
+    out = bytearray()
+    for r in range(rows):
+        p0 = int.from_bytes(data[r * 4 * words:r * 4 * words + 2 * words], "big")
+        p1 = int.from_bytes(data[r * 4 * words + 2 * words:(r + 1) * 4 * words], "big")
+        for i in range(w):
+            shift = 16 * words - 1 - i
+            c = ((p0 >> shift) & 1) | (((p1 >> shift) & 1) << 1)
+            out += cols[c] + b"\xff" if c else b"\0\0\0\0"
+    return bytes(out)
 
 
 def png_bytes(width, height, rgb, level=6, alpha=False):
@@ -728,13 +809,13 @@ def print_stats(viewer, out=sys.stderr):
     st, screen = viewer.stats, viewer.screen
     rec = screen.stats["records"]
     names = {FILL: "fill", INVERT: "invert", COPY: "copy", TEXT: "text", PATTERN: "pattern",
-             PIXELS: "pixels", POINTERPOS: "pointer"}
+             PIXELS: "pixels", POINTERPOS: "pointer", SPRITE: "sprite", SPRITEIMAGE: "sprite image"}
     orders = ", ".join("%d %s" % (rec[t], n) for t, n in names.items() if rec.get(t))
     modes = ", ".join("%dx%d %s" % m for m in sorted(screen.stats["modes"])) or "none"
     print("panoview: %d datagrams, %d KB, %d frames; %s; %d repairs, %d NAKs, %d WANTs, "
-          "%d gaps, %d bad; %d of %d tiles; modes: %s" % (
+          "%d WANTSPRITES, %d gaps, %d bad; %d of %d tiles; modes: %s" % (
               st["datagrams"], st["bytes"] >> 10, screen.frames, orders or "no records",
-              st["repairs"], st["naks"], st["wants"], st["gaps"],
+              st["repairs"], st["naks"], st["wants"], st["want_sprites"], st["gaps"],
               st["bad"] + screen.stats["bad"], sum(screen.valid), len(screen.valid), modes),
           file=out)
 
@@ -762,8 +843,10 @@ def wall(heads):
     return offsets, sum(cw), sum(rh)
 
 
-def composite(heads):
-    """All heads as one picture: (width, height, packed RGB)."""
+def composite(heads, sprites=False):
+    """All heads as one picture: (width, height, packed RGB). sprites: with
+    the Amiga's sprites (SPRITES=1) drawn over it, as the web view shows it;
+    without, the screens' own pixels."""
     offsets, w, h = wall(heads)
     out = bytearray(w * h * 3)
     for hd, (ox, oy) in zip(heads, offsets):
@@ -774,7 +857,26 @@ def composite(heads):
         for y in range(scr.height):
             o = ((oy + y) * w + ox) * 3
             out[o:o + row] = rgb[y * row:(y + 1) * row]
+        if sprites:
+            draw_sprites(scr, out, w, h, ox, oy)
     return w, h, bytes(out)
+
+
+def draw_sprites(scr, out, w, h, ox, oy):
+    """scr's shown sprites into out (packed RGB, w x h) with scr at ox, oy:
+    sprite 7 first, so lower numbers end up in front, as the hardware's."""
+    for _n, sx, sy, sw, sh, rgba in scr.shown_sprites():
+        x0, y0 = ox + sx, oy + sy
+        for y in range(sh):
+            ty = y0 + y
+            if ty < oy or ty >= min(h, oy + scr.height):
+                continue
+            for x in range(sw):
+                tx = x0 + x
+                i = (y * sw + x) * 4
+                if rgba[i + 3] and ox <= tx < min(w, ox + scr.width):
+                    o = (ty * w + tx) * 3
+                    out[o:o + 3] = rgba[i:i + 3]
 
 
 def write_raw_wall(path, heads):
@@ -805,6 +907,8 @@ def receive_some(sock, viewer, limit=4000):
             data, addr = sock.recvfrom(65536)
         except (BlockingIOError, socket.timeout):
             break
+        if viewer.drop and random.random() < viewer.drop:
+            continue   # --drop: lost on the way, for testing
         types += viewer.feed(data, addr)
     viewer.tick()
     return types
@@ -955,7 +1059,9 @@ def run_window(heads, args):  # pragma: no cover - interactive
             win.protocol("WM_DELETE_WINDOW", root.destroy)
             windows.append((win, canvas))
     per = [{"img": None, "item": None, "size": None, "ptr": None, "ptr_item": None,
-            "ptr_serial": -1, "at": None, "placed": False} for _ in heads]
+            "ptr_serial": -1, "at": None, "placed": False, "spr": {}, "spr_serial": -1}
+           for _ in heads]
+    sprite_images = {}   # RGBA bytes: PhotoImage (a spinning ball has only a few)
     state = {"wall": None}
     for h in heads:
         h.sock.setblocking(False)
@@ -1002,6 +1108,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     canvas.coords(st["item"], at[0], at[1])
                 st["size"], st["at"] = size, at
                 st["ptr_serial"] = -1
+                st["spr_serial"] = -1
             if separate:
                 text = "Panorama %s (port %d) %dx%d %s%s" % (
                     "screen %d of %d" % (i + 1, len(heads)), h.port, size[0], size[1], FORMAT_NAMES.get(screen.fmt, "?"),
@@ -1033,6 +1140,32 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     canvas.tag_raise(st["ptr_item"])
                 elif st["ptr_item"] is not None:
                     canvas.itemconfigure(st["ptr_item"], state="hidden")
+            if screen.sprite_serial != st["spr_serial"]:
+                # graphics.library's sprites (SPRITES=1): lower numbers in
+                # front, as the hardware's; the pointer over all of them
+                st["spr_serial"] = screen.sprite_serial
+                shown = set()
+                for n, sx, sy, sw, sh, rgba in screen.shown_sprites():
+                    shown.add(n)
+                    item = st["spr"].get(n)
+                    img = sprite_images.get(rgba)
+                    if img is None:
+                        if len(sprite_images) > 2 * CU_SPRITE_IMAGES:
+                            sprite_images.clear()
+                        img = tk.PhotoImage(data=png_bytes(sw, sh, rgba, level=1, alpha=True),
+                                            format="PNG")
+                        sprite_images[rgba] = img
+                    if item is None:
+                        item = st["spr"][n] = canvas.create_image(0, 0, anchor="nw", image=img)
+                    else:
+                        canvas.itemconfigure(item, image=img, state="normal")
+                    canvas.coords(item, at[0] + sx, at[1] + sy)
+                    canvas.tag_raise(item)
+                for n, item in st["spr"].items():
+                    if n not in shown:
+                        canvas.itemconfigure(item, state="hidden")
+                if st["ptr_item"] is not None:
+                    canvas.tag_raise(st["ptr_item"])
 
     state["shown"] = 0.0
     step = InStep(heads)
@@ -1243,7 +1376,8 @@ def run_web(heads, args):  # pragma: no cover - interactive
             with lock:
                 for h in heads:
                     types = receive_some(h.sock, h.viewer)
-                    if FRAME in types or SURFACE in types or PALETTE in types:
+                    if (FRAME in types or SURFACE in types or PALETTE in types or
+                            SPRITE in types or SPRITEIMAGE in types):
                         state["version"] += 1
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -1278,7 +1412,7 @@ def run_web(heads, args):  # pragma: no cover - interactive
             elif path == "/frame.png":
                 with lock:
                     if state["png_version"] != state["version"]:
-                        w, h, rgb = composite(heads)
+                        w, h, rgb = composite(heads, sprites=True)
                         if w:
                             state["png"] = png_bytes(w, h, rgb, level=1)
                             state["png_version"] = state["version"]
@@ -1346,6 +1480,8 @@ def main(argv=None):
                          "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
+    ap.add_argument("--drop", type=float, default=0.0, metavar="PERCENT",
+                    help="testing: lose this percent of the datagrams, as a bad network would")
     ap.add_argument("--no-input", action="store_true",
                     help="don't send the mouse and keys to the Amiga (the card does that only "
                          "with INPUT=1 in Panorama.prefs)")
@@ -1372,6 +1508,7 @@ def main(argv=None):
         sock = open_socket(head_group(args.group, args.groups, n), args.port + n, args.iface)
         heads.append(Head(sock, make_viewer(sock, Screen()), i % cols, i // cols,
                           port=args.port + n))
+        heads[-1].viewer.drop = max(0.0, min(args.drop, 90.0)) / 100
     args.port += first
     try:
         if args.snapshot:

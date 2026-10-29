@@ -87,6 +87,28 @@ Copper is built on three rules:
   shape and position, and the viewers draw it on top. A pointer move costs a
   20-byte record instead of two redrawn areas. Under Wrap.card, a head passes on
   the wrapped card's pointer, if that card has one.
+* **Sprites:** with `SPRITES=1` (the default), graphics.library's sprites work
+  on Panorama screens. A program uses them as on any Amiga: `GetExtSprite()`
+  (or `GetSprite()`), `AllocSpriteData()`, `ChangeExtSprite()` (or
+  `ChangeSprite()`), `MoveSprite()`, `FreeSprite()`. On a Picasso96 board
+  those normally show nothing; the card patches them, and for a ViewPort on
+  its board keeps sprites 1-7 (0 is Intuition's pointer) and sends them: the
+  viewers draw them over the screen, under the pointer, lower numbers in
+  front. As the hardware shows a sprite by pointing at its image, the card
+  sends each image once, under an id the viewers keep (SPRITEIMAGE), and a
+  SPRITE record says where sprite n is and which image it shows: a move, or
+  a change to an image already sent, is an 11-byte record (with its header)
+  and changes no pixel of the screen. A spinning Boing ball's 16 images go
+  once; then 40 seconds of bouncing cost about 50 KB, where sending its
+  images each frame cost 1.5 MB. A viewer that joins asks for everything,
+  and the card sends the images again.
+  As the hardware's: 16, 32 or 64 pixels wide (as `AllocSpriteData()` makes
+  them), colour 0 clear, colours 1-3 from the screen's colour map (16 +
+  4 * (n / 2) + 1 ... for sprite n, or where `SpriteBase_Even`/`Odd` say).
+  Not as the hardware's: the place is in the screen's pixels, whatever its
+  mode, and an attached pair shows as two sprites of 3 colours each. Only the
+  screen shown on the board shows its sprites. Boing draws its ball this way
+  on a Panorama screen.
 
 ### Under Wrap.card
 
@@ -140,6 +162,8 @@ Coordinates are u16 pixels on the surface (the visible screen). A **pixel** is
 | 0x20 | PIXELS | x, y, w, h, encoding u8, pad u8, data |
 | 0x30 | POINTER | w u8, h u8, hot x s8, hot y s8, colours 1-3 as RGB, then h rows: plane 0 then plane 1, (w + 15) / 16 words each, MSB leftmost |
 | 0x31 | POINTERPOS | x s16, y s16 (top left), visible u8, pad u8 |
+| 0x32 | SPRITE | n u8 (1-7), visible u8, x s16, y s16 (top left), image u16: sprite n shows that image there |
+| 0x33 | SPRITEIMAGE | image u16 (0-63), w u8 (16, 32 or 64), pad u8, h u16, first u16, rows u16, colours 1-3 as RGB, then rows rows: plane 0 then plane 1, w / 16 words each, MSB leftmost. Rows first ... first + rows - 1 of the image: it comes in bands, each fitting a datagram, and is whole when the band ending at row h has come. A viewer keeps each image until the same id comes again |
 
 The draw modes of TEXT and PATTERN are graphics.library's: JAM1 0, JAM2 1,
 COMPLEMENT 2, INVERSVID 4.
@@ -175,6 +199,7 @@ the magic, the version, a type and the stream.
 | 2 | NAK | up to 64 × (first seq u32, count u16): datagrams to send again |
 | 3 | WANT | up to 128 × (x, y, w, h): send these pixels from the shadow; one all-zero rectangle means everything, with SURFACE, PALETTE and the pointer |
 | 4 | INPUT | up to 128 × (kind u8, a u8, x u16, y u16): the viewer's mouse and keys, with `INPUT=1` |
+| 5 | WANTSPRITES | send the pointer and every sprite, with its image, again: a shown sprite's image is missing here (lost with datagrams given up on) |
 
 INPUT kinds:
 
@@ -226,6 +251,7 @@ when the file changes, and tells the viewers in its next SURFACE.
 |---|---|---|
 | `BLITTER` | 1 | send the drawing as orders (0: compare and send pixels only) |
 | `POINTER` | 1 | a hardware pointer that the viewers draw (0: rtg.library draws it into the screen) |
+| `SPRITES` | 1 | graphics.library's sprites 1-7 on the board's screens, drawn by the viewers (0: not patched, they show nothing) |
 | `FPS` | 50 | passes per second |
 | `RATE` | 1500 | most KB per second |
 | `SCAN` | 2 | seconds for the background scan to cover the screen, at the fastest |

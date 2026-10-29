@@ -90,6 +90,14 @@ struct Sender {
 	ULONG  pal_serial;
 	ULONG  ptr_serial, pos_serial;
 	WORD   ptr_vx, ptr_vy;           /* the pointer where the viewers have it */
+	/* SPRITES=1: each sprite as the viewers have it ... */
+	ULONG  spr_serial[MC_SPRITES];   /* its image, as last looked at */
+	WORD   spr_vx[MC_SPRITES], spr_vy[MC_SPRITES];  /* its place */
+	UWORD  spr_img[MC_SPRITES];      /* the image it shows */
+	UBYTE  spr_vis[MC_SPRITES];      /* 1 shown, 0 hidden, 0xff not told yet */
+	/* ... and the images they have: hash 0 for none */
+	ULONG  img_hash[CU_SPRITE_IMAGES];
+	UWORD  img_next;                 /* the next to replace */
 	WORD   mouse_x, mouse_y;         /* Intuition's, last pass */
 	UWORD  mouse_hot;                /* passes to keep comparing around it */
 
@@ -464,6 +472,117 @@ static void send_pointer_pos(struct Sender *s)
 	p[5] = 0;
 }
 
+/*
+ * SPRITES=1: the sprites of the screen shown on the board (sprite.c). As
+ * the hardware shows a sprite by pointing at its image, so here: each
+ * image goes to the viewers once, as SPRITEIMAGE records (a band of rows
+ * in each, as an image may not fit in a datagram) under an id they keep,
+ * and a SPRITE record says where sprite n is, whether it shows, and which
+ * image. A spinning ball's few images are sent once, then 8 bytes a move.
+ */
+static void sprites_again(struct Sender *s)
+{
+	int n;
+
+	for (n = 0; n < MC_SPRITES; n++) {
+		s->spr_serial[n] = mc_sprite[n].serial - 1;
+		s->spr_vis[n] = 0xff;
+		s->spr_img[n] = 0xffff;
+	}
+	for (n = 0; n < CU_SPRITE_IMAGES; n++)
+		s->img_hash[n] = 0;
+	s->img_next = 0;
+}
+
+/* sp's image and colours, as a number not 0 (a copy is the same number) */
+static ULONG sprite_hash(struct McSprite *sp)
+{
+	ULONG h = 0x9e3779b9UL ^ ((ULONG)sp->w << 16) ^ sp->h, i, n = (ULONG)sp->h * sp->w / 8;
+
+	for (i = 0; i < 9; i++)
+		h = ((h << 5) | (h >> 27)) ^ sp->rgb[i];
+	for (i = 0; i < n; i++)
+		h = ((h << 5) | (h >> 27)) ^ sp->data[i];
+	return h ? h : 1;
+}
+
+/* the viewers' id for sp's image (hash h): one they have, or sent now */
+static UWORD sprite_image(struct Sender *s, struct McSprite *sp, ULONG h)
+{
+	UWORD id, k, words = sp->w / 16, rowbytes = words * 4, first, rows, i;
+	UWORD band = (CU_MAX_DGRAM - CU_HDR_SIZE - 3 - 19) / rowbytes;
+	UBYTE *p;
+
+	for (id = 0; id < CU_SPRITE_IMAGES; id++)
+		if (s->img_hash[id] == h)
+			return id;
+	/* a new one: in place of the oldest no sprite shows */
+	for (;;) {
+		id = s->img_next;
+		s->img_next = (s->img_next + 1) % CU_SPRITE_IMAGES;
+		for (k = 1; k < MC_SPRITES && !(s->spr_vis[k] == 1 && s->spr_img[k] == id); k++)
+			;
+		if (k == MC_SPRITES)
+			break;
+	}
+	s->img_hash[id] = h;
+	for (first = 0; first < sp->h; first += rows) {
+		rows = sp->h - first < band ? sp->h - first : band;
+		p = rec(s, CU_SPRITEIMAGE, 19 + rows * rowbytes);
+		put16(p, id);
+		p[2] = sp->w;
+		p[3] = 0;
+		put16(p + 4, sp->h);
+		put16(p + 6, first);
+		put16(p + 8, rows);
+		CopyMem(sp->rgb, p + 10, 9);
+		for (i = 0; i < rows * words * 2; i++)
+			put16(p + 19 + 2 * i, sp->data[first * words * 2 + i]);
+	}
+	return id;
+}
+
+static void send_sprites(struct Sender *s)
+{
+	struct McCard *mc = s->mc;
+	struct ViewPort *shown;
+	UWORD n, have = 0;
+
+	Forbid();
+	shown = mc->bi->ViewPort ? mc->bi->ViewPort : mc->our_scr ? &mc->our_scr->ViewPort : NULL;
+	for (n = 1; n < MC_SPRITES; n++) {
+		struct McSprite *sp = &mc_sprite[n];
+		BOOL mine = sp->mc == mc && sp->data && sp->w && sp->h;
+		UBYTE vis = mine && sp->on && sp->vp == shown;
+		WORD vx = sp->x - s->xoff - s->vx, vy = sp->y - s->yoff - s->vy;
+		UWORD img = s->spr_img[n];
+		UBYTE *p;
+
+		if (vis && (sp->serial != s->spr_serial[n] || img == 0xffff)) {
+			s->spr_serial[n] = sp->serial;
+			img = sprite_image(s, sp, sprite_hash(sp));
+		}
+		if (vis != s->spr_vis[n] ||
+		    (vis && (vx != s->spr_vx[n] || vy != s->spr_vy[n] || img != s->spr_img[n]))) {
+			p = rec(s, CU_SPRITE, 8);
+			p[0] = n;
+			p[1] = vis;
+			put16(p + 2, vx);
+			put16(p + 4, vy);
+			put16(p + 6, img);
+			s->spr_vis[n] = vis;
+			s->spr_vx[n] = vx;
+			s->spr_vy[n] = vy;
+			s->spr_img[n] = img;
+		}
+		if (mine)
+			have++;
+	}
+	Permit();
+	if (mc->boardnum == 0 && s->view == 0)
+		mc_status->sprites_sent = have;
+}
+
 static void flush_solid(struct Sender *s)
 {
 	UBYTE *p;
@@ -587,10 +706,13 @@ static BOOL any_watched(struct Sender *s, LONG x, LONG y, LONG w, LONG h)
 	return FALSE;
 }
 
+static void sprites_again(struct Sender *s);
+
 static void want_all(struct Sender *s)
 {
 	ULONG t;
 
+	sprites_again(s);
 	for (t = 0; t < s->ntiles; t++)
 		s->want[t] = 1;
 	s->nwant = s->ntiles;
@@ -1085,6 +1207,12 @@ static void message(struct Sender *s, UBYTE *m, LONG n, struct sockaddr_in *from
 		for (i = 0; i < s->ntiles; i++)
 			if (s->want[i])
 				s->nwant++;
+		break;
+	case CU_WANTSPRITES:
+		/* a viewer lacks a sprite's image (lost on the way): all again */
+		sprites_again(s);
+		send_pointer(s);
+		send_pointer_pos(s);
 		break;
 	}
 }
@@ -1649,6 +1777,8 @@ static void pass(struct Sender *s)
 		    (mc->ptr_on && (mc->ptr_x - s->xoff - s->vx != s->ptr_vx ||
 		                     mc->ptr_y - s->yoff - s->vy != s->ptr_vy)))
 			send_pointer_pos(s);
+		if (s->cfg->sprites)
+			send_sprites(s);
 		take_orders(s);
 		compare(s);
 		send_wanted(s);
@@ -1779,6 +1909,7 @@ static void SenderMain(void)
 	s->cfg = &mc->cfg;
 	s->serial = mc->serial - 1;
 	s->ptr_serial = mc->ptr_serial - 1;
+	sprites_again(s);
 	s->sock = -1;
 	DateStamp(&ds);
 	s->stream = (ds.ds_Days << 20) ^ (ds.ds_Minute << 12) ^ (ds.ds_Tick << 4) ^ (ULONG)mc ^
