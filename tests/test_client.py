@@ -7,6 +7,7 @@ import os
 import struct
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "client"))
@@ -236,12 +237,60 @@ class SpriteTests(unittest.TestCase):
         self.assertEqual(rgb[18:24], bytes((200, 0, 0, 0, 0, 255)))   # x 2-3: the sprite
         self.assertEqual(pv.composite([head])[2], b"\x10" * 24)      # without: the pixels
 
+    def test_web_page_sprites(self):
+        # the web page places the sprites itself: where, and which picture,
+        # a picture's number never reused for another
+        s = pv.Screen()
+        mode(s, 4, 2, pv.R8G8B8, 3)
+        self.band(s, 9, 16, 1, 0, 1, struct.pack(">HH", 0xc000, 0x4000))
+        self.band(s, 8, 16, 1, 0, 1, struct.pack(">HH", 0x8000, 0))
+        self.sprite(s, 2, 1, 2, 1, 9)
+        self.sprite(s, 5, 1, 0, 0, 8)
+        heads = [type("Head", (), {"screen": s, "col": 0, "row": 0})()]
+        pics = pv.SpritePictures()
+        a, b = pv.web_sprites(heads, pics)
+        self.assertEqual((a["id"], a["x"], a["y"], a["w"], a["h"]), ("0-5", 0, 0, 16, 1))
+        self.assertEqual(b["id"], "0-2")                 # in front: last
+        self.assertNotEqual(a["key"], b["key"])
+        self.assertEqual(pv.web_sprites(heads, pics)[1]["key"], b["key"])
+        self.assertTrue(pics.png(b["key"]).startswith(b"\x89PNG"))
+        self.assertIsNone(pics.png(999))
+
     def test_pointer_still_the_same(self):
         s = pv.Screen()
         s.apply(pv.POINTER, struct.pack(">BBbb", 16, 1, 0, 0) + self.COLS +
                 struct.pack(">HH", 0xc000, 0x4000))
         w, h, _hx, _hy, rgba = s.pointer
         self.assertEqual(rgba[0:8], bytes((200, 0, 0, 255, 0, 0, 255, 255)))
+
+
+class InStepTests(unittest.TestCase):
+    """SPLIT=: the parts shown together, and never behind."""
+
+    def datagram(self, seq, frame):
+        return struct.pack(">HBBII", pv.MAGIC, pv.VERSION, 0, 1, seq) + \
+            bytes((pv.FRAME,)) + struct.pack(">HI", 4, frame)
+
+    def test_behind_catches_up(self):
+        import socket
+        heads, out = [], socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for i in range(2):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(("127.0.0.1", 0))
+            sock.setblocking(False)
+            heads.append(pv.Head(sock, pv.Viewer(pv.Screen()), i, 0))
+        step = pv.InStep(heads)
+        # five whole updates came while one was being shown
+        for f in range(5):
+            for h in heads:
+                out.sendto(self.datagram(f, f), h.sock.getsockname())
+        time.sleep(0.1)
+        self.assertTrue(step.receive())
+        # shown: the newest, 4, not 0
+        self.assertEqual([h.screen.frame for h in heads], [4, 4])
+        out.close()
+        for h in heads:
+            h.sock.close()
 
 
 if __name__ == "__main__":

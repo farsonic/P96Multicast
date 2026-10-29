@@ -999,6 +999,15 @@ class InStep:
             for h in stopped:
                 while h.viewer.stopped and h.viewer.frame_waiting():
                     h.viewer.release()
+            return True
+        # behind (updates come faster than they are shown: a moving sprite
+        # makes one each pass): on to the newest every part has whole, and
+        # show that one, as a display shows the latest picture, never a late one
+        while all(h.viewer.stopped and h.viewer.frame_waiting() for h in self.heads):
+            for h in self.heads:
+                h.viewer.release()
+            if len(set(h.screen.frame for h in self.heads)) > 1:
+                break
         return True
 
     def shown(self):
@@ -1329,12 +1338,39 @@ WEB_PAGE = b"""<!doctype html>
 <style>
  body { margin: 0; background: #111; color: #aaa; font: 13px sans-serif; }
  #bar { padding: 4px 8px; }
- img { display: block; margin: 0 auto; image-rendering: pixelated; max-width: 100vw; }
+ #wrap { position: relative; margin: 0 auto; width: fit-content; }
+ #s { display: block; image-rendering: pixelated; max-width: 100vw; }
+ .spr { position: absolute; image-rendering: pixelated; pointer-events: none; }
 </style></head>
-<body><div id="bar">waiting for the Amiga...</div><img id="s" alt="">
+<body><div id="bar">waiting for the Amiga...</div>
+<div id="wrap"><img id="s" alt=""></div>
 <script>
+// The screen's pixels as one picture, fetched when they change; the Amiga's
+// sprites (SPRITES=1) as pictures of their own over it, moved as they move,
+// as the hardware shows them: a moving sprite costs no new screen picture.
 const img = document.getElementById("s"), bar = document.getElementById("bar");
+const wrap = document.getElementById("wrap"), sprites = {};
 let last = -1;
+function place(st) {
+  const scale = st.width ? img.clientWidth / st.width : 1, seen = {};
+  st.sprites.forEach((sp, z) => {
+    let e = sprites[sp.id];
+    if (!e) {
+      e = sprites[sp.id] = document.createElement("img");
+      e.className = "spr";
+      wrap.appendChild(e);
+    }
+    const src = "sprite/" + sp.key + ".png";
+    if (e.getAttribute("src") !== src) e.setAttribute("src", src);
+    e.style.left = (sp.x * scale) + "px";
+    e.style.top = (sp.y * scale) + "px";
+    e.style.width = (sp.w * scale) + "px";
+    e.style.zIndex = 1 + z;
+    e.style.display = "block";
+    seen[sp.id] = 1;
+  });
+  for (const id in sprites) if (!seen[id]) sprites[id].style.display = "none";
+}
 async function tick() {
   try {
     const st = await (await fetch("status", {cache: "no-store"})).json();
@@ -1346,12 +1382,51 @@ async function tick() {
       if (old) URL.revokeObjectURL(old);
       last = st.frame;
     }
+    place(st);
   } catch (e) { bar.textContent = "viewer stopped"; }
-  setTimeout(tick, 50);
+  setTimeout(tick, 20);
 }
 tick();
 </script></body></html>
 """
+
+
+class SpritePictures:
+    """The web page's sprite pictures: each RGBA image a number, for its
+    URL, that is never used for another (a browser may keep pictures)."""
+
+    def __init__(self):
+        self.keys, self.pics, self.next = {}, {}, 1
+
+    def key(self, w, h, rgba):
+        k = self.keys.get(rgba)
+        if k is None:
+            if len(self.keys) > 4 * CU_SPRITE_IMAGES:
+                self.keys.clear()
+                self.pics.clear()
+            k = self.keys[rgba] = self.next
+            self.pics[k] = (w, h, rgba)
+            self.next += 1
+        return k
+
+    def png(self, k):
+        """The picture of number k, as PNG, or None."""
+        if k not in self.pics:
+            return None
+        w, h, rgba = self.pics[k]
+        return png_bytes(w, h, rgba, level=1, alpha=True)
+
+
+def web_sprites(heads, pictures):
+    """The shown sprites of all heads, back to front, for the web page:
+    {"id", "key" (its picture's number in pictures), "x", "y", "w", "h"}."""
+    offsets, _w, _h = wall(heads)
+    out = []
+    for i, (hd, (ox, oy)) in enumerate(zip(heads, offsets)):
+        for n, x, y, w, h, rgba in hd.screen.shown_sprites():
+            out.append({"id": "%d-%d" % (i, n), "key": pictures.key(w, h, rgba),
+                        "x": ox + x, "y": oy + y, "w": w, "h": h})
+    return out
 
 
 def run_web(heads, args):  # pragma: no cover - interactive
@@ -1364,6 +1439,9 @@ def run_web(heads, args):  # pragma: no cover - interactive
 
     lock = threading.Lock()
     state = {"version": 0, "png": None, "png_version": -1}
+    pictures = SpritePictures()
+    # what changes the screen's pixels: then a new picture of it
+    drawing = {FRAME, SURFACE, PALETTE, FILL, INVERT, COPY, TEXT, PATTERN, PIXELS}
     for h in heads:
         h.sock.setblocking(False)
 
@@ -1376,8 +1454,9 @@ def run_web(heads, args):  # pragma: no cover - interactive
             with lock:
                 for h in heads:
                     types = receive_some(h.sock, h.viewer)
-                    if (FRAME in types or SURFACE in types or PALETTE in types or
-                            SPRITE in types or SPRITEIMAGE in types):
+                    if drawing.intersection(types) - {FRAME}:
+                        state["drawn"] = True
+                    if FRAME in types and state.pop("drawn", False) or SURFACE in types:
                         state["version"] += 1
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -1407,12 +1486,32 @@ def run_web(heads, args):  # pragma: no cover - interactive
                         scr.frames, kb)
                         if ww else "waiting for the Amiga (%d datagrams so far)"
                         % sum(h.viewer.stats["datagrams"] for h in heads))
-                    body = {"frame": state["version"], "width": ww, "text": text}
+                    body = {"frame": state["version"], "width": ww, "text": text,
+                            "sprites": web_sprites(heads, pictures)}
                 self.send("application/json", json.dumps(body).encode())
+            elif path.startswith("/sprite/") and path.endswith(".png"):
+                try:
+                    k = int(path[len("/sprite/"):-len(".png")])
+                except ValueError:
+                    k = None
+                with lock:
+                    png = pictures.png(k)
+                if png:
+                    self.send("image/png", png)
+                else:
+                    self.send_error(404)
+            elif path == "/frame.png" and "sprites=1" in self.path:
+                # the picture with the sprites in it (a browser draws them itself)
+                with lock:
+                    w, h, rgb = composite(heads, sprites=True)
+                if w:
+                    self.send("image/png", png_bytes(w, h, rgb, level=1))
+                else:
+                    self.send_error(404)
             elif path == "/frame.png":
                 with lock:
                     if state["png_version"] != state["version"]:
-                        w, h, rgb = composite(heads, sprites=True)
+                        w, h, rgb = composite(heads)
                         if w:
                             state["png"] = png_bytes(w, h, rgb, level=1)
                             state["png_version"] = state["version"]

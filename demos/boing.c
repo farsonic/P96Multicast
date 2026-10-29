@@ -46,7 +46,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char version[] = "$VER: Boing 1.3 (29.10.2026)";
+static const char version[] = "$VER: Boing 1.4 (29.10.2026)";
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -97,59 +97,73 @@ static ULONG isqrt(ULONG n)
 }
 
 /*
- * Pen of pixel (x, y) of the ball in turn `phase`: 0 outside, 1 red, 2 white.
- * The ball leans 1/4 of a radian-ish: a fixed rotation of the coordinates.
+ * Pixel (x, y) of the ball (from its middle, radius r): FALSE outside it,
+ * else where on the sphere: its longitude in *lon (0 ... 2048 across the
+ * front) and its row of checks in *la. The ball leans 1/4 of a
+ * radian-ish: a fixed rotation of the coordinates.
  */
-static int ball_pen(int x, int y, int r, int phase)
+static BOOL ball_point(int x, int y, int r, LONG *lon, LONG *la)
 {
 	/* lean: x' = x cos a + y sin a, y' = -x sin a + y cos a, a ~ 17 degrees */
 	LONG c = 979, s = 297;   /* *1024 */
 	LONG xr = (x * c + y * s) / 1024, yr = (-x * s + y * c) / 1024;
-	LONG rr = (LONG)r * r, half, lon, lat;
+	LONG rr = (LONG)r * r, half;
 
 	if ((LONG)x * x + (LONG)y * y > rr)
-		return 0;
+		return FALSE;
 	if (yr > r)
 		yr = r;
 	if (yr < -r)
 		yr = -r;
 	/* latitude from yr, longitude from xr across the row's half width */
-	lat = asin_q(yr * 1024 / r);
 	half = isqrt(rr - (LONG)yr * yr);
-	lon = half ? asin_q(xr * 1024 / half) : 0;
-	{
-		/*
-		 * The front half shows LONGS / 2 checks across (2048 units), so a
-		 * check is 4096 / LONGS; a turn of the spin moves them by 1/PHASES
-		 * of two checks.
-		 */
-		LONG check = 4096 / LONGS;
-		LONG lo = (lon + 1024 + phase * 2 * check / PHASES) / check;
-		LONG la = (lat + 1024) / (2048 / LATS);
-
-		return ((lo + la) & 1) ? 1 : 2;
-	}
+	*lon = (half ? asin_q(xr * 1024 / half) : 0) + 1024;
+	*la = (asin_q(yr * 1024 / r) + 1024) / (2048 / LATS);
+	return TRUE;
 }
 
-/* the ball, turn phase, into rp at x0, y0 with pens pen[1] (red) and pen[2] (white) */
-static void draw_ball(struct RastPort *rp, int x0, int y0, int size, int phase, LONG *pen)
+/*
+ * The pen of that point in turn phase: 1 red, 2 white. The front half
+ * shows LONGS / 2 checks across (2048 units), so a check is 4096 / LONGS;
+ * a turn of the spin moves them by 1/PHASES of two checks.
+ */
+static int phase_pen(LONG lon, LONG la, int phase)
 {
-	int px, py, r = size / 2;
+	LONG check = 4096 / LONGS;
+
+	return (((lon + phase * 2 * check / PHASES) / check + la) & 1) ? 1 : 2;
+}
+
+/*
+ * Every turn of the ball at once, turn i into rps[i] with pens pen[1]
+ * (red) and pen[2] (white): each pixel's place on the sphere is worked out
+ * once, for all the turns (on a 68020 the sums are what takes the time).
+ */
+static void draw_balls(struct RastPort **rps, int size, LONG *pen)
+{
+	int px, py, r = size / 2, i;
 
 	for (py = 0; py < size; py++) {
-		int run = -1, last = -1;
+		int run[PHASES], last[PHASES];
 
+		for (i = 0; i < PHASES; i++)
+			run[i] = last[i] = -1;
 		/* runs of one pen at a time: far fewer calls than pixels */
 		for (px = 0; px <= size; px++) {
-			int p = px < size ? ball_pen(px - r, py - r, r - 1, phase) : -1;
+			LONG lon = 0, la = 0;
+			int in = px < size ? ball_point(px - r, py - r, r - 1, &lon, &la) : -1;
 
-			if (p != last) {
-				if (last > 0) {
-					SetAPen(rp, pen[last]);
-					RectFill(rp, x0 + run, y0 + py, x0 + px - 1, y0 + py);
+			for (i = 0; i < PHASES; i++) {
+				int p = in < 0 ? -1 : in ? phase_pen(lon, la, i) : 0;
+
+				if (p != last[i]) {
+					if (last[i] > 0) {
+						SetAPen(rps[i], pen[last[i]]);
+						RectFill(rps[i], run[i], py, px - 1, py);
+					}
+					last[i] = p;
+					run[i] = px;
 				}
-				last = p;
-				run = px;
 			}
 		}
 	}
@@ -201,6 +215,16 @@ static BOOL time_up(struct DateStamp *start, LONG secs)
 	       (now.ds_Tick - start->ds_Tick) / TICKS_PER_SECOND >= secs;
 }
 
+/* ticks (1/50 s) since start */
+static LONG ticks_since(struct DateStamp *start)
+{
+	struct DateStamp now;
+
+	DateStamp(&now);
+	return ((now.ds_Days - start->ds_Days) * 1440 + now.ds_Minute - start->ds_Minute) * 60 *
+	       TICKS_PER_SECOND + now.ds_Tick - start->ds_Tick;
+}
+
 /* is scr on a Panorama board (its mode's name says so)? */
 static BOOL panorama_screen(struct Screen *scr)
 {
@@ -239,10 +263,13 @@ static int sprite_boing(struct Ball *b, LONG secs)
 	struct ExtSprite *spr[PHASES][MAXTILES] = { { 0 } }, *cur[MAXTILES];
 	LONG num[MAXTILES], pens[2 * MAXTILES * 3], npens = 0, tw = 0, tiles, i, t, c;
 	LONG pen[3] = { 0, 1, 2 };
-	struct RastPort rp;
+	/* not on the stack: a Shell's 4 KB is all a program may have */
+	static struct RastPort rp[PHASES];
+	struct RastPort *rps[PHASES];
 	struct DateStamp start;
 	BOOL clut = GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) <= 8;
 	int rc = -1, phase = 0;
+	LONG drawn;
 
 	if (GfxBase->LibNode.lib_Version < 39)
 		return -1;
@@ -275,13 +302,18 @@ static int sprite_boing(struct Ball *b, LONG secs)
 
 	/* the turns of the ball in two bitplanes: 0 clear, 1 red, 2 white */
 	printf("Boing: drawing the ball (%ld sprites of %ld)...\n", tiles, tw);
-	InitRastPort(&rp);
 	for (i = 0; i < PHASES; i++) {
 		bm[i] = AllocBitMap(tiles * tw, b->size, 2, BMF_CLEAR, NULL);
 		if (!bm[i])
 			goto out;
-		rp.BitMap = bm[i];
-		draw_ball(&rp, 0, 0, b->size, i, pen);
+		InitRastPort(&rp[i]);
+		rp[i].BitMap = bm[i];
+		rps[i] = &rp[i];
+	}
+	DateStamp(&start);
+	draw_balls(rps, b->size, pen);
+	drawn = ticks_since(&start);
+	for (i = 0; i < PHASES; i++) {
 		for (t = 0; t < tiles; t++) {
 			/* this sprite's columns of it */
 			struct BitMap part = *bm[i];
@@ -330,7 +362,9 @@ static int sprite_boing(struct Ball *b, LONG secs)
 		}
 	}
 
-	printf("Boing: bouncing over %dx%d as sprites; Ctrl-C to stop\n", scr->Width, scr->Height);
+	printf("Boing: drawn in %ld.%ld s; bouncing over %dx%d as sprites; Ctrl-C to stop\n",
+	       drawn / TICKS_PER_SECOND, drawn % TICKS_PER_SECOND * 10 / TICKS_PER_SECOND,
+	       scr->Width, scr->Height);
 	fflush(stdout);
 	rc = RETURN_OK;
 	DateStamp(&start);
@@ -376,7 +410,8 @@ static int window_boing(struct Ball *b, LONG secs)
 	struct Screen *scr = b->scr;
 	struct Window *win = NULL;
 	struct BitMap *frames[PHASES] = { 0 };
-	struct RastPort rp;
+	static struct RastPort rp[PHASES];   /* not on the stack (4 KB) */
+	struct RastPort *rps[PHASES];
 	struct DateStamp start;
 	LONG pen[3], size = b->size;
 	BOOL got_pens;
@@ -396,7 +431,6 @@ static int window_boing(struct Ball *b, LONG secs)
 
 	/* the turns of the ball, drawn once, in bitmaps like the screen's */
 	printf("Boing: drawing the ball...\n");
-	InitRastPort(&rp);
 	for (i = 0; i < PHASES; i++) {
 		frames[i] = AllocBitMap(size, size, scr->RastPort.BitMap->Depth, BMF_CLEAR,
 		                        scr->RastPort.BitMap);
@@ -404,11 +438,13 @@ static int window_boing(struct Ball *b, LONG secs)
 			printf("Boing: not enough memory\n");
 			goto out;
 		}
-		rp.BitMap = frames[i];
-		SetAPen(&rp, pen[0]);
-		RectFill(&rp, 0, 0, size - 1, size - 1);
-		draw_ball(&rp, 0, 0, size, i, pen);
+		InitRastPort(&rp[i]);
+		rp[i].BitMap = frames[i];
+		rps[i] = &rp[i];
+		SetAPen(&rp[i], pen[0]);
+		RectFill(&rp[i], 0, 0, size - 1, size - 1);
 	}
+	draw_balls(rps, size, pen);
 
 	win = OpenWindowTags(NULL, WA_PubScreen, (ULONG)scr, WA_Left, b->x, WA_Top, b->y,
 	                     WA_Width, size, WA_Height, size, WA_Borderless, TRUE,

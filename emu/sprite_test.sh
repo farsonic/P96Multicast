@@ -159,7 +159,15 @@ Wait 6
 Run >NIL: C:mctest PUBSCREEN=PANORAMA WIDTH=640 HEIGHT=480 DEPTH=16
 Wait 6
 Run >NIL: C:Boing >Work:boing.txt SIZE=100 SECS=40
-Wait 20
+; Boing has its output open: the card says when its sprites are there
+Lab drawing
+Wait 1
+C:mctest STATUS >T:status
+Search >NIL: T:status " 2 in use" QUIET
+If WARN
+    Skip drawing BACK
+EndIf
+Wait 4
 Echo >Work:mark-ball x
 Wait 6
 C:mctest STATUS >Work:status.txt
@@ -167,6 +175,25 @@ Wait 20
 Echo >Work:boot2.done done
 EOF
 
+# red pixels of the ball: how many, and around where
+ball() {
+	python3 - "$1" <<'PYEOF'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+px = im.load()
+n, sx, sy = 0, 0, 0
+for y in range(h):
+    for x in range(w):
+        r, g, b = px[x, y]
+        if r > 200 and g < 60 and b < 60:
+            n += 1
+            sx += x
+            sy += y
+print(n, sx // n if n else -1, sy // n if n else -1)
+PYEOF
+}
 # three viewers: in a window (a Python with tkinter), in the web view, and
 # one writing the screen's own pixels
 TKPY=
@@ -198,11 +225,28 @@ during() {
 		python3 tests/sprite_join.py $GROUP 9696 $HOST_IP 8 >"$OUT/join.txt" 2>&1 &
 		w=$(xdotool search --name "^Panorama" 2>/dev/null | head -1)
 		[ -n "$w" ] && xdotool windowraise "$w" 2>/dev/null && sleep 0.5
-		for n in 1 2; do
-			[ -n "$w" ] && import -window "$w" "$OUT/view-$n.png" 2>/dev/null
-			curl -s -o "$OUT/web-$n.png" http://127.0.0.1:8097/frame.png
-			sleep 0.5
+		top -b -n 1 -w 200 2>/dev/null | head -20 >"$OUT/top.txt"
+		# the window, until it shows the ball (how long, in tries a second apart)
+		tries=0
+		while [ -n "$w" ] && [ $tries -lt 15 ]; do
+			tries=$((tries + 1))
+			import -window "$w" "$OUT/view-1.png" 2>/dev/null
+			set -- $(ball "$OUT/view-1.png" 2>/dev/null)
+			[ "${1:-0}" -gt 1500 ] && break
+			sleep 1
 		done
+		echo "$tries" >"$OUT/view-tries.txt"
+		sleep 0.5
+		[ -n "$w" ] && import -window "$w" "$OUT/view-2.png" 2>/dev/null
+		# the web view in a browser (headless Chromium), or else its
+		# picture with the sprites drawn in
+		if ! node tests/web_shot.js http://127.0.0.1:8097/ "$OUT/web-1.png" "$OUT/web-2.png" \
+		     >"$OUT/web_shot.log" 2>&1; then
+			for n in 1 2; do
+				curl -s -o "$OUT/web-$n.png" "http://127.0.0.1:8097/frame.png?sprites=1"
+				sleep 0.5
+			done
+		fi
 		cp "$OUT/screen.png" "$OUT/screen-ball.png" 2>/dev/null
 		import -window root "$OUT/root-ball.png" 2>/dev/null
 	fi
@@ -221,25 +265,6 @@ tr -d '\r' < "$work/status.txt" 2>/dev/null | grep -i "sprite\|Copper\|viewers\|
 echo "---- viewers"
 cat "$OUT/panoview.log" "$OUT/web.log" "$OUT/snapshot.log" 2>/dev/null
 
-# red pixels of the ball: how many, and around where
-ball() {
-	python3 - "$1" <<'PYEOF'
-import sys
-from PIL import Image
-im = Image.open(sys.argv[1]).convert("RGB")
-w, h = im.size
-px = im.load()
-n, sx, sy = 0, 0, 0
-for y in range(h):
-    for x in range(w):
-        r, g, b = px[x, y]
-        if r > 200 and g < 60 and b < 60:
-            n += 1
-            sx += x
-            sy += y
-print(n, sx // n if n else -1, sy // n if n else -1)
-PYEOF
-}
 check() {
 	if eval "$1"; then
 		echo "PASS: $2"
@@ -257,11 +282,11 @@ moves() {
 	check '[ "$n2" -gt 1500 ] && [ "$x1,$y1" != "$x2,$y2" ]' \
 		"... and half a second later somewhere else (around $x2,$y2)"
 }
-[ -n "$TKPY" ] && moves view "the viewer's window"
+[ -n "$TKPY" ] && moves view "the viewer's window (in $(cat "$OUT/view-tries.txt" 2>/dev/null) tries)"
 moves web "the web view"
-set -- $(cat "$OUT/join.txt" 2>/dev/null) ; js=${2:-0} jw=${4:-0}
-check '[ "$js" -ge 2 ] && [ "$jw" -ge 1 ]' \
-	"a viewer joining late, asking only for the sprites (WANTSPRITES): it has them ($(cat "$OUT/join.txt" 2>/dev/null))"
+set -- $(cat "$OUT/join.txt" 2>/dev/null) ; js=${2:-0}
+check '[ "$js" -ge 2 ]' \
+	"a viewer joining late, never asking for the whole screen, has the sprites ($(cat "$OUT/join.txt" 2>/dev/null))"
 set -- $(ball "$OUT/screen-ball.png" 2>/dev/null) ; ns=${1:-0}
 check '[ -f "$OUT/screen-ball.png" ] && [ "$ns" -lt 50 ]' \
 	"... drawn over the screen: none of it in the screen's own pixels ($ns red)"
