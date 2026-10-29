@@ -33,7 +33,8 @@
 #include <proto/dos.h>
 #include <proto/timer.h>
 #include <proto/intuition.h>
-#include <proto/graphics.h>
+#include <exec/interrupts.h>
+#include <hardware/intbits.h>
 #include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
 #include "mcard.h"
@@ -147,6 +148,10 @@ struct Sender {
 	/* the Amiga's time of the last pass, for FRAME: E-clock, and ms since the first */
 	ULONG  last_eclock, eclock_left, msecs;
 	ULONG  lap_eclock;               /* STATUS: where a pass's time goes (lap()) */
+	/* FPS=50: woken by the vertical blank (vblank_server()) */
+	struct Interrupt vbint;
+	struct VBlank { struct Task *task; ULONG mask; } vb;
+	BYTE   vbsig;
 	BOOL   timed;
 
 	/* statistics, for the log */
@@ -274,6 +279,19 @@ struct Start {
 	struct McCard *mc;
 	UWORD view;
 };
+
+/*
+ * The vertical blank interrupt: wakes the sender. Not WaitTOF(): with a
+ * Panorama screen shown, Picasso96's WaitTOF() holds the board's lock
+ * until the blank, and the sender, of a low priority, may not get to
+ * run to let go of it while others are busy: Intuition and the pointer,
+ * waiting for that lock, stop (the whole Amiga stops).
+ */
+static LONG vblank_server(__reg("a1") struct VBlank *vb)
+{
+	Signal(vb->task, vb->mask);
+	return 0;
+}
 
 /* a record of len bytes: returns where its body goes */
 static UBYTE *rec(struct Sender *s, UBYTE type, ULONG len)
@@ -2119,6 +2137,17 @@ static void SenderMain(void)
 	if (!ticks)
 		ticks = 1;
 	mc->view_task[s->view] = (struct Task *)me;
+	s->vbsig = -1;
+	if (mc->cfg.fps >= 50 && (s->vbsig = AllocSignal(-1)) >= 0) {
+		s->vb.task = (struct Task *)me;
+		s->vb.mask = 1UL << s->vbsig;
+		s->vbint.is_Node.ln_Type = NT_INTERRUPT;
+		s->vbint.is_Node.ln_Pri = -60;
+		s->vbint.is_Node.ln_Name = (char *)"Panorama.card sender";
+		s->vbint.is_Data = &s->vb;
+		s->vbint.is_Code = (void (*)())vblank_server;
+		AddIntServer(INTB_VERTB, &s->vbint);
+	}
 	while (s->sockbase && !mc->sender_quit) {
 		if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 			break;
@@ -2138,7 +2167,7 @@ static void SenderMain(void)
 		if (mc->nviews > 1 && s->view && !mc->lead_gone) {
 			if (Wait(SIGBREAKF_CTRL_F | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 				break;
-		} else if (mc->cfg.fps >= 50) {
+		} else if (s->vbsig >= 0) {
 			/*
 			 * In step with the display: a pass just after each vertical
 			 * blank, when the programs that wait for it (WaitTOF(), as
@@ -2146,10 +2175,16 @@ static void SenderMain(void)
 			 * higher priority. Delay() went by whole ticks after the
 			 * pass: a pass in two or three frames.
 			 */
-			WaitTOF();
+			SetSignal(0, s->vb.mask);
+			if (Wait(s->vb.mask | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+				break;
 		} else {
 			Delay(ticks);
 		}
+	}
+	if (s->vbsig >= 0) {
+		RemIntServer(INTB_VERTB, &s->vbint);
+		FreeSignal(s->vbsig);
 	}
 	Forbid();
 	mc->view_task[s->view] = NULL;

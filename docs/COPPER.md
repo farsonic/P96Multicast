@@ -88,8 +88,10 @@ Copper is built on three rules:
   20-byte record instead of two redrawn areas. Under Wrap.card, a head passes on
   the wrapped card's pointer, if that card has one.
 * **Timing:** with `FPS=50` (the default) a pass runs just after each vertical
-  blank, as the programs that wait for it (`WaitTOF()`) have just moved their
-  sprites and drawn: one update per frame they make, none of them shown twice
+  blank (the sender is woken by the vertical blank interrupt; not with
+  `WaitTOF()`, which under Picasso96 holds the shown board's lock until the
+  blank), as the programs that wait for it have just moved their sprites and
+  drawn: one update per frame they make, none of them shown twice
   or missed. Each FRAME carries its time on the Amiga, and panoview shows
   every update that far after the one before, a little behind (the network's
   jitter, learnt as it goes, 100 ms at most), however unevenly the network
@@ -265,7 +267,7 @@ when the file changes, and tells the viewers in its next SURFACE.
 | `BLITTER` | 1 | send the drawing as orders (0: compare and send pixels only) |
 | `POINTER` | 1 | a hardware pointer that the viewers draw (0: rtg.library draws it into the screen) |
 | `SPRITES` | 1 | graphics.library's sprites 1-7 on the board's screens, drawn by the viewers (0: not patched, they show nothing) |
-| `FPS` | 50 | passes per second; 50 or more: a pass after each vertical blank of the display (`WaitTOF()`), in step with the programs that wait for it, as many as the display has (50 PAL, 60 NTSC) |
+| `FPS` | 50 | passes per second; 50 or more: a pass after each vertical blank of the display (woken by its interrupt), in step with the programs that wait for it, as many as the display has (50 PAL, 60 NTSC) |
 | `RATE` | 1500 | most KB per second |
 | `SCAN` | 2 | seconds for the background scan to cover the screen, at the fastest |
 | `CPU` | 20 | most percent of the time the background scan may take |

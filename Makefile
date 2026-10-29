@@ -14,6 +14,8 @@
 #   make emu-os3         PanoramaPrefs' window on AmigaOS 3.1.4 with MUI 3.8
 #   make emu-p96         the desktop install on AmigaOS with Picasso96 and
 #                        uaegfx: the mouse across to the Workbench and back
+#   make emu-open        Open on a system as users have it (Workbench on uaegfx,
+#                        Riptide): the Amiga goes on, the mouse moves under load
 #   make emu-sprite      Boing's sprites over Riptide's multicast to panoview,
 #                        on AmigaOS with Picasso96 (FSUAE_PCAP, root; LOSS=5)
 #                        (these three: your own ROM, OS and P96, see the scripts)
@@ -143,7 +145,10 @@ emu-p96: package
 emu-sprite: package
 	emu/sprite_test.sh
 
+emu-open: package
+	emu/open_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite emu-open clean

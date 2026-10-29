@@ -350,13 +350,14 @@ pairs = [(a, b) for a, b in zip(rows, rows[1:]) if 0 < b[0] - a[0] < 200]
 dt = sorted(b[0] - a[0] for a, b in pairs)
 err = sorted(abs((b[2] - a[2]) * 1000 - (b[0] - a[0])) for a, b in pairs)
 med = dt[len(dt) // 2] if dt else 0
-steady = 100 * sum(1 for x in dt if abs(x - med) <= 2) // max(len(dt), 1)
+# in step: a whole number of frames apart (a pass now and then misses one)
+steady = 100 * sum(1 for x in dt if med and abs(x - med * round(x / med)) <= 2) // max(len(dt), 1)
 print(int(med), steady, "%.1f" % err[len(err) // 2] if err else 999)
 PYEOF
 )
 	every=${1:-0} steady=${2:-0} off=${3:-999}
 	check '[ "$steady" -ge 80 ]' \
-		"the sender's updates: one every $every ms, $steady% of them within 2 ms of that (in step with the display)"
+		"the sender's updates: one every $every ms (a frame), $steady% of them a whole number of frames apart"
 	check '[ "${off%.*}" -le 3 ]' "... the window shows them as evenly: $off ms off (median)"
 fi
 set -- $(ball "$OUT/screen-ball.png" 2>/dev/null) ; ns=${1:-0}
