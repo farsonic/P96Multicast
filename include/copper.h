@@ -50,9 +50,10 @@
 #define CU_POINTERPOS 0x31     /* x s16, y s16, visible u8, pad u8: top left on the surface */
 #define CU_SPRITE     0x32     /* n u8 (1-7), visible u8, x s16, y s16 (top left on the
                                   surface), image u16: sprite n shows that image there */
-#define CU_SPRITEIMAGE 0x33    /* image u16 (0-63), w u8 (16, 32, 64), pad u8, h u16,
-                                  first u16, rows u16, 3 * RGB, rows of plane 0 then
-                                  plane 1, w / 16 words each: rows first ... of image's
+#define CU_SPRITEIMAGE 0x33    /* image u16 (0-63), w u8 (16, 32, 64), depth u8 (2; 4 for an
+                                  attached pair), h u16, first u16, rows u16, colours 1-3
+                                  (depth 2) or 1-15 (depth 4) as RGB, rows of planes 0 ...
+                                  depth - 1, w / 16 words each: rows first ... of image's
                                   h, the rest in further SPRITEIMAGEs; kept until replaced */
 #define CU_SPRITE_IMAGES 64
 

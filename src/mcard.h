@@ -186,6 +186,7 @@ struct McCard {
  */
 #define MC_SPRITES     8
 #define MC_SPRITE_MAXH 512
+#define MC_SPRITE_RGB  (9 + 45)
 
 struct McSprite {
 	struct McCard *mc;           /* the board its ViewPort is on; NULL: not in use */
@@ -195,7 +196,8 @@ struct McSprite {
 	WORD   x, y;                 /* top left, in the screen's pixels */
 	UWORD  on;                   /* moved at least once */
 	UWORD  w, h;                 /* 16, 32 or 64 wide */
-	UBYTE  rgb[9];               /* colours 1-3 */
+	UBYTE  rgb[MC_SPRITE_RGB];   /* colours 1-3, then 1-15 of an attached pair */
+	UWORD  attached;             /* odd, attached to the sprite before it */
 	UWORD *data;                 /* h rows: plane 0 (w / 16 words), plane 1 */
 	ULONG  cap;                  /* words data has room for */
 };

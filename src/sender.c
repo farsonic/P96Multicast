@@ -91,13 +91,15 @@ struct Sender {
 	ULONG  ptr_serial, pos_serial;
 	WORD   ptr_vx, ptr_vy;           /* the pointer where the viewers have it */
 	/* SPRITES=1: each sprite as the viewers have it ... */
-	ULONG  spr_serial[MC_SPRITES];   /* its image, as last looked at */
+	ULONG  spr_serial[MC_SPRITES];   /* its image, as last looked at ... */
+	ULONG  spr_mate[MC_SPRITES];     /* ... and its attached mate's */
 	WORD   spr_vx[MC_SPRITES], spr_vy[MC_SPRITES];  /* its place */
 	UWORD  spr_img[MC_SPRITES];      /* the image it shows */
 	UBYTE  spr_vis[MC_SPRITES];      /* 1 shown, 0 hidden, 0xff not told yet */
 	/* ... and the images they have: hash 0 for none */
 	ULONG  img_hash[CU_SPRITE_IMAGES];
 	UWORD  img_next;                 /* the next to replace */
+	UWORD *pair;                     /* an attached pair's 4 planes, put together */
 	WORD   mouse_x, mouse_y;         /* Intuition's, last pass */
 	UWORD  mouse_hot;                /* passes to keep comparing around it */
 
@@ -486,6 +488,7 @@ static void sprites_again(struct Sender *s)
 
 	for (n = 0; n < MC_SPRITES; n++) {
 		s->spr_serial[n] = mc_sprite[n].serial - 1;
+		s->spr_mate[n] = 0xffffffffUL;
 		s->spr_vis[n] = 0xff;
 		s->spr_img[n] = 0xffff;
 	}
@@ -494,23 +497,35 @@ static void sprites_again(struct Sender *s)
 	s->img_next = 0;
 }
 
-/* sp's image and colours, as a number not 0 (a copy is the same number) */
-static ULONG sprite_hash(struct McSprite *sp)
-{
-	ULONG h = 0x9e3779b9UL ^ ((ULONG)sp->w << 16) ^ sp->h, i, n = (ULONG)sp->h * sp->w / 8;
+/*
+ * An image: w wide, h rows of depth planes (2, or 4 for an attached pair),
+ * w / 16 words each, and its colours 1-3 or 1-15 (ncol)
+ */
+struct SprImage {
+	UWORD w, h, depth, ncol;
+	UBYTE *rgb;
+	UWORD *data;
+};
 
-	for (i = 0; i < 9; i++)
-		h = ((h << 5) | (h >> 27)) ^ sp->rgb[i];
+/* the image and its colours, as a number not 0 (a copy is the same number) */
+static ULONG image_hash(struct SprImage *im)
+{
+	ULONG h = 0x9e3779b9UL ^ ((ULONG)im->w << 16) ^ ((ULONG)im->depth << 12) ^ im->h, i;
+	ULONG n = (ULONG)im->h * im->depth * (im->w / 16);
+
+	for (i = 0; i < 3UL * im->ncol; i++)
+		h = ((h << 5) | (h >> 27)) ^ im->rgb[i];
 	for (i = 0; i < n; i++)
-		h = ((h << 5) | (h >> 27)) ^ sp->data[i];
+		h = ((h << 5) | (h >> 27)) ^ im->data[i];
 	return h ? h : 1;
 }
 
-/* the viewers' id for sp's image (hash h): one they have, or sent now */
-static UWORD sprite_image(struct Sender *s, struct McSprite *sp, ULONG h)
+/* the viewers' id for the image: one they have, or sent now */
+static UWORD sprite_image(struct Sender *s, struct SprImage *im)
 {
-	UWORD id, k, words = sp->w / 16, rowbytes = words * 4, first, rows, i;
-	UWORD band = (CU_MAX_DGRAM - CU_HDR_SIZE - 3 - 19) / rowbytes;
+	ULONG h = image_hash(im);
+	UWORD id, k, words = im->w / 16, rowbytes = words * 2 * im->depth, first, rows, i;
+	UWORD head = 10 + 3 * im->ncol, band = (CU_MAX_DGRAM - CU_HDR_SIZE - 3 - head) / rowbytes;
 	UBYTE *p;
 
 	for (id = 0; id < CU_SPRITE_IMAGES; id++)
@@ -526,20 +541,28 @@ static UWORD sprite_image(struct Sender *s, struct McSprite *sp, ULONG h)
 			break;
 	}
 	s->img_hash[id] = h;
-	for (first = 0; first < sp->h; first += rows) {
-		rows = sp->h - first < band ? sp->h - first : band;
-		p = rec(s, CU_SPRITEIMAGE, 19 + rows * rowbytes);
+	for (first = 0; first < im->h; first += rows) {
+		rows = im->h - first < band ? im->h - first : band;
+		p = rec(s, CU_SPRITEIMAGE, head + rows * rowbytes);
 		put16(p, id);
-		p[2] = sp->w;
-		p[3] = 0;
-		put16(p + 4, sp->h);
+		p[2] = im->w;
+		p[3] = im->depth;
+		put16(p + 4, im->h);
 		put16(p + 6, first);
 		put16(p + 8, rows);
-		CopyMem(sp->rgb, p + 10, 9);
-		for (i = 0; i < rows * words * 2; i++)
-			put16(p + 19 + 2 * i, sp->data[first * words * 2 + i]);
+		CopyMem(im->rgb, p + 10, 3 * im->ncol);
+		for (i = 0; i < rows * words * im->depth; i++)
+			put16(p + head + 2 * i, im->data[first * words * im->depth + i]);
 	}
 	return id;
+}
+
+/* is sprite n a whole one of this board's? */
+static BOOL sprite_mine(struct McCard *mc, UWORD n)
+{
+	struct McSprite *sp = &mc_sprite[n];
+
+	return sp->mc == mc && sp->data && sp->w && sp->h;
 }
 
 static void send_sprites(struct Sender *s)
@@ -548,19 +571,52 @@ static void send_sprites(struct Sender *s)
 	struct ViewPort *shown;
 	UWORD n, have = 0;
 
+	if (!s->pair)
+		s->pair = AllocMem(MC_SPRITE_MAXH * 4 * 4 * 2, MEMF_PUBLIC);
 	Forbid();
 	shown = mc->bi->ViewPort ? mc->bi->ViewPort : mc->our_scr ? &mc->our_scr->ViewPort : NULL;
 	for (n = 1; n < MC_SPRITES; n++) {
-		struct McSprite *sp = &mc_sprite[n];
-		BOOL mine = sp->mc == mc && sp->data && sp->w && sp->h;
-		UBYTE vis = mine && sp->on && sp->vp == shown;
+		struct McSprite *sp = &mc_sprite[n], *mate = n + 1 < MC_SPRITES ? &mc_sprite[n + 1] : NULL;
+		BOOL mine = sprite_mine(mc, n);
+		/* an even sprite and the odd one attached to it: one sprite of 15 colours */
+		BOOL pair = mine && !(n & 1) && mate && mate->attached && sprite_mine(mc, n + 1) &&
+		            mate->w == sp->w && mate->h == sp->h && mate->vp == sp->vp && s->pair;
+		BOOL in_pair = (n & 1) && sp->attached && sprite_mine(mc, n - 1) &&
+		               mc_sprite[n - 1].w == sp->w && mc_sprite[n - 1].h == sp->h && s->pair;
+		UBYTE vis = mine && sp->on && sp->vp == shown && !in_pair;
+		ULONG mate_serial = pair ? mate->serial : 0;
 		WORD vx = sp->x - s->xoff - s->vx, vy = sp->y - s->yoff - s->vy;
 		UWORD img = s->spr_img[n];
 		UBYTE *p;
 
-		if (vis && (sp->serial != s->spr_serial[n] || img == 0xffff)) {
+		if (vis && (sp->serial != s->spr_serial[n] || mate_serial != s->spr_mate[n] ||
+		            img == 0xffff)) {
+			struct SprImage im;
+
 			s->spr_serial[n] = sp->serial;
-			img = sprite_image(s, sp, sprite_hash(sp));
+			s->spr_mate[n] = mate_serial;
+			im.w = sp->w;
+			im.h = sp->h;
+			if (pair) {
+				/* each row: the even one's planes 0, 1, the odd one's (2, 3) */
+				UWORD words = sp->w / 16, r, k;
+
+				for (r = 0; r < sp->h; r++)
+					for (k = 0; k < 2 * words; k++) {
+						s->pair[r * 4 * words + k] = sp->data[r * 2 * words + k];
+						s->pair[r * 4 * words + 2 * words + k] = mate->data[r * 2 * words + k];
+					}
+				im.depth = 4;
+				im.ncol = 15;
+				im.rgb = mate->rgb + 9;
+				im.data = s->pair;
+			} else {
+				im.depth = 2;
+				im.ncol = 3;
+				im.rgb = sp->rgb;
+				im.data = sp->data;
+			}
+			img = sprite_image(s, &im);
 		}
 		if (vis != s->spr_vis[n] ||
 		    (vis && (vx != s->spr_vx[n] || vy != s->spr_vy[n] || img != s->spr_img[n]))) {
@@ -2023,6 +2079,8 @@ static void SenderMain(void)
 		FreeMem(s->hist, s->nhist * CU_MAX_DGRAM);
 	if (s->hlen)
 		FreeMem(s->hlen, s->nhist * sizeof(UWORD));
+	if (s->pair)
+		FreeMem(s->pair, MC_SPRITE_MAXH * 4 * 4 * 2);
 	{
 		UWORD view = s->view;
 

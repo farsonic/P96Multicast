@@ -23,6 +23,8 @@
  *   Boing SIZE=120 SPEED=6      the ball's size, and how fast it goes
  *   Boing SECS=30               stop by itself after 30 seconds
  *   Boing WINDOW                the window, not sprites; SPRITES: sprites anyway
+ *   Boing SHADED                the ball lit from above left, in 12 shades:
+ *                               attached sprite pairs, 15 colours each
  *
  * Ctrl-C stops it, or clicking the ball (the window; a sprite can't be
  * clicked).
@@ -51,8 +53,8 @@ static const char version[] = "$VER: Boing 1.4 (29.10.2026)";
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 
-static const char template[] = "PUBSCREEN/K,SIZE/K/N,SPEED/K/N,SECS/K/N,WINDOW/S,SPRITES/S";
-enum { A_PUBSCREEN, A_SIZE, A_SPEED, A_SECS, A_WINDOW, A_SPRITES, A_COUNT };
+static const char template[] = "PUBSCREEN/K,SIZE/K/N,SPEED/K/N,SECS/K/N,WINDOW/S,SPRITES/S,SHADED/S";
+enum { A_PUBSCREEN, A_SIZE, A_SPEED, A_SECS, A_WINDOW, A_SPRITES, A_SHADED, A_COUNT };
 
 #define PHASES 8          /* turns of the spin: the stripes repeat every 2 * 360 / 16 degrees */
 #define LONGS  16         /* checks around */
@@ -102,7 +104,7 @@ static ULONG isqrt(ULONG n)
  * front) and its row of checks in *la. The ball leans 1/4 of a
  * radian-ish: a fixed rotation of the coordinates.
  */
-static BOOL ball_point(int x, int y, int r, LONG *lon, LONG *la)
+static BOOL ball_point(int x, int y, int r, LONG *lon, LONG *la, LONG *level)
 {
 	/* lean: x' = x cos a + y sin a, y' = -x sin a + y cos a, a ~ 17 degrees */
 	LONG c = 979, s = 297;   /* *1024 */
@@ -119,6 +121,17 @@ static BOOL ball_point(int x, int y, int r, LONG *lon, LONG *la)
 	half = isqrt(rr - (LONG)yr * yr);
 	*lon = (half ? asin_q(xr * 1024 / half) : 0) + 1024;
 	*la = (asin_q(yr * 1024 / r) + 1024) / (2048 / LATS);
+	{
+		/*
+		 * Lit from above left and in front, (-0.4, -0.5, 0.77): the light
+		 * on the surface there, in 6 levels (SHADED)
+		 */
+		LONG z = isqrt(rr - (LONG)x * x - (LONG)y * y);
+		LONG l = (-410 * x - 512 * y + 788 * z) / (r ? r : 1);   /* -1024 ... 1024 */
+
+		l = (l + 400) * 6 / 1424;
+		*level = l < 0 ? 0 : l > 5 ? 5 : l;
+	}
 	return TRUE;
 }
 
@@ -139,7 +152,7 @@ static int phase_pen(LONG lon, LONG la, int phase)
  * (red) and pen[2] (white): each pixel's place on the sphere is worked out
  * once, for all the turns (on a 68020 the sums are what takes the time).
  */
-static void draw_balls(struct RastPort **rps, int size, LONG *pen)
+static void draw_balls(struct RastPort **rps, int size, LONG *pen, BOOL shaded)
 {
 	int px, py, r = size / 2, i;
 
@@ -150,15 +163,18 @@ static void draw_balls(struct RastPort **rps, int size, LONG *pen)
 			run[i] = last[i] = -1;
 		/* runs of one pen at a time: far fewer calls than pixels */
 		for (px = 0; px <= size; px++) {
-			LONG lon = 0, la = 0;
-			int in = px < size ? ball_point(px - r, py - r, r - 1, &lon, &la) : -1;
+			LONG lon = 0, la = 0, level = 0;
+			int in = px < size ? ball_point(px - r, py - r, r - 1, &lon, &la, &level) : -1;
 
 			for (i = 0; i < PHASES; i++) {
 				int p = in < 0 ? -1 : in ? phase_pen(lon, la, i) : 0;
 
+				/* SHADED: red 4-9, white 10-15, darkest first: the pen itself */
+				if (shaded && p > 0)
+					p = (p == 1 ? 4 : 10) + level;
 				if (p != last[i]) {
 					if (last[i] > 0) {
-						SetAPen(rps[i], pen[last[i]]);
+						SetAPen(rps[i], shaded ? last[i] : pen[last[i]]);
 						RectFill(rps[i], run[i], py, px - 1, py);
 					}
 					last[i] = p;
@@ -243,13 +259,13 @@ static BOOL panorama_screen(struct Screen *scr)
  * shares its colours), which the ball would change
  */
 #define FIRST    2
-#define MAXTILES 6
+#define MAXSPR   6
 
 /*
  * The ball as sprites side by side, each tw wide. RETURN_OK when stopped,
  * -1 if it can't be (too few sprites, their colours taken): the window then.
  */
-static int sprite_boing(struct Ball *b, LONG secs)
+static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 {
 	static const ULONG rgb[3][3] = {
 		{ 0xeeeeeeee, 0x11111111, 0x11111111 },     /* 1 red */
@@ -260,8 +276,8 @@ static int sprite_boing(struct Ball *b, LONG secs)
 	struct ViewPort *vp = &scr->ViewPort;
 	struct ColorMap *cm = vp->ColorMap;
 	struct BitMap *bm[PHASES] = { 0 };
-	struct ExtSprite *spr[PHASES][MAXTILES] = { { 0 } }, *cur[MAXTILES];
-	LONG num[MAXTILES], pens[2 * MAXTILES * 3], npens = 0, tw = 0, tiles, i, t, c;
+	struct ExtSprite *spr[PHASES][MAXSPR] = { { 0 } }, *cur[MAXSPR];
+	LONG num[MAXSPR], pens[2 * MAXSPR * 3], npens = 0, tw = 0, tiles, nspr, i, t, c;
 	LONG pen[3] = { 0, 1, 2 };
 	/* not on the stack: a Shell's 4 KB is all a program may have */
 	static struct RastPort rp[PHASES];
@@ -273,7 +289,7 @@ static int sprite_boing(struct Ball *b, LONG secs)
 
 	if (GfxBase->LibNode.lib_Version < 39)
 		return -1;
-	for (t = 0; t < MAXTILES; t++)
+	for (t = 0; t < MAXSPR; t++)
 		num[t] = -1;
 
 	/* as wide as the sprites can be: 64 with AGA, 16 without */
@@ -294,16 +310,22 @@ static int sprite_boing(struct Ball *b, LONG secs)
 	}
 	if (!tw)
 		return -1;
+	/*
+	 * Columns of tw: a sprite each, or with SHADED an attached pair each
+	 * (sprites 2-3, 4-5, 6-7), the odd one taking bitplanes 2 and 3
+	 */
 	tiles = (b->size + tw - 1) / tw;
-	if (tiles > MAXTILES) {
-		tiles = MAXTILES;
+	if (tiles > (shaded ? MAXSPR / 2 : MAXSPR)) {
+		tiles = shaded ? MAXSPR / 2 : MAXSPR;
 		b->size = tiles * tw;
 	}
+	nspr = shaded ? 2 * tiles : tiles;
 
-	/* the turns of the ball in two bitplanes: 0 clear, 1 red, 2 white */
-	printf("Boing: drawing the ball (%ld sprites of %ld)...\n", tiles, tw);
+	/* the turns of the ball: 0 clear, 1 red, 2 white (SHADED: 4-9 red, 10-15 white) */
+	printf("Boing: drawing the ball (%ld sprites of %ld%s)...\n", nspr, tw,
+	       shaded ? ", attached in pairs" : "");
 	for (i = 0; i < PHASES; i++) {
-		bm[i] = AllocBitMap(tiles * tw, b->size, 2, BMF_CLEAR, NULL);
+		bm[i] = AllocBitMap(tiles * tw, b->size, shaded ? 4 : 2, BMF_CLEAR, NULL);
 		if (!bm[i])
 			goto out;
 		InitRastPort(&rp[i]);
@@ -311,22 +333,27 @@ static int sprite_boing(struct Ball *b, LONG secs)
 		rps[i] = &rp[i];
 	}
 	DateStamp(&start);
-	draw_balls(rps, b->size, pen);
+	draw_balls(rps, b->size, pen, shaded);
 	drawn = ticks_since(&start);
 	for (i = 0; i < PHASES; i++) {
-		for (t = 0; t < tiles; t++) {
-			/* this sprite's columns of it */
+		for (t = 0; t < nspr; t++) {
+			/* this sprite's columns of it, and its planes */
 			struct BitMap part = *bm[i];
+			LONG col = shaded ? t / 2 : t, odd = shaded && (t & 1), k;
 
-			part.Planes[0] += t * tw / 8;
-			part.Planes[1] += t * tw / 8;
+			for (k = 0; k < 2; k++)
+				part.Planes[k] = bm[i]->Planes[k + (odd ? 2 : 0)] + col * tw / 8;
+			part.Depth = 2;
 			spr[i][t] = AllocSpriteData(&part, SPRITEA_Width, tw, TAG_END);
 			if (!spr[i][t])
 				goto out;
+			/* attached to the one before (V39 doesn't set the bit itself) */
+			if (odd)
+				spr[i][t]->es_SimpleSprite.posctldata[spr[i][t]->es_wordwidth] |= SPRITE_ATTACHED;
 		}
 	}
 
-	for (t = 0; t < tiles; t++) {
+	for (t = 0; t < nspr; t++) {
 		num[t] = GetExtSprite(spr[0][t], GSTAG_SPRITE_NUM, FIRST + t, TAG_END);
 		if (num[t] < 0) {
 			printf("Boing: not enough sprites free\n");
@@ -335,30 +362,51 @@ static int sprite_boing(struct Ball *b, LONG secs)
 		cur[t] = spr[0][t];
 	}
 	/*
-	 * Colours 1-3 of each sprite pair's: on a screen of 256 colours or
-	 * fewer those are the screen's pens too, so only if nobody has them
+	 * The colours: 1-3 of each sprite pair's, or with SHADED 4-15 of the
+	 * attached pairs' 15 (not 1-3: the pointer's). On a screen of 256
+	 * colours or fewer those are the screen's pens too: only if nobody has
+	 * them.
 	 */
-	for (t = 0; t < tiles; t++) {
-		ULONG base = (cm && cm->Type >= COLORMAP_TYPE_V39 ?
-		              (num[t] & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16) +
-		             (num[t] >> 1) * 4 + 1;
+	for (t = 0; t < (shaded ? 12 : 3 * nspr); t++) {
+		ULONG reg, r, g, bl;
 
-		for (c = 0; c < 3; c++) {
-			if (clut) {
-				LONG k;
+		if (shaded) {
+			LONG lv = t % 6;   /* 0 darkest ... 5 lightest */
 
-				for (k = 0; k < npens && pens[k] != (LONG)(base + c); k++)
-					;
-				if (k < npens)
-					continue;
-				if (ObtainPen(cm, base + c, rgb[c][0], rgb[c][1], rgb[c][2], PEN_EXCLUSIVE) == -1) {
-					printf("Boing: the sprites' colours are the screen's, in use\n");
-					goto out;
-				}
-				pens[npens++] = base + c;
+			reg = (cm && cm->Type >= COLORMAP_TYPE_V39 ? cm->SpriteBase_Odd : 16) + 4 + t;
+			if (t < 6) {
+				r = 0x50 + lv * 0x22;
+				g = bl = lv * 0x0c;
 			} else {
-				SetRGB32(vp, base + c, rgb[c][0], rgb[c][1], rgb[c][2]);
+				r = g = 0x68 + lv * 0x1d;
+				bl = 0x70 + lv * 0x1b;
 			}
+			r *= 0x01010101;
+			g *= 0x01010101;
+			bl *= 0x01010101;
+		} else {
+			LONG k = num[t / 3];
+
+			reg = (cm && cm->Type >= COLORMAP_TYPE_V39 ?
+			       (k & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16) + (k >> 1) * 4 + 1 + t % 3;
+			r = rgb[t % 3][0];
+			g = rgb[t % 3][1];
+			bl = rgb[t % 3][2];
+		}
+		if (clut) {
+			LONG k;
+
+			for (k = 0; k < npens && pens[k] != (LONG)reg; k++)
+				;
+			if (k < npens)
+				continue;
+			if (ObtainPen(cm, reg, r, g, bl, PEN_EXCLUSIVE) == -1) {
+				printf("Boing: the sprites' colours are the screen's, in use\n");
+				goto out;
+			}
+			pens[npens++] = reg;
+		} else {
+			SetRGB32(vp, reg, r, g, bl);
 		}
 	}
 
@@ -375,24 +423,24 @@ static int sprite_boing(struct Ball *b, LONG secs)
 			break;
 		bounce(b);
 		phase = (phase + (b->vx > 0 ? 1 : PHASES - 1)) % PHASES;
-		for (t = 0; t < tiles; t++) {
+		for (t = 0; t < nspr; t++) {
 			if (cur[t] != spr[phase][t]) {
 				ChangeExtSprite(vp, cur[t], spr[phase][t], TAG_END);
 				cur[t] = spr[phase][t];
 			}
-			MoveSprite(vp, &cur[t]->es_SimpleSprite, b->x + t * tw, b->y);
+			MoveSprite(vp, &cur[t]->es_SimpleSprite, b->x + (shaded ? t / 2 : t) * tw, b->y);
 		}
 		WaitTOF();
 	}
 
 out:
-	for (t = 0; t < MAXTILES; t++)
+	for (t = 0; t < MAXSPR; t++)
 		if (num[t] >= 0)
 			FreeSprite(num[t]);
 	for (i = 0; i < npens; i++)
 		ReleasePen(cm, pens[i]);
 	for (i = 0; i < PHASES; i++) {
-		for (t = 0; t < MAXTILES; t++)
+		for (t = 0; t < MAXSPR; t++)
 			if (spr[i][t])
 				FreeSpriteData(spr[i][t]);
 		if (bm[i])
@@ -444,7 +492,7 @@ static int window_boing(struct Ball *b, LONG secs)
 		SetAPen(&rp[i], pen[0]);
 		RectFill(&rp[i], 0, 0, size - 1, size - 1);
 	}
-	draw_balls(rps, size, pen);
+	draw_balls(rps, size, pen, FALSE);
 
 	win = OpenWindowTags(NULL, WA_PubScreen, (ULONG)scr, WA_Left, b->x, WA_Top, b->y,
 	                     WA_Width, size, WA_Height, size, WA_Borderless, TRUE,
@@ -571,7 +619,7 @@ int main(void)
 
 	rc = -1;
 	if (!args[A_WINDOW] && (args[A_SPRITES] || panorama_screen(b.scr)))
-		rc = sprite_boing(&b, secs);
+		rc = sprite_boing(&b, secs, args[A_SHADED] != 0);
 	if (rc < 0) {
 		b.size = size;
 		rc = window_boing(&b, secs);

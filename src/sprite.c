@@ -109,18 +109,26 @@ static struct McCard *card_of(struct ViewPort *vp)
 static BOOL colours(struct ViewPort *vp, UWORD num, UBYTE *rgb)
 {
 	struct ColorMap *cm = vp->ColorMap;
-	ULONG c[9], base;
+	ULONG c[45], base, bank;
 	int i;
 
 	if (!cm)
 		return FALSE;
-	base = (cm->Type >= COLORMAP_TYPE_V39 ? (num & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16) +
-	       (num >> 1) * 4 + 1;
+	/* its own 3: of its pair's 4 */
+	bank = cm->Type >= COLORMAP_TYPE_V39 ? (num & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16;
+	base = bank + (num >> 1) * 4 + 1;
 	if (base + 3 > cm->Count)
 		return FALSE;
 	GetRGB32(cm, base, 3, c);
 	for (i = 0; i < 9; i++)
 		rgb[i] = c[i] >> 24;
+	/* and the 15 of an attached pair (the odd sprite's bank, 1-15) */
+	bank = cm->Type >= COLORMAP_TYPE_V39 ? cm->SpriteBase_Odd : 16;
+	if (bank + 16 <= cm->Count) {
+		GetRGB32(cm, bank + 1, 15, c);
+		for (i = 0; i < 45; i++)
+			rgb[9 + i] = c[i] >> 24;
+	}
 	return TRUE;
 }
 
@@ -130,7 +138,7 @@ static BOOL set_colours(struct McSprite *sp, UBYTE *rgb)
 	BOOL changed = FALSE;
 	int i;
 
-	for (i = 0; i < 9; i++)
+	for (i = 0; i < MC_SPRITE_RGB; i++)
 		if (sp->rgb[i] != rgb[i]) {
 			sp->rgb[i] = rgb[i];
 			changed = TRUE;
@@ -176,16 +184,20 @@ static void count_pixels(UWORD *data, UWORD words, UWORD h)
 
 /*
  * Sprite num on vp gets a new image: words words of each plane a row, h
- * rows from data on, each row plane 0 then plane 1. FALSE: not ours. A
+ * rows after the control words at posctl (as many as a row has), each row
+ * plane 0 then plane 1. FALSE: not ours. A
  * spinning ball changes images every frame: its buffer is kept when the
  * new image fits, and nothing slow happens here.
  */
-static BOOL take_image(struct ViewPort *vp, UWORD num, UWORD words, UWORD h, UWORD *data)
+static BOOL take_image(struct ViewPort *vp, UWORD num, UWORD words, UWORD h, UWORD *posctl)
 {
+	UWORD *data = posctl ? posctl + 2 * words : NULL;
+	/* an odd sprite attached to the even one before it: one of 15 colours */
+	UWORD attached = posctl && (num & 1) && (posctl[words] & SPRITE_ATTACHED);
 	struct McCard *mc;
 	struct McSprite *sp;
 	UWORD *fresh = NULL, *old = NULL;
-	UBYTE rgb[9];
+	UBYTE rgb[MC_SPRITE_RGB];
 	BOOL have_rgb;
 	ULONG n;
 
@@ -220,6 +232,7 @@ static BOOL take_image(struct ViewPort *vp, UWORD num, UWORD words, UWORD h, UWO
 	sp->vp = vp;
 	sp->w = n ? words * 16 : 0;
 	sp->h = n ? h : 0;
+	sp->attached = attached;
 	if (have_rgb)
 		set_colours(sp, rgb);
 	sp->serial++;
@@ -254,7 +267,7 @@ static LONG new_ChangeExtSpriteA(__reg("a0") struct ViewPort *vp, __reg("a1") st
 		UWORD words = new->es_wordwidth ? new->es_wordwidth : 1;
 
 		if (take_image(vp, num, words, new->es_SimpleSprite.height,
-		               new->es_SimpleSprite.posctldata + 2 * words)) {
+		               new->es_SimpleSprite.posctldata)) {
 			/* new takes over old's number and place, as graphics.library's does */
 			new->es_SimpleSprite.num = num;
 			if (old && old != new) {
@@ -298,7 +311,7 @@ static LONG new_GetExtSpriteA(__reg("a2") struct ExtSprite *sp, __reg("a1") stru
 static void new_ChangeSprite(__reg("a0") struct ViewPort *vp, __reg("a1") struct SimpleSprite *ss,
                              __reg("a2") APTR data, __reg("a6") struct GfxBase *gb)
 {
-	if (ss && data && take_image(vp, ss->num, 1, ss->height, (UWORD *)data + 2))
+	if (ss && data && take_image(vp, ss->num, 1, ss->height, (UWORD *)data))
 		return;
 	old_change(vp, ss, data, gb);
 }
@@ -322,10 +335,10 @@ static void new_MoveSprite(__reg("a0") struct ViewPort *vp, __reg("a1") struct S
 
 			if (!words)
 				words = 1;
-			take_image(vp, ss->num, words, ss->height, ss->posctldata + 2 * words);
+			take_image(vp, ss->num, words, ss->height, ss->posctldata);
 		}
 		if (sp->mc && sp->vp == vp) {
-			UBYTE rgb[9];
+			UBYTE rgb[MC_SPRITE_RGB];
 			BOOL have_rgb = colours(vp, ss->num, rgb);
 
 			Forbid();

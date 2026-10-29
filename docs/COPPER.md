@@ -105,8 +105,10 @@ Copper is built on three rules:
   As the hardware's: 16, 32 or 64 pixels wide (as `AllocSpriteData()` makes
   them), colour 0 clear, colours 1-3 from the screen's colour map (16 +
   4 * (n / 2) + 1 ... for sprite n, or where `SpriteBase_Even`/`Odd` say).
-  Not as the hardware's: the place is in the screen's pixels, whatever its
-  mode, and an attached pair shows as two sprites of 3 colours each. Only the
+  An odd sprite attached to the even one before it (`SPRITE_ATTACHED` in its
+  control word) makes one sprite of 15 colours with it, as on the hardware:
+  colours 1-15 of the odd sprite's bank (17-31 by default). Not as the
+  hardware's: the place is in the screen's pixels, whatever its mode. Only the
   screen shown on the board shows its sprites. Boing draws its ball this way
   on a Panorama screen.
 
@@ -163,7 +165,7 @@ Coordinates are u16 pixels on the surface (the visible screen). A **pixel** is
 | 0x30 | POINTER | w u8, h u8, hot x s8, hot y s8, colours 1-3 as RGB, then h rows: plane 0 then plane 1, (w + 15) / 16 words each, MSB leftmost |
 | 0x31 | POINTERPOS | x s16, y s16 (top left), visible u8, pad u8 |
 | 0x32 | SPRITE | n u8 (1-7), visible u8, x s16, y s16 (top left), image u16: sprite n shows that image there |
-| 0x33 | SPRITEIMAGE | image u16 (0-63), w u8 (16, 32 or 64), pad u8, h u16, first u16, rows u16, colours 1-3 as RGB, then rows rows: plane 0 then plane 1, w / 16 words each, MSB leftmost. Rows first ... first + rows - 1 of the image: it comes in bands, each fitting a datagram, and is whole when the band ending at row h has come. A viewer keeps each image until the same id comes again |
+| 0x33 | SPRITEIMAGE | image u16 (0-63), w u8 (16, 32 or 64), depth u8 (2, or 4 for an attached pair), h u16, first u16, rows u16, colours 1-3 (depth 2) or 1-15 (depth 4) as RGB, then rows rows: planes 0 ... depth - 1, w / 16 words each, MSB leftmost (an attached pair: the even sprite's planes, then the odd one's). Rows first ... first + rows - 1 of the image: it comes in bands, each fitting a datagram, and is whole when the band ending at row h has come. A viewer keeps each image until the same id comes again |
 
 The draw modes of TEXT and PATTERN are graphics.library's: JAM1 0, JAM2 1,
 COMPLEMENT 2, INVERSVID 4.

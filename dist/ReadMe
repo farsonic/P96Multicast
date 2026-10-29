@@ -143,6 +143,8 @@ On a Panorama screen the ball is made of sprites (graphics.library's, as
 on any Amiga; the card sends them, the viewers draw them over the screen):
 round, smooth, and nothing of the screen redrawn. Ctrl-C stops it. On any
 other screen, or with WINDOW, it is a window: click the ball or Ctrl-C.
+Boing SHADED lights the ball in 12 shades: attached sprite pairs, 15
+colours each, as the hardware has them.
 
 The easy way: PanoramaPrefs
 ----------------------------

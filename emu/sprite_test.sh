@@ -10,7 +10,8 @@
 # not pixels. Needs FSUAE_PCAP (FS-UAE with Riptide's patch) and root.
 #
 #   boot 1  PanoramaPrefs INSTALL
-#   boot 2  Riptide; a Panorama screen (mctest PUBSCREEN=); Boing on it
+#   boot 2  Riptide; a Panorama screen (mctest PUBSCREEN=); Boing on it, then
+#           Boing SHADED (attached pairs: 15 colours)
 #
 #   emu/sprite_test.sh [TIMEOUT]
 #   LOSS=5 emu/sprite_test.sh     ... the viewers losing 5% of the datagrams
@@ -36,6 +37,12 @@ if [ -z "${FSUAE_PCAP:-}" ] || [ ! -x "$FSUAE_PCAP" ] || [ "$(id -u)" != 0 ]; th
 	exit 0
 fi
 command -v xdotool >/dev/null 2>&1 || { echo "SKIP: needs xdotool"; exit 0; }
+# an earlier run's viewers or display still there would be photographed instead
+if [ -z "${DISPLAY:-}" ] && [ -e /tmp/.X95-lock ] ||
+   python3 -c "import socket; socket.create_connection(('127.0.0.1', 8097), 1)" 2>/dev/null; then
+	echo "FAIL: display :95 or port 8097 is taken (an earlier run still going?)"
+	exit 1
+fi
 
 ip link del p96br0 2>/dev/null
 ip link add p96br0 type veth peer name p96br1 || { echo "SKIP: cannot create a veth pair"; exit 0; }
@@ -171,7 +178,25 @@ Wait 4
 Echo >Work:mark-ball x
 Wait 6
 C:mctest STATUS >Work:status.txt
-Wait 20
+; the shaded ball once this one has gone: attached pairs, 15 colours each
+Lab plain
+Wait 1
+C:mctest STATUS >T:status
+Search >NIL: T:status " 0 in use" QUIET
+If WARN
+    Skip plain BACK
+EndIf
+Run >NIL: C:Boing >Work:shaded.txt SIZE=100 SECS=30 SHADED
+Lab shading
+Wait 1
+C:mctest STATUS >T:status
+Search >NIL: T:status " 4 in use" QUIET
+If WARN
+    Skip shading BACK
+EndIf
+Wait 4
+Echo >Work:mark-shaded x
+Wait 12
 Echo >Work:boot2.done done
 EOF
 
@@ -216,6 +241,7 @@ python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP \
 spid=$!
 [ -n "${DUMP:-}" ] && python3 "$DUMP" $GROUP 9696 $HOST_IP "$OUT/dump.pkl" "$TIMEOUT" &
 shots=
+shaded_shots=
 during() {
 	if [ -f "$work/mark-ball" ] && [ -z "$shots" ]; then
 		# the viewer's window and the web view's picture, twice, half a
@@ -250,13 +276,22 @@ during() {
 		cp "$OUT/screen.png" "$OUT/screen-ball.png" 2>/dev/null
 		import -window root "$OUT/root-ball.png" 2>/dev/null
 	fi
+	if [ -f "$work/mark-shaded" ] && [ -z "$shaded_shots" ]; then
+		shaded_shots=1
+		w=$(xdotool search --name "^Panorama" 2>/dev/null | head -1)
+		[ -n "$w" ] && xdotool windowraise "$w" 2>/dev/null && sleep 0.5
+		[ -n "$w" ] && import -window "$w" "$OUT/shaded-view.png" 2>/dev/null
+		node tests/web_shot.js http://127.0.0.1:8097/ "$OUT/shaded-web.png" "$OUT/shaded-web2.png" \
+			>>"$OUT/web_shot.log" 2>&1 ||
+			curl -s -o "$OUT/shaded-web.png" "http://127.0.0.1:8097/frame.png?sprites=1"
+	fi
 }
 [ $status -eq 0 ] && boot boot2.done
 kill $vpid $wpid $spid 2>/dev/null
 wait $vpid $wpid $spid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-for f in install.txt riptide.log boing.txt; do
+for f in install.txt riptide.log boing.txt shaded.txt; do
 	echo "---- $f"
 	tr -d '\r' < "$work/$f" 2>/dev/null | tail -n 8
 done
@@ -287,6 +322,22 @@ moves web "the web view"
 set -- $(cat "$OUT/join.txt" 2>/dev/null) ; js=${2:-0}
 check '[ "$js" -ge 2 ]' \
 	"a viewer joining late, never asking for the whole screen, has the sprites ($(cat "$OUT/join.txt" 2>/dev/null))"
+# the shaded ball: shades of red (red well above green), how many
+shades() {
+	python3 - "$1" <<'PYEOF'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+reds = set(c for c in im.getdata() if c[0] > 60 and c[0] > c[1] + 60)
+print(len(reds))
+PYEOF
+}
+check 'tr -d "\r" < "$work/shaded.txt" | grep -q "attached in pairs"' "Boing SHADED: the ball as attached sprite pairs"
+for what in view web; do
+	[ "$what" = view ] && [ -z "$TKPY" ] && continue
+	n=$(shades "$OUT/shaded-$what.png" 2>/dev/null)
+	check '[ "${n:-0}" -ge 5 ]' "... $what: the ball in ${n:-0} shades of red (15 colours, not 3)"
+done
 set -- $(ball "$OUT/screen-ball.png" 2>/dev/null) ; ns=${1:-0}
 check '[ -f "$OUT/screen-ball.png" ] && [ "$ns" -lt 50 ]' \
 	"... drawn over the screen: none of it in the screen's own pixels ($ns red)"

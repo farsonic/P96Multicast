@@ -440,17 +440,20 @@ class Screen:
         band is (until then, and while the id is redefined, not shown)."""
         if len(b) < 19:
             return
-        ident, w, _pad, h, first, rows = struct.unpack(">HBBHHH", b[:10])
+        ident, w, depth, h, first, rows = struct.unpack(">HBBHHH", b[:10])
+        depth = 4 if depth == 4 else 2          # 4: an attached pair, 15 colours
+        ncol = (1 << depth) - 1
         words = (w + 15) // 16
-        cols = [None, bytes(b[10:13]), bytes(b[13:16]), bytes(b[16:19])]
-        data = b[19:19 + rows * 4 * words]
-        if not w or not h or first + rows > h or len(data) < rows * 4 * words:
+        head = 10 + 3 * ncol
+        cols = [None] + [bytes(b[10 + 3 * i:13 + 3 * i]) for i in range(ncol)]
+        data = b[head:head + rows * 2 * depth * words]
+        if not w or not h or first + rows > h or len(data) < rows * 2 * depth * words:
             return
         img = self.sprite_images.get(ident)
         if first == 0 or img is None or (img["w"], img["h"]) != (w, h):
             img = self.sprite_images[ident] = {"w": w, "h": h, "buf": bytearray(w * h * 4),
                                                "rgba": None}
-        img["buf"][first * w * 4:(first + rows) * w * 4] = sprite_rgba(data, w, rows, cols)
+        img["buf"][first * w * 4:(first + rows) * w * 4] = sprite_rgba(data, w, rows, cols, depth)
         if first + rows == h:
             img["rgba"] = bytes(img["buf"])
             self.sprite_serial += 1
@@ -732,17 +735,22 @@ class Viewer:
                 self.last_want = now
 
 
-def sprite_rgba(data, w, rows, cols):
-    """Amiga sprite rows (plane 0 then plane 1, (w + 15) / 16 words each)
-    as RGBA: colour 0 clear, 1-3 from cols."""
+def sprite_rgba(data, w, rows, cols, depth=2):
+    """Amiga sprite rows (planes 0 ... depth - 1, (w + 15) / 16 words each:
+    2, or 4 for an attached pair) as RGBA: colour 0 clear, the others from
+    cols."""
     words = (w + 15) // 16
+    pb = 2 * words                      # bytes of a plane's row
     out = bytearray()
     for r in range(rows):
-        p0 = int.from_bytes(data[r * 4 * words:r * 4 * words + 2 * words], "big")
-        p1 = int.from_bytes(data[r * 4 * words + 2 * words:(r + 1) * 4 * words], "big")
+        row = r * depth * pb
+        planes = [int.from_bytes(data[row + k * pb:row + (k + 1) * pb], "big")
+                  for k in range(depth)]
         for i in range(w):
             shift = 16 * words - 1 - i
-            c = ((p0 >> shift) & 1) | (((p1 >> shift) & 1) << 1)
+            c = 0
+            for k in range(depth):
+                c |= ((planes[k] >> shift) & 1) << k
             out += cols[c] + b"\xff" if c else b"\0\0\0\0"
     return bytes(out)
 

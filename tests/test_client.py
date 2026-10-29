@@ -214,6 +214,20 @@ class SpriteTests(unittest.TestCase):
         v.tick(now=103.0)
         self.assertEqual(types().count(pv.WANTSPRITES), 1)
 
+    def test_attached_pair(self):
+        # depth 4: an attached pair's 15 colours, planes 0-3 in each row
+        s = pv.Screen()
+        cols = bytes(range(45))
+        # pixel 0: colour 1 + 4 = 5 (planes 0 and 2); pixel 1: 15 (all four)
+        row = struct.pack(">HHHH", 0xc000, 0x4000, 0xc000, 0x4000)
+        s.apply(pv.SPRITEIMAGE, struct.pack(">HBBHHH", 4, 16, 4, 1, 0, 1) + cols + row)
+        self.sprite(s, 2, 1, 0, 0, 4)
+        [(_n, _x, _y, w, h, rgba)] = s.shown_sprites()
+        self.assertEqual((w, h), (16, 1))
+        self.assertEqual(rgba[0:4], cols[12:15] + b"\xff")     # colour 5
+        self.assertEqual(rgba[4:8], cols[42:45] + b"\xff")     # colour 15
+        self.assertEqual(rgba[8:12], bytes(4))
+
     def test_bad_bands(self):
         s = pv.Screen()
         self.sprite(s, 3, 1, -5, 40, 7)
