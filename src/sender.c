@@ -931,12 +931,22 @@ static BOOL snapshot(struct Sender *s)
 		s->sh.mem = AllocMem(s->shadowsize, MEMF_ANY);
 		s->heat = AllocMem(s->tilemem, MEMF_ANY | MEMF_CLEAR);
 		if (!s->sh.mem || !s->heat) {
+			/*
+			 * Not now: again in a second (as if the screen changed),
+			 * not never, and STATUS says so
+			 */
 			mc_log(s, "no memory for a %ld x %ld shadow\n", w, h, 0, 0);
 			free_tiles(s);
-			s->w = 0;
+			s->w = s->h = 0;
 			s->visible = FALSE;
+			s->serial = serial - 1;
+			if (first_board(s))
+				mc_status->error = MC_ERR_NOSHADOW;
+			Delay(TICKS_PER_SECOND);
 			return FALSE;
 		}
+		if (first_board(s) && mc_status->error == MC_ERR_NOSHADOW)
+			mc_status->error = MC_ERR_NONE;
 		s->soon = s->heat + s->ntiles;
 		s->want = s->soon + s->ntiles;
 		s->sweep = 0;

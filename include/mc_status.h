@@ -17,6 +17,7 @@
 #define MC_ERR_NOCONTEXT 1  /* no memory for the card's context */
 #define MC_ERR_NOVRAM    2  /* not even 1 MB of Fast RAM for video memory */
 #define MC_ERR_NOSENDER  3  /* could not create the sender process */
+#define MC_ERR_NOSHADOW  4  /* no memory for the sender's copy of the screen (tried again) */
 
 /*
  * BLITTER=1: the drawing functions rtg.library may call on the card. Each

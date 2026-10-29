@@ -257,6 +257,7 @@ static const char *errors[] = {
 	"no memory for the card's context",
 	"not even 1 MB of Fast RAM free for video memory (plus 512 KB spare)",
 	"could not create the sender process",
+	"no memory for the sender's copy of the screen (it tries again each second)",
 };
 
 static void status(void)
@@ -282,7 +283,7 @@ static void status(void)
 	if (card && st.magic == MC_STATUS_MAGIC) {
 		printf("  FindCard called %u times, InitCard %u times, boards set up: %u\n",
 		       st.findcard_calls, st.initcard_calls, st.cards);
-		printf("  last error: %s\n", st.error < 4 ? errors[st.error] : "?");
+		printf("  last error: %s\n", st.error < 5 ? errors[st.error] : "?");
 		printf("  largest free Fast RAM at FindCard: %lu KB, video memory: %lu KB\n",
 		       st.fast_largest >> 10, st.vramsize >> 10);
 		printf("  SetGC called %lu times, SetPanning %lu times%s\n", st.setgc_calls,
