@@ -36,7 +36,8 @@
 /* records */
 #define CU_SURFACE    0x01     /* w, h, format u8, bpp u8, display u8, pad u8, tile w, tile h */
 #define CU_PALETTE    0x02     /* first u16, count u16, count * RGB */
-#define CU_FRAME      0x03     /* frame u32: show what came before */
+#define CU_FRAME      0x03     /* frame u32: show what came before; then (card 3.2) time u32:
+                                  ms on the Amiga's clock when the screen was looked at */
 #define CU_FILL       0x10     /* x, y, w, h, pixel */
 #define CU_INVERT     0x11     /* x, y, w, h: every bit of every pixel flipped */
 #define CU_COPY       0x12     /* sx, sy, dx, dy, w, h: as if through a buffer */

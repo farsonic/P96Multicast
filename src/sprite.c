@@ -103,32 +103,48 @@ static struct McCard *card_of(struct ViewPort *vp)
 }
 
 /*
- * Sprite num's colours 1-3 from vp's colour map into rgb (FALSE: it has
- * none). Not under Forbid(): GetRGB32() may wait for the colour map.
+ * Sprite num's colours 1-3 from vp's colour map into rgb, then colours
+ * 1-15 of an attached pair (FALSE: it has none). Not under Forbid():
+ * GetRGB32() may wait for the colour map. One call for both in the usual
+ * case (both banks at 16).
  */
 static BOOL colours(struct ViewPort *vp, UWORD num, UBYTE *rgb)
 {
 	struct ColorMap *cm = vp->ColorMap;
-	ULONG c[45], base, bank;
+	ULONG c[45], own, odd;
 	int i;
 
 	if (!cm)
 		return FALSE;
-	/* its own 3: of its pair's 4 */
-	bank = cm->Type >= COLORMAP_TYPE_V39 ? (num & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16;
-	base = bank + (num >> 1) * 4 + 1;
-	if (base + 3 > cm->Count)
+	own = cm->Type >= COLORMAP_TYPE_V39 ? (num & 1 ? cm->SpriteBase_Odd : cm->SpriteBase_Even) : 16;
+	odd = cm->Type >= COLORMAP_TYPE_V39 ? cm->SpriteBase_Odd : 16;
+	if (odd + 16 > cm->Count || own + 16 > cm->Count)
 		return FALSE;
-	GetRGB32(cm, base, 3, c);
+	/* the attached pair's 15: its bank's 1-15 */
+	GetRGB32(cm, odd + 1, 15, c);
+	for (i = 0; i < 45; i++)
+		rgb[9 + i] = c[i] >> 24;
+	/* its own 3: of its pair's 4 */
+	if (own != odd)
+		GetRGB32(cm, own + 1, 15, c);
 	for (i = 0; i < 9; i++)
-		rgb[i] = c[i] >> 24;
-	/* and the 15 of an attached pair (the odd sprite's bank, 1-15) */
-	bank = cm->Type >= COLORMAP_TYPE_V39 ? cm->SpriteBase_Odd : 16;
-	if (bank + 16 <= cm->Count) {
-		GetRGB32(cm, bank + 1, 15, c);
-		for (i = 0; i < 45; i++)
-			rgb[9 + i] = c[i] >> 24;
-	}
+		rgb[i] = c[(num >> 1) * 12 + i] >> 24;
+	return TRUE;
+}
+
+/*
+ * Sprite sp's colours, read once a frame at most (the programs move their
+ * sprites each frame): into rgb, TRUE if read now
+ */
+static BOOL frame_colours(struct McSprite *sp, struct ViewPort *vp, UWORD num, UBYTE *rgb)
+{
+	ULONG vb = GfxBase->VBCounter;
+
+	if (sp->mc && sp->vp == vp && sp->rgb_vb == vb)
+		return FALSE;
+	if (!colours(vp, num, rgb))
+		return FALSE;
+	sp->rgb_vb = vb;
 	return TRUE;
 }
 
@@ -214,7 +230,7 @@ static BOOL take_image(struct ViewPort *vp, UWORD num, UWORD words, UWORD h, UWO
 	n = (ULONG)h * 2 * words;
 	if (!data)
 		n = 0;
-	have_rgb = colours(vp, num, rgb);
+	have_rgb = frame_colours(sp, vp, num, rgb);
 	if (n > sp->cap) {
 		fresh = AllocVec(n * 2, MEMF_PUBLIC);
 		if (!fresh)
@@ -226,8 +242,22 @@ static BOOL take_image(struct ViewPort *vp, UWORD num, UWORD words, UWORD h, UWO
 		sp->data = fresh;
 		sp->cap = n;
 	}
-	if (n)
-		CopyMem(data, sp->data, n * 2);
+	if (n) {
+		/*
+		 * Copied, and its fingerprint taken on the way (a long at a time):
+		 * the sender knows an image the viewers have by it, without going
+		 * over it again each pass
+		 */
+		ULONG *from = (ULONG *)data, *to = (ULONG *)sp->data, h = 0x9e3779b9UL, k;
+
+		for (k = n / 2; k; k--) {
+			ULONG v = *from++;
+
+			*to++ = v;
+			h = ((h << 5) | (h >> 27)) ^ v;
+		}
+		sp->hash = h;
+	}
 	sp->mc = mc;
 	sp->vp = vp;
 	sp->w = n ? words * 16 : 0;
@@ -339,7 +369,7 @@ static void new_MoveSprite(__reg("a0") struct ViewPort *vp, __reg("a1") struct S
 		}
 		if (sp->mc && sp->vp == vp) {
 			UBYTE rgb[MC_SPRITE_RGB];
-			BOOL have_rgb = colours(vp, ss->num, rgb);
+			BOOL have_rgb = frame_colours(sp, vp, ss->num, rgb);
 
 			Forbid();
 			ss->x = x;

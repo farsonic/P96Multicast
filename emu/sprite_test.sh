@@ -230,7 +230,8 @@ for p in python3 python3.12 python3.11; do
 done
 vpid=
 if [ -n "$TKPY" ]; then
-	$TKPY client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP $DROP 2>"$OUT/panoview.log" &
+	$TKPY client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP $DROP \
+		--timing "$OUT/timing.txt" 2>"$OUT/panoview.log" &
 	vpid=$!
 fi
 python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP --web 8097 --no-browser $DROP \
@@ -296,7 +297,7 @@ for f in install.txt riptide.log boing.txt shaded.txt; do
 	tr -d '\r' < "$work/$f" 2>/dev/null | tail -n 8
 done
 echo "---- status"
-tr -d '\r' < "$work/status.txt" 2>/dev/null | grep -i "sprite\|Copper\|viewers\|pixels"
+tr -d '\r' < "$work/status.txt" 2>/dev/null | grep -i "sprite\|Copper\|viewers\|pixels\|pass"
 echo "---- viewers"
 cat "$OUT/panoview.log" "$OUT/web.log" "$OUT/snapshot.log" 2>/dev/null
 
@@ -338,6 +339,26 @@ for what in view web; do
 	n=$(shades "$OUT/shaded-$what.png" 2>/dev/null)
 	check '[ "${n:-0}" -ge 5 ]' "... $what: the ball in ${n:-0} shades of red (15 colours, not 3)"
 done
+# how regularly the Amiga made its updates while the balls bounced (a pass
+# each vertical blank, or each second one on a slow Amiga), and how evenly
+# the window showed them (its --timing file)
+if [ -n "$TKPY" ]; then
+	set -- $(python3 - "$OUT/timing.txt" <<'PYEOF'
+import sys
+rows = [tuple(map(float, l.split())) for l in open(sys.argv[1])]
+pairs = [(a, b) for a, b in zip(rows, rows[1:]) if 0 < b[0] - a[0] < 200]
+dt = sorted(b[0] - a[0] for a, b in pairs)
+err = sorted(abs((b[2] - a[2]) * 1000 - (b[0] - a[0])) for a, b in pairs)
+med = dt[len(dt) // 2] if dt else 0
+steady = 100 * sum(1 for x in dt if abs(x - med) <= 2) // max(len(dt), 1)
+print(int(med), steady, "%.1f" % err[len(err) // 2] if err else 999)
+PYEOF
+)
+	every=${1:-0} steady=${2:-0} off=${3:-999}
+	check '[ "$steady" -ge 80 ]' \
+		"the sender's updates: one every $every ms, $steady% of them within 2 ms of that (in step with the display)"
+	check '[ "${off%.*}" -le 3 ]' "... the window shows them as evenly: $off ms off (median)"
+fi
 set -- $(ball "$OUT/screen-ball.png" 2>/dev/null) ; ns=${1:-0}
 check '[ -f "$OUT/screen-ball.png" ] && [ "$ns" -lt 50 ]' \
 	"... drawn over the screen: none of it in the screen's own pixels ($ns red)"

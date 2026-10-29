@@ -317,6 +317,15 @@ static void status(void)
 			if (st.sprites)
 				printf("    sprites: graphics.library's are the card's; %u in use, %lu images, %lu moves\n",
 				       st.sprites_sent, st.sprite_changes, st.sprite_moves);
+			if (st.pass_us) {
+				/* ms with one decimal */
+#define MS(v) (v) / 1000, (v) % 1000 / 100
+				printf("    a pass of the sender takes %lu.%lu ms: screen %lu.%lu, viewers %lu.%lu, "
+				       "sprites %lu.%lu,\n      orders %lu.%lu, comparing %lu.%lu, wanted %lu.%lu, "
+				       "sending %lu.%lu\n", MS(st.pass_us), MS(st.snapshot_us), MS(st.viewers_us),
+				       MS(st.sprites_us), MS(st.orders_us), MS(st.compare_us), MS(st.wanted_us),
+				       MS(st.transmit_us));
+			}
 			if (st.sprite_calls)
 				printf("    %lu calls of graphics.library's sprite functions, the last for sprite %u\n",
 				       st.sprite_calls, st.sprite_lastnum);

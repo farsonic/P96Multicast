@@ -33,6 +33,7 @@
 #include <proto/dos.h>
 #include <proto/timer.h>
 #include <proto/intuition.h>
+#include <proto/graphics.h>
 #include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
 #include "mcard.h"
@@ -143,6 +144,10 @@ struct Sender {
 	struct timerequest tr;
 	BOOL   timer;
 	ULONG  efreq;
+	/* the Amiga's time of the last pass, for FRAME: E-clock, and ms since the first */
+	ULONG  last_eclock, eclock_left, msecs;
+	ULONG  lap_eclock;               /* STATUS: where a pass's time goes (lap()) */
+	BOOL   timed;
 
 	/* statistics, for the log */
 	ULONG  packets, bytes, errors, pixbytes;
@@ -499,39 +504,45 @@ static void sprites_again(struct Sender *s)
 
 /*
  * An image: w wide, h rows of depth planes (2, or 4 for an attached pair),
- * w / 16 words each, and its colours 1-3 or 1-15 (ncol)
+ * w / 16 words each, and its colours 1-3 or 1-15 (ncol); its fingerprint
+ * (hash) from the card's of its data and the colours
  */
 struct SprImage {
 	UWORD w, h, depth, ncol;
 	UBYTE *rgb;
 	UWORD *data;
+	ULONG hash;
 };
 
-/* the image and its colours, as a number not 0 (a copy is the same number) */
-static ULONG image_hash(struct SprImage *im)
+/* a fingerprint and the colours, as a number not 0 (the same for a copy) */
+static ULONG mix_colours(ULONG h, UBYTE *rgb, UWORD n)
 {
-	ULONG h = 0x9e3779b9UL ^ ((ULONG)im->w << 16) ^ ((ULONG)im->depth << 12) ^ im->h, i;
-	ULONG n = (ULONG)im->h * im->depth * (im->w / 16);
+	UWORD i;
 
-	for (i = 0; i < 3UL * im->ncol; i++)
-		h = ((h << 5) | (h >> 27)) ^ im->rgb[i];
 	for (i = 0; i < n; i++)
-		h = ((h << 5) | (h >> 27)) ^ im->data[i];
+		h = ((h << 5) | (h >> 27)) ^ rgb[i];
 	return h ? h : 1;
 }
 
-/* the viewers' id for the image: one they have, or sent now */
-static UWORD sprite_image(struct Sender *s, struct SprImage *im)
+/* the viewers' id for an image they have (hash), or 0xffff */
+static UWORD known_image(struct Sender *s, ULONG h)
 {
-	ULONG h = image_hash(im);
-	UWORD id, k, words = im->w / 16, rowbytes = words * 2 * im->depth, first, rows, i;
-	UWORD head = 10 + 3 * im->ncol, band = (CU_MAX_DGRAM - CU_HDR_SIZE - 3 - head) / rowbytes;
-	UBYTE *p;
+	UWORD id;
 
 	for (id = 0; id < CU_SPRITE_IMAGES; id++)
 		if (s->img_hash[id] == h)
 			return id;
-	/* a new one: in place of the oldest no sprite shows */
+	return 0xffff;
+}
+
+/* a new image to the viewers: its id */
+static UWORD sprite_image(struct Sender *s, struct SprImage *im)
+{
+	UWORD id, k, words = im->w / 16, rowbytes = words * 2 * im->depth, first, rows, i;
+	UWORD head = 10 + 3 * im->ncol, band = (CU_MAX_DGRAM - CU_HDR_SIZE - 3 - head) / rowbytes;
+	UBYTE *p;
+
+	/* in place of the oldest no sprite shows */
 	for (;;) {
 		id = s->img_next;
 		s->img_next = (s->img_next + 1) % CU_SPRITE_IMAGES;
@@ -540,7 +551,7 @@ static UWORD sprite_image(struct Sender *s, struct SprImage *im)
 		if (k == MC_SPRITES)
 			break;
 	}
-	s->img_hash[id] = h;
+	s->img_hash[id] = im->hash;
 	for (first = 0; first < im->h; first += rows) {
 		rows = im->h - first < band ? im->h - first : band;
 		p = rec(s, CU_SPRITEIMAGE, head + rows * rowbytes);
@@ -592,31 +603,41 @@ static void send_sprites(struct Sender *s)
 		if (vis && (sp->serial != s->spr_serial[n] || mate_serial != s->spr_mate[n] ||
 		            img == 0xffff)) {
 			struct SprImage im;
+			ULONG size = ((ULONG)sp->w << 16) ^ sp->h;
 
 			s->spr_serial[n] = sp->serial;
 			s->spr_mate[n] = mate_serial;
 			im.w = sp->w;
 			im.h = sp->h;
 			if (pair) {
-				/* each row: the even one's planes 0, 1, the odd one's (2, 3) */
-				UWORD words = sp->w / 16, r, k;
-
-				for (r = 0; r < sp->h; r++)
-					for (k = 0; k < 2 * words; k++) {
-						s->pair[r * 4 * words + k] = sp->data[r * 2 * words + k];
-						s->pair[r * 4 * words + 2 * words + k] = mate->data[r * 2 * words + k];
-					}
 				im.depth = 4;
 				im.ncol = 15;
 				im.rgb = mate->rgb + 9;
 				im.data = s->pair;
+				im.hash = mix_colours(sp->hash ^ ((mate->hash << 7) | (mate->hash >> 25)) ^ size ^ 4,
+				                      im.rgb, 45);
 			} else {
 				im.depth = 2;
 				im.ncol = 3;
 				im.rgb = sp->rgb;
 				im.data = sp->data;
+				im.hash = mix_colours(sp->hash ^ size ^ 2, im.rgb, 9);
 			}
-			img = sprite_image(s, &im);
+			/* one the viewers have: just which; else it goes to them now */
+			img = known_image(s, im.hash);
+			if (img == 0xffff) {
+				if (pair) {
+					/* each row: the even one's planes 0, 1, the odd one's (2, 3) */
+					UWORD words = sp->w / 16, r, k;
+
+					for (r = 0; r < sp->h; r++)
+						for (k = 0; k < 2 * words; k++) {
+							s->pair[r * 4 * words + k] = sp->data[r * 2 * words + k];
+							s->pair[r * 4 * words + 2 * words + k] = mate->data[r * 2 * words + k];
+						}
+				}
+				img = sprite_image(s, &im);
+			}
 		}
 		if (vis != s->spr_vis[n] ||
 		    (vis && (vx != s->spr_vx[n] || vy != s->spr_vy[n] || img != s->spr_img[n]))) {
@@ -1726,6 +1747,19 @@ static void send_wanted(struct Sender *s)
 	for (n = 0; s->nwant && n < s->ntiles && room_pixels(s); n++) {
 		ULONG t = s->wantcur;
 
+		/*
+		 * A viewer filling in (all of the screen, when it joins) takes
+		 * 40% of a frame's time a pass at most: the sprites and pointer
+		 * keep up with the display meanwhile
+		 */
+		if (s->timer && (n & 3) == 3) {
+			struct EClockVal now;
+
+			ReadEClock(&now);
+			if (now.ev_lo - s->last_eclock > s->efreq / s->cfg->fps * 2 / 5)
+				break;
+		}
+
 		if (++s->wantcur >= s->ntiles)
 			s->wantcur = 0;
 		if (!s->want[t])
@@ -1760,6 +1794,24 @@ static void pace(struct Sender *s, struct EClockVal *start)
 		s->sweep_n = 1;
 	if (first_board(s))
 		mc_status->sweep_secs = s->ntiles / (s->sweep_n * s->cfg->fps) + 1;
+}
+
+/*
+ * Where a pass's time goes (STATUS): the time since the last lap, added to
+ * *into's average (NULL: not counted). The first board's first part only.
+ */
+static void lap(struct Sender *s, ULONG *into)
+{
+	struct EClockVal now;
+	ULONG us;
+
+	if (!s->timer || !first_board(s))
+		return;
+	ReadEClock(&now);
+	us = (now.ev_lo - s->lap_eclock) / (s->efreq / 10000) * 100;
+	s->lap_eclock = now.ev_lo;
+	if (into)
+		*into = (*into * 15 + us) / 16;
 }
 
 /*
@@ -1814,8 +1866,20 @@ static void pass(struct Sender *s)
 	struct EClockVal start;
 	LONG perpass = cfg->rate / cfg->fps;
 
-	if (s->timer)
+	if (s->timer) {
 		ReadEClock(&start);
+		/* the time of this pass, in ms: when the screen was looked at */
+		if (s->timed) {
+			ULONG per = s->efreq / 1000;
+
+			s->eclock_left += start.ev_lo - s->last_eclock;
+			s->msecs += s->eclock_left / per;
+			s->eclock_left %= per;
+		}
+		s->last_eclock = start.ev_lo;
+		s->lap_eclock = start.ev_lo;
+		s->timed = s->efreq >= 1000;
+	}
 	s->pass++;
 	s->emitted = FALSE;
 	s->budget += perpass;
@@ -1824,7 +1888,9 @@ static void pass(struct Sender *s)
 
 	live_settings(s);
 	if (snapshot(s)) {
+		lap(s, &mc_status->snapshot_us);
 		read_viewers(s);
+		lap(s, &mc_status->viewers_us);
 		if (mc->pal_serial != s->pal_serial)
 			send_palette(s);
 		if (mc->ptr_serial != s->ptr_serial)
@@ -1835,8 +1901,11 @@ static void pass(struct Sender *s)
 			send_pointer_pos(s);
 		if (s->cfg->sprites)
 			send_sprites(s);
+		lap(s, &mc_status->sprites_us);
 		take_orders(s);
+		lap(s, &mc_status->orders_us);
 		compare(s);
+		lap(s, &mc_status->compare_us);
 		send_wanted(s);
 
 		/* nobody talks back: the whole screen now and then, for listeners */
@@ -1852,14 +1921,31 @@ static void pass(struct Sender *s)
 	if (s->pass - s->last_emit >= cfg->fps / 4 + 1 || s->input_told != cfg->input)
 		send_surface(s);
 	if (s->emitted) {
-		UBYTE *p = rec(s, CU_FRAME, 4);
+		/*
+		 * With its time on the Amiga: a viewer can show each update as far
+		 * apart as they were here, however unevenly the network brings them
+		 */
+		UBYTE *p = rec(s, CU_FRAME, s->timed ? 8 : 4);
 
 		put32(p, mc->nviews > 1 ? mc->tick : ++s->frame);
+		if (s->timed)
+			put32(p + 4, s->msecs);
 	}
 	finish(s);
+	lap(s, &mc_status->wanted_us);
 	transmit(s);
+	lap(s, &mc_status->transmit_us);
 	if (s->visible)
 		pace(s, &start);
+	if (s->timer && first_board(s)) {
+		/* how long a pass takes, on average (status: of the frame's time) */
+		struct EClockVal now;
+		ULONG us;
+
+		ReadEClock(&now);
+		us = (now.ev_lo - start.ev_lo) / (s->efreq / 10000) * 100;
+		mc_status->pass_us = (mc_status->pass_us * 15 + us) / 16;
+	}
 
 	if (s->pass % (10 * cfg->fps) == 0)
 		mc_log(s, "%ld datagrams, %ld KB sent, %ld errors, background scan %ld s\n",
@@ -2042,6 +2128,15 @@ static void SenderMain(void)
 		if (mc->nviews > 1 && s->view && !mc->lead_gone) {
 			if (Wait(SIGBREAKF_CTRL_F | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 				break;
+		} else if (mc->cfg.fps >= 50) {
+			/*
+			 * In step with the display: a pass just after each vertical
+			 * blank, when the programs that wait for it (WaitTOF(), as
+			 * Boing) have moved their sprites and drawn, they being of a
+			 * higher priority. Delay() went by whole ticks after the
+			 * pass: a pass in two or three frames.
+			 */
+			WaitTOF();
 		} else {
 			Delay(ticks);
 		}

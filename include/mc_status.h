@@ -89,6 +89,14 @@ struct McStatus {
 	ULONG sprite_pixels[3];               /* ... and its pixels of colours 1, 2, 3 */
 	ULONG sprite_calls;    /* calls of the patched sprite functions, on any screen */
 	UWORD sprite_lastnum;  /* ... the last one's sprite number */
+	ULONG pass_us;         /* the sender's pass, on average: microseconds */
+	ULONG snapshot_us;     /* ... of which: finding the screen */
+	ULONG viewers_us;      /* ... reading what viewers sent */
+	ULONG sprites_us;      /* ... the pointer and sprites */
+	ULONG orders_us;       /* ... the drawing orders */
+	ULONG compare_us;      /* ... comparing the screen */
+	ULONG wanted_us;       /* ... pixels wanted, the datagram finished */
+	ULONG transmit_us;     /* ... handing the datagrams to the stack */
 };
 
 struct McBase {

@@ -278,6 +278,10 @@ On the receiving machine:
                                            like two monitors (ports 9696, 9697);
                                            --one-window puts them in one
   python3 panoview.py --iface 192.168.1.10  join on a particular interface
+  python3 panoview.py --no-pacing           show updates as they come: less delay,
+                                           but motion only as even as the network
+                                           (by default each update is shown at its
+                                           time on the Amiga, a little behind)
   python3 panoview.py --snapshot amiga.png --duration 30
   python3 fake_sender.py --dest 127.0.0.1 --seconds 0
                     with "panoview.py --group 127.0.0.1" in another window:

@@ -87,6 +87,17 @@ Copper is built on three rules:
   shape and position, and the viewers draw it on top. A pointer move costs a
   20-byte record instead of two redrawn areas. Under Wrap.card, a head passes on
   the wrapped card's pointer, if that card has one.
+* **Timing:** with `FPS=50` (the default) a pass runs just after each vertical
+  blank, as the programs that wait for it (`WaitTOF()`) have just moved their
+  sprites and drawn: one update per frame they make, none of them shown twice
+  or missed. Each FRAME carries its time on the Amiga, and panoview shows
+  every update that far after the one before, a little behind (the network's
+  jitter, learnt as it goes, 100 ms at most), however unevenly the network
+  brings them, following the drift between the two clocks: motion as even
+  as on the Amiga (`--no-pacing`: as they come, less delay). A viewer filling
+  in (all of the screen, when it joins) takes 40% of a frame's time a pass
+  at most, so the sprites and the pointer keep up meanwhile. `mctest STATUS`
+  shows where a pass's time goes.
 * **Sprites:** with `SPRITES=1` (the default), graphics.library's sprites work
   on Panorama screens. A program uses them as on any Amiga: `GetExtSprite()`
   (or `GetSprite()`), `AllocSpriteData()`, `ChangeExtSprite()` (or
@@ -155,7 +166,7 @@ Coordinates are u16 pixels on the surface (the visible screen). A **pixel** is
 |---|---|---|
 | 0x01 | SURFACE | w, h, format u8, bytes per pixel u8, display on u8, flags u8 (bit 0: takes INPUT), tile w, tile h |
 | 0x02 | PALETTE | first u16, count u16, count × RGB |
-| 0x03 | FRAME | frame u32: show what came before |
+| 0x03 | FRAME | frame u32: show what came before; then (Panorama.card 3.2) time u32: when the Amiga looked at the screen for it, in ms on its own clock. A viewer may show each update that far after the one before, rather than when it happens to arrive (panoview does): motion as even as on the Amiga, whatever the network's jitter. Older viewers read only the frame |
 | 0x10 | FILL | x, y, w, h, pixel |
 | 0x11 | INVERT | x, y, w, h: every bit of every pixel flipped |
 | 0x12 | COPY | sx, sy, dx, dy, w, h: as if through a buffer (overlap is fine) |
@@ -254,7 +265,7 @@ when the file changes, and tells the viewers in its next SURFACE.
 | `BLITTER` | 1 | send the drawing as orders (0: compare and send pixels only) |
 | `POINTER` | 1 | a hardware pointer that the viewers draw (0: rtg.library draws it into the screen) |
 | `SPRITES` | 1 | graphics.library's sprites 1-7 on the board's screens, drawn by the viewers (0: not patched, they show nothing) |
-| `FPS` | 50 | passes per second |
+| `FPS` | 50 | passes per second; 50 or more: a pass after each vertical blank of the display (`WaitTOF()`), in step with the programs that wait for it, as many as the display has (50 PAL, 60 NTSC) |
 | `RATE` | 1500 | most KB per second |
 | `SCAN` | 2 | seconds for the background scan to cover the screen, at the fastest |
 | `CPU` | 20 | most percent of the time the background scan may take |

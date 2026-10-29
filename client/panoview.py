@@ -21,6 +21,7 @@ window, or a web browser when there is no tkinter); numpy makes it faster
 when it is installed.
 """
 import argparse
+import collections
 import random
 import socket
 import struct
@@ -121,6 +122,8 @@ class Screen:
         self.palette = bytearray(256 * 3)
         self.frames = 0
         self.frame = 0               # the number of the last FRAME (SPLIT=: the same for all parts)
+        self.frame_time = None       # ... its time on the Amiga, ms (Panorama.card 3.2), or None
+        self.frame_arrival = None    # ... and when it came here (time.monotonic())
         self.dirty = None            # (x0, y0, x1, y1) changed since the last take_dirty()
         self.all_dirty = True
         self.pointer = None          # (w, h, hotx, hoty, rgba bytes)
@@ -243,6 +246,7 @@ class Screen:
             self.frames += 1
             if len(b) >= 4:
                 self.frame = struct.unpack(">I", b[:4])[0]
+            self.frame_time = struct.unpack(">I", b[4:8])[0] if len(b) >= 8 else None
             return True
         if rtype == POINTER:
             self._pointer(b)
@@ -545,6 +549,7 @@ class Viewer:
         self.screen = screen
         self.send = send
         self.drop = 0.0              # --drop: the share of datagrams to lose
+        self.pacer = None            # the window's Pacer, for print_stats
         self.stream = None
         self.expect = None
         self.held = {}
@@ -565,8 +570,9 @@ class Viewer:
 
     def feed(self, data, addr=None, now=None):
         """One datagram. Returns the record types applied, in order."""
+        now = time.monotonic() if now is None else now
         if self.stopped:
-            self.waiting.append((data, addr))
+            self.waiting.append((data, addr, now))
             return []
         types = self._feed(data, addr, now)
         if self.in_step and FRAME in types:
@@ -578,18 +584,26 @@ class Viewer:
         self.stopped = False
         types = []
         while self.waiting and not self.stopped:
-            data, addr = self.waiting.pop(0)
-            types += self.feed(data, addr)
+            data, addr, came = self.waiting.pop(0)
+            types += self.feed(data, addr, came)
         return types
 
     def frame_waiting(self):
         """Does a whole update wait (a FRAME among what waits)?"""
-        for data, _addr in self.waiting:
+        return self.next_frame() is not False
+
+    def next_frame(self):
+        """The next FRAME waiting: (its Amiga time in ms or None, when it
+        came), or False if none waits."""
+        for data, _addr, came in self.waiting:
             pos, n = 12, len(data)
             while pos + 3 <= n:
+                length = (data[pos + 1] << 8) | data[pos + 2]
                 if data[pos] == FRAME:
-                    return True
-                pos += 3 + ((data[pos + 1] << 8) | data[pos + 2])
+                    t = (struct.unpack(">I", data[pos + 7:pos + 11])[0]
+                         if length >= 8 and pos + 11 <= n else None)
+                    return t, came
+                pos += 3 + length
         return False
 
     def _feed(self, data, addr=None, now=None):
@@ -629,15 +643,15 @@ class Viewer:
             if self.gap_since is None:
                 self.gap_since = now
             return []
-        types = self._apply(data)
+        types = self._apply(data, now)
         self.expect = (self.expect + 1) & 0xffffffff
         while self.expect in self.held:
-            types += self._apply(self.held.pop(self.expect))
+            types += self._apply(self.held.pop(self.expect), now)
             self.expect = (self.expect + 1) & 0xffffffff
         self.gap_since = now if self.held else None
         return types
 
-    def _apply(self, data):
+    def _apply(self, data, came=None):
         types, pos, n = [], 12, len(data)
         while pos + 3 <= n:
             rtype = data[pos]
@@ -649,6 +663,8 @@ class Viewer:
             self.screen.apply(rtype, body)
             if rtype == PIXELS:
                 self.last_pixels = time.monotonic()
+            elif rtype == FRAME:
+                self.screen.frame_arrival = came
             types.append(rtype)
             pos += 3 + length
         return types
@@ -826,6 +842,10 @@ def print_stats(viewer, out=sys.stderr):
               st["repairs"], st["naks"], st["wants"], st["want_sprites"], st["gaps"],
               st["bad"] + screen.stats["bad"], sum(screen.valid), len(screen.valid), modes),
           file=out)
+    timing = viewer.pacer.report() if viewer.pacer else None
+    if timing:
+        print("panoview: updates came %.1f ms off the Amiga's timing on average, and were "
+              "shown %.1f ms off" % timing, file=out)
 
 
 class Head:
@@ -964,20 +984,97 @@ KEYMAP = _keymap()
 WHEEL_UP, WHEEL_DOWN = 0x7A, 0x7B   # NewMouse wheel keys
 
 
+class Pacer:
+    """
+    When to show each update: as far after the one before as it was on the
+    Amiga (FRAME's time, Panorama.card 3.2), not when the network happens to
+    bring it. The delay of each (arrival - Amiga time) drifts as the two
+    clocks run apart (an emulator's more than a real Amiga's crystal): a
+    line through the last WINDOW seconds' delays follows that, and updates
+    are shown on it, plus enough for nearly all of the jitter around it
+    (the 95th percentile, MAX_MARGIN at most). Late ones show at once. Also
+    keeps how even the timing came and was shown.
+    """
+    WINDOW = 5.0
+    MIN_MARGIN = 0.004
+    MAX_MARGIN = 0.1
+
+    def __init__(self):
+        self.samples = collections.deque()      # (arrival, Amiga time, arrival - Amiga time)
+        self.last = None                        # (Amiga time, arrival, shown) of the last shown
+        self.came_err, self.shown_err = [], []  # |interval here - interval there|, s
+        self.log = None                         # --timing: a file for each update's times
+
+    def due(self, t_ms, came, learn=True):
+        """When to show the update of Amiga time t_ms that came at came."""
+        t = t_ms / 1000.0
+        d = came - t
+        if learn:
+            if self.samples and abs(d - self.samples[-1][2]) > 1:
+                # the Amiga's clock started again (or wrapped): from now on
+                self.samples.clear()
+                self.last = None
+            self.samples.append((came, t, d))
+            while self.samples[0][0] < came - self.WINDOW:
+                self.samples.popleft()
+        if not self.samples:
+            return came
+        # the drift: a line through the delays against the Amiga's time
+        # (least squares; its times have no jitter, the delays do)
+        n = len(self.samples)
+        slope = 0.0
+        if n >= 20:
+            mx = sum(u for _, u, _ in self.samples) / n
+            my = sum(x for _, _, x in self.samples) / n
+            sxx = sum((u - mx) ** 2 for _, u, _ in self.samples)
+            if sxx > 0:
+                slope = sum((u - mx) * (x - my) for _, u, x in self.samples) / sxx
+                slope = max(-0.05, min(slope, 0.05))
+        # each delay as it would be at time t, on the line
+        rest = sorted(x + slope * (t - u) for _, u, x in self.samples)
+        base = rest[0]
+        late = rest[int(0.95 * (n - 1))] - base
+        margin = min(max(late, self.MIN_MARGIN), self.MAX_MARGIN)
+        return t + base + margin
+
+    def shown(self, t_ms, came, now):
+        if t_ms is None:
+            return
+        if self.log:
+            self.log.write("%d %.4f %.4f\n" % (t_ms, came, now))
+        if self.last is not None and t_ms >= self.last[0]:
+            dt = (t_ms - self.last[0]) / 1000.0
+            self.came_err.append(abs((came - self.last[1]) - dt))
+            self.shown_err.append(abs((now - self.last[2]) - dt))
+            del self.came_err[:-2000], self.shown_err[:-2000]
+        self.last = (t_ms, came, now)
+
+    def report(self):
+        """'... ms': how unevenly updates came, and were shown (mean error)."""
+        if not self.shown_err:
+            return None
+        return (1000 * sum(self.came_err) / len(self.came_err),
+                1000 * sum(self.shown_err) / len(self.shown_err))
+
+
 class InStep:
     """
     The parts of one screen (SPLIT=) shown together. The card's parts keep
     in step and number their FRAMEs alike; each head stops at a FRAME, and
     the picture is shown when every head has stopped at the same one, or a
-    moment later (a part with nothing new sends no FRAME).
+    moment later (a part with nothing new sends no FRAME). With pacing
+    (the window), each update is shown at its time (Pacer), the newest due
+    when several are; one screen stops at its FRAMEs for that too.
     """
     WAIT = 0.025
 
-    def __init__(self, heads):
+    def __init__(self, heads, pacing=False):
         self.heads = heads
         self.since = None
+        self.pacer = Pacer() if pacing else None
+        self.due = None                         # (frame, when) of the update waiting
         for h in heads:
-            h.viewer.in_step = len(heads) > 1
+            h.viewer.in_step = len(heads) > 1 or pacing
 
     def receive(self):
         """Take what arrived. True when a picture is ready to show."""
@@ -985,7 +1082,7 @@ class InStep:
         for h in self.heads:
             if FRAME in receive_some(h.sock, h.viewer):
                 framed = True
-        if len(self.heads) == 1:
+        if len(self.heads) == 1 and not self.pacer:
             return framed
         stopped = [h for h in self.heads if h.viewer.stopped]
         if not stopped:
@@ -993,21 +1090,39 @@ class InStep:
         now = time.monotonic()
         if self.since is None:
             self.since = now
-        # a part behind the others catches up first
-        top = max(h.screen.frame for h in stopped)
-        for h in stopped:
-            while h.screen.frame != top and h.viewer.stopped and h.viewer.frame_waiting():
-                h.viewer.release()
-        stopped = [h for h in self.heads if h.viewer.stopped]
-        frames = set(h.screen.frame for h in stopped)
-        if len(stopped) < len(self.heads) or len(frames) > 1:
-            if now - self.since < self.WAIT:
-                return False
-            # late: catch up on what is waiting, to the last whole update
+        if len(self.heads) > 1:
+            # a part behind the others catches up first
+            top = max(h.screen.frame for h in stopped)
             for h in stopped:
-                while h.viewer.stopped and h.viewer.frame_waiting():
+                while h.screen.frame != top and h.viewer.stopped and h.viewer.frame_waiting():
                     h.viewer.release()
-            return True
+            stopped = [h for h in self.heads if h.viewer.stopped]
+            frames = set(h.screen.frame for h in stopped)
+            if len(stopped) < len(self.heads) or len(frames) > 1:
+                if now - self.since < self.WAIT:
+                    return False
+                # late: catch up on what is waiting, to the last whole update
+                for h in stopped:
+                    while h.viewer.stopped and h.viewer.frame_waiting():
+                        h.viewer.release()
+                return True
+        first = self.heads[0].screen
+        if self.pacer and first.frame_time is not None and first.frame_arrival is not None:
+            # its time: wait for it; past it, and the next due too: on to that
+            while True:
+                if self.due is None or self.due[0] != (first.frame, first.frame_time):
+                    self.due = ((first.frame, first.frame_time),
+                                self.pacer.due(first.frame_time, first.frame_arrival))
+                if now < self.due[1]:
+                    return False
+                nxt = [h.viewer.next_frame() for h in self.heads]
+                if not all(n and n[0] is not None for n in nxt) or \
+                        self.pacer.due(nxt[0][0], nxt[0][1], learn=False) > now:
+                    return True
+                for h in self.heads:
+                    h.viewer.release()
+                if len(set(h.screen.frame for h in self.heads)) > 1:
+                    return True
         # behind (updates come faster than they are shown: a moving sprite
         # makes one each pass): on to the newest every part has whole, and
         # show that one, as a display shows the latest picture, never a late one
@@ -1021,6 +1136,9 @@ class InStep:
     def shown(self):
         """After showing the picture: on to the next."""
         self.since = None
+        if self.pacer:
+            first = self.heads[0].screen
+            self.pacer.shown(first.frame_time, first.frame_arrival, time.monotonic())
         for h in self.heads:
             if h.viewer.stopped:
                 h.viewer.release()
@@ -1185,7 +1303,10 @@ def run_window(heads, args):  # pragma: no cover - interactive
                     canvas.tag_raise(st["ptr_item"])
 
     state["shown"] = 0.0
-    step = InStep(heads)
+    step = InStep(heads, pacing=not args.no_pacing)
+    heads[0].viewer.pacer = step.pacer
+    if step.pacer and args.timing:
+        step.pacer.log = open(args.timing, "w", buffering=1)
 
     # INPUT=1: the mouse and keys in these windows work the Amiga
     pending = [[] for _ in heads]
@@ -1587,6 +1708,11 @@ def main(argv=None):
                          "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
+    ap.add_argument("--no-pacing", action="store_true",
+                    help="show each update as it arrives, not at its time on the Amiga "
+                         "(less delay, less even motion)")
+    ap.add_argument("--timing", metavar="FILE",
+                    help="testing: each update's Amiga time (ms), arrival and showing (s) to FILE")
     ap.add_argument("--drop", type=float, default=0.0, metavar="PERCENT",
                     help="testing: lose this percent of the datagrams, as a bad network would")
     ap.add_argument("--no-input", action="store_true",

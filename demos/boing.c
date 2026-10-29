@@ -48,7 +48,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char version[] = "$VER: Boing 1.4 (29.10.2026)";
+static const char version[] = "$VER: Boing 1.5 (29.10.2026)";
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -285,7 +285,7 @@ static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 	struct DateStamp start;
 	BOOL clut = GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) <= 8;
 	int rc = -1, phase = 0;
-	LONG drawn;
+	LONG drawn, frames;
 
 	if (GfxBase->LibNode.lib_Version < 39)
 		return -1;
@@ -416,7 +416,7 @@ static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 	fflush(stdout);
 	rc = RETURN_OK;
 	DateStamp(&start);
-	for (;;) {
+	for (frames = 0;; frames++) {
 		if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 			break;
 		if (time_up(&start, secs))
@@ -431,6 +431,14 @@ static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 			MoveSprite(vp, &cur[t]->es_SimpleSprite, b->x + (shaded ? t / 2 : t) * tw, b->y);
 		}
 		WaitTOF();
+	}
+	{
+		LONG ticks = ticks_since(&start);
+
+		if (ticks > 0)
+			printf("Boing: %ld frames in %ld.%ld s: %ld a second\n", frames,
+			       ticks / TICKS_PER_SECOND, ticks % TICKS_PER_SECOND * 10 / TICKS_PER_SECOND,
+			       frames * TICKS_PER_SECOND / ticks);
 	}
 
 out:

@@ -307,5 +307,69 @@ class InStepTests(unittest.TestCase):
             h.sock.close()
 
 
+class PacerTests(unittest.TestCase):
+    """Updates shown as evenly as the Amiga made them (FRAME's time)."""
+
+    def test_bursts_shown_evenly(self):
+        # every 20 ms on the Amiga; here they come in bursts of three, 10 ms late
+        p = pv.Pacer()
+        dues = []
+        for k in range(300):
+            t_ms = 1000 + 20 * k
+            came = 50.0 + (20 * (k - k % 3) + 10 * (k % 3 == 2)) / 1000.0
+            dues.append(p.due(t_ms, came))
+        steps = [b - a for a, b in zip(dues[150:], dues[151:])]
+        # within half a millisecond, where arrivals were up to 40 ms apart
+        self.assertTrue(all(abs(x - 0.020) < 0.0005 for x in steps), steps[:6])
+        # and never before it came: the margin covers the bursts
+        for k in range(150, 300):
+            came = 50.0 + (20 * (k - k % 3) + 10 * (k % 3 == 2)) / 1000.0
+            self.assertGreaterEqual(dues[k] + 0.001, came)
+
+    def test_drifting_clocks(self):
+        # the Amiga's clock 1% slow against ours, little jitter: the margin
+        # stays small, as the drift is followed, not taken for jitter
+        p = pv.Pacer()
+        for k in range(600):
+            t_ms = 20 * k
+            came = 7.0 + 1.01 * t_ms / 1000.0 + (0.002 if k % 7 == 0 else 0)
+            due = p.due(t_ms, came)
+        self.assertLess(due - came, 0.01)
+        self.assertGreaterEqual(due - came, 0)
+
+    def test_clock_starting_again(self):
+        p = pv.Pacer()
+        p.due(5000, 10.0)
+        self.assertAlmostEqual(p.due(20, 10.02), 10.02 + p.MIN_MARGIN, places=6)
+
+    def test_report(self):
+        p = pv.Pacer()
+        p.shown(0, 1.000, 1.050)
+        p.shown(20, 1.030, 1.070)        # came 10 ms off, shown on time
+        came, shown = p.report()
+        self.assertAlmostEqual(came, 10.0, places=6)
+        self.assertAlmostEqual(shown, 0.0, places=6)
+
+
+class PacedOldCardTests(unittest.TestCase):
+    def test_no_times_shows_newest(self):
+        import socket
+        out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.setblocking(False)
+        head = pv.Head(sock, pv.Viewer(pv.Screen()))
+        step = pv.InStep([head], pacing=True)
+        for f in range(4):
+            # an older card's FRAME: the number only
+            out.sendto(struct.pack(">HBBII", pv.MAGIC, pv.VERSION, 0, 1, f) +
+                       bytes((pv.FRAME,)) + struct.pack(">HI", 4, f), sock.getsockname())
+        time.sleep(0.1)
+        self.assertTrue(step.receive())
+        self.assertEqual(head.screen.frame, 3)
+        out.close()
+        sock.close()
+
+
 if __name__ == "__main__":
     unittest.main()

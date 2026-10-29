@@ -200,6 +200,8 @@ struct McSprite {
 	UWORD  attached;             /* odd, attached to the sprite before it */
 	UWORD *data;                 /* h rows: plane 0 (w / 16 words), plane 1 */
 	ULONG  cap;                  /* words data has room for */
+	ULONG  hash;                 /* data's fingerprint (not of its colours) */
+	ULONG  rgb_vb;               /* GfxBase->VBCounter when its colours were read */
 };
 
 extern struct McSprite mc_sprite[MC_SPRITES];
