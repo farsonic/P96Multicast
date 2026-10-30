@@ -162,8 +162,15 @@ on the Amiga. It needs picture.datatype V43 or later: Picasso96's, or
 AmigaOS 3.2's. The viewer asked is the one Panorama.card last heard
 from; ENV:PanoramaDecoder (address, or address:port) names another.
 A JPEG or PNG datatype of your own in DEVS:DataTypes is left alone:
-remove it to use Panorama's. dtpic FILE [PUBSCREEN=] [SECS=] shows a
+remove it to use Panorama's. A picture bigger than 2048 x 2048 (a camera's
+photo) comes scaled down to fit that; ENV:PanoramaDecoderMax (a number,
+or WxH) sets another size. dtpic FILE [PUBSCREEN=] [SECS=] shows a
 picture and says how long the loading took.
+
+To try it: install (the Install button, or PanoramaPrefs INSTALL), reboot,
+start the viewer (python3 panoview.py ...; it needs Pillow: pip3 install
+pillow), then on the Amiga: dtpic photo.jpg PUBSCREEN=PANORAMA, or
+MultiView photo.jpg. The viewer says what it decoded on its output.
 
 The easy way: PanoramaPrefs
 ----------------------------

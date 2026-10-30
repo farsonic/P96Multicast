@@ -752,10 +752,11 @@ class Viewer:
                 self.last_want = now
 
 
-def decode_picture(data):
+def decode_picture(data, maxw=0, maxh=0):
     """A picture file's bytes (JPEG, PNG, GIF, BMP, ...) as (width, height,
     RGB bytes), decoded here for the Amiga; transparency over white; turned
-    as its EXIF says. None if it can't be."""
+    as its EXIF says; scaled down to fit maxw x maxh if given (a camera's
+    photo is more than an Amiga wants to hold). None if it can't be."""
     try:
         from PIL import Image, ImageOps
     except ImportError:
@@ -771,6 +772,8 @@ def decode_picture(data):
             bg.alpha_composite(im)
             im = bg
         im = im.convert("RGB")
+        if maxw and maxh and (im.size[0] > maxw or im.size[1] > maxh):
+            im.thumbnail((maxw, maxh), Image.LANCZOS)
     except Exception:
         return None
     w, h = im.size
@@ -781,10 +784,11 @@ def decode_picture(data):
 
 def decode_server(port, log=sys.stderr):  # pragma: no cover - a thread with sockets
     """Decode pictures for the Amiga (panoramapic.datatype): a TCP request
-    "CUDC", version u8, codec u8, flags u8, pad u8, length u32, the file;
-    the answer "CUDR", status u8 (0 done, 1 not a picture we can decode,
-    2 too big), format u8 (0 RGB, 3 bytes a pixel), pad u16, width u16,
-    height u16, then the rows. One picture a connection."""
+    "CUDC", version u8, codec u8, flags u8, pad u8, length u32, and from
+    version 2 the largest size wanted (width u16, height u16: scaled down to
+    fit), then the file; the answer "CUDR", status u8 (0 done, 1 not a
+    picture we can decode, 2 too big), format u8 (0 RGB, 3 bytes a pixel),
+    pad u16, width u16, height u16, then the rows. One picture a connection."""
     import socket as so
     import threading
 
@@ -800,6 +804,15 @@ def decode_server(port, log=sys.stderr):  # pragma: no cover - a thread with soc
             if head[:4] != b"CUDC":
                 return
             length = struct.unpack(">I", head[8:12])[0]
+            maxw = maxh = 0
+            if head[4] >= 2:
+                more = b""
+                while len(more) < 4:
+                    part = conn.recv(4 - len(more))
+                    if not part:
+                        return
+                    more += part
+                maxw, maxh = struct.unpack(">HH", more)
             if length > 64 << 20:
                 conn.sendall(b"CUDR" + struct.pack(">BBHHH", 2, 0, 0, 0, 0))
                 return
@@ -810,7 +823,7 @@ def decode_server(port, log=sys.stderr):  # pragma: no cover - a thread with soc
                     return
                 buf += part
             t0 = time.monotonic()
-            got = decode_picture(bytes(buf))
+            got = decode_picture(bytes(buf), maxw, maxh)
             if not got:
                 conn.sendall(b"CUDR" + struct.pack(">BBHHH", 1, 0, 0, 0, 0))
                 print("panoview: %s sent %d bytes that aren't a picture I can decode" %
@@ -818,8 +831,10 @@ def decode_server(port, log=sys.stderr):  # pragma: no cover - a thread with soc
                 return
             w, h, rgb = got
             conn.sendall(b"CUDR" + struct.pack(">BBHHH", 0, 0, 0, w, h) + rgb)
-            print("panoview: decoded a %dx%d picture (%d KB) for %s in %.2f s" %
-                  (w, h, length >> 10, addr[0], time.monotonic() - t0), file=log)
+            print("panoview: decoded a %dx%d picture (%d KB) for %s in %.2f s%s" %
+                  (w, h, length >> 10, addr[0], time.monotonic() - t0,
+                   " (scaled to fit %dx%d)" % (maxw, maxh) if maxw and (w == maxw or h == maxh)
+                   else ""), file=log)
         except (OSError, struct.error):
             pass
         finally:

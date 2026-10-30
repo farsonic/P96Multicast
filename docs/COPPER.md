@@ -270,8 +270,9 @@ which may move the pointer by its own idea of where the mouse is).
 Not Copper (multicast, one way) but its companion: `panoramapic.datatype` on
 the Amiga asks a viewer to decode a picture file, over TCP to the viewer's
 `CU_DECODE_PORT` (9700), one picture a connection. The request is `"CUDC"`,
-version u8 (1), codec u8 (0: the viewer tells), flags u8, pad u8, length u32,
-then the file; the answer `"CUDR"`, status u8 (0 done, 1 not a picture it can
+version u8 (2), codec u8 (0: the viewer tells), flags u8, pad u8, length u32,
+the largest size wanted (width u16, height u16: a bigger picture comes scaled
+down to fit; ENV:PanoramaDecoderMax, 2048 by default), then the file; the answer `"CUDR"`, status u8 (0 done, 1 not a picture it can
 decode, 2 too big), format u8 (0: RGB, 3 bytes a pixel), pad u16, width u16,
 height u16, then the rows top to bottom. The viewer is the one the card last
 heard from (`McStatus.viewer_addr`), or ENV:PanoramaDecoder. The decoded

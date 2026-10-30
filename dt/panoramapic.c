@@ -42,6 +42,7 @@
 #define DT_LIBSIZE 128
 #define MAXFILE    (64UL << 20)
 #define MAXSIDE    16384
+#define MAXDEFAULT 2048       /* the viewer scales a bigger picture down to fit this */
 
 struct DtBase {
 	struct Library lib;
@@ -144,6 +145,29 @@ static BOOL decoder(ULONG *addr, UWORD *port)
 	return *addr != 0;
 }
 
+/* the largest picture wanted: ENV:PanoramaDecoderMax ("2048" or "1600x1200"), else MAXDEFAULT */
+static void largest(UWORD *mw, UWORD *mh)
+{
+	char buf[32];
+	ULONG w = 0, h = 0;
+	const char *v = buf;
+
+	*mw = *mh = MAXDEFAULT;
+	if (GetVar((STRPTR)"PanoramaDecoderMax", (STRPTR)buf, sizeof(buf), 0) <= 0)
+		return;
+	for (; *v >= '0' && *v <= '9'; v++)
+		w = w * 10 + (*v - '0');
+	if (*v == 'x' || *v == 'X' || *v == ',')
+		for (v++; *v >= '0' && *v <= '9'; v++)
+			h = h * 10 + (*v - '0');
+	if (!h)
+		h = w;
+	if (w && w <= MAXSIDE && h <= MAXSIDE) {
+		*mw = w;
+		*mh = h;
+	}
+}
+
 /*
  * The file's bytes to the viewer, its pixels into the object. A
  * SocketBase of this task's own: the dispatcher runs in whatever task
@@ -153,9 +177,9 @@ static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd
 {
 	struct Library *SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 3);
 	struct sockaddr_in sa;
-	UBYTE head[12], *rows = NULL;
+	UBYTE head[16], *rows = NULL;
 	ULONG addr, rowbytes, band, y;
-	UWORD port, w, h;
+	UWORD port, w, h, mw, mh;
 	LONG s = -1;
 	BOOL ok = FALSE;
 
@@ -185,8 +209,9 @@ static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd
 		tv.tv_micro = 0;
 		setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	}
+	largest(&mw, &mh);
 	memcpy(head, "CUDC", 4);
-	head[4] = 1;
+	head[4] = 2;
 	head[5] = 0;
 	head[6] = 0;
 	head[7] = 0;
@@ -194,7 +219,11 @@ static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd
 	head[9] = size >> 16;
 	head[10] = size >> 8;
 	head[11] = size;
-	if (!send_all(SocketBase, s, head, 12) || !send_all(SocketBase, s, data, size) ||
+	head[12] = mw >> 8;
+	head[13] = mw;
+	head[14] = mh >> 8;
+	head[15] = mh;
+	if (!send_all(SocketBase, s, head, 16) || !send_all(SocketBase, s, data, size) ||
 	    !recv_all(SocketBase, s, head, 12) || memcmp(head, "CUDR", 4) != 0 || head[4] != 0 ||
 	    head[5] != 0) {
 		SetIoErr(ERROR_OBJECT_WRONG_TYPE);

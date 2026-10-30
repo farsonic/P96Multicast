@@ -371,5 +371,25 @@ class PacedOldCardTests(unittest.TestCase):
         sock.close()
 
 
+class DecodeTests(unittest.TestCase):
+    """Pictures decoded for the Amiga (panoramapic.datatype)."""
+
+    def test_decode_and_scale(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("no Pillow")
+        import io
+        im = Image.new("RGB", (300, 200), (10, 200, 30))
+        png = io.BytesIO()
+        im.save(png, "PNG")
+        w, h, rgb = pv.decode_picture(png.getvalue())
+        self.assertEqual((w, h, rgb[:3]), (300, 200, bytes((10, 200, 30))))
+        w, h, rgb = pv.decode_picture(png.getvalue(), 100, 100)
+        self.assertEqual((w, h), (100, 67))                 # scaled to fit, shape kept
+        self.assertEqual(len(rgb), 100 * 67 * 3)
+        self.assertIsNone(pv.decode_picture(b"not a picture at all"))
+
+
 if __name__ == "__main__":
     unittest.main()

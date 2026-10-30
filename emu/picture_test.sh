@@ -87,6 +87,8 @@ for (x0, y0, c) in ((0, 0, (255, 0, 0)), (200, 0, (0, 255, 0)), (0, 150, (0, 0, 
     im.paste(c, (x0, y0, x0 + 200, y0 + 150))
 im.save(sys.argv[1] + "/test.jpg", quality=95)
 im.save(sys.argv[1] + "/test.png")
+# a camera's: 3000 x 2000, to come back scaled to fit 2048 x 2048
+im.resize((3000, 2000)).save(sys.argv[1] + "/big.jpg", quality=90)
 PYEOF
 cp "$RIPTIDE" "$work/"
 cat > "$sys/S/User-Startup" <<'EOF'
@@ -206,6 +208,7 @@ Wait 10
 C:mctest WINDOWS >Work:windows2.txt
 Echo >Work:mark-png x
 Wait 6
+C:dtpic Work:big.jpg PUBSCREEN=PANORAMA SECS=2 >Work:dtpic-big.txt
 Echo >Work:boot2.done done
 EOF
 
@@ -242,7 +245,7 @@ wait $vpid $spid 2>/dev/null
 pkill -f "panoview.py --group $GROUP --port 9696 --iface $HOST_IP --web 8097" 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-for f in install.txt picver.txt dtpic.txt windows1.txt windows2.txt; do
+for f in install.txt picver.txt dtpic.txt windows1.txt windows2.txt dtpic-big.txt; do
 	echo "---- $f"
 	tr -d '\r' < "$work/$f" 2>/dev/null | tail -n 12
 done
@@ -284,5 +287,7 @@ check 'tr -d "\r" < "$work/windows2.txt" | grep -q "test.png"' "Multiview shows 
 set -- $(quarters "$OUT/screen-png.png" 2>/dev/null); r=${1:-0} g=${2:-0} b=${3:-0} y=${4:-0}
 check '[ "$r" -gt 20000 ] && [ "$g" -gt 20000 ] && [ "$b" -gt 20000 ] && [ "$y" -gt 20000 ]' \
 	"... and the viewer shows its four colours ($r red, $g green, $b blue, $y yellow pixels)"
+check 'tr -d "\r" < "$work/dtpic-big.txt" | grep -q "2048x1365, loaded in"' \
+	"a 3000x2000 photo comes scaled to fit 2048x2048 ($(tr -d '\r' < "$work/dtpic-big.txt" 2>/dev/null | sed -n 's/.*: \([0-9]*x[0-9]*, loaded in [0-9.]* s\).*/\1/p'))"
 echo "pictures: $OUT/screen-jpg.png $OUT/screen-png.png"
 exit $status
