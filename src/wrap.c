@@ -26,6 +26,7 @@
 #include <proto/dos.h>
 #include <stddef.h>
 #include "wrap.h"
+#include "kdebug.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -445,6 +446,12 @@ APTR wrap_pre(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG slot,
 		return (APTR)LibNull;
 	b->calls[slot]++;
 	d = &b->disp;
+#ifdef MC_DEBUG
+	if (slot == SLOT_GetVSyncState)
+		KDEBUG(("W53 "));
+	else
+		KDEBUG(("W:slot%ld %ld\n", (LONG)slot, (LONG)(regs[0] & 0xffff)));
+#endif
 
 	/*
 	 * KEEPDISPLAY=1: the wrapped card is a monitor of its own (the

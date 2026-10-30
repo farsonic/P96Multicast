@@ -228,6 +228,10 @@ static BOOL SetDisplay(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD state
 	UWORD old = mc->display;
 
 	KDEBUG(("C:SetDisplay %ld b%ld\n", (LONG)state, (LONG)mc->boardnum));
+#ifdef MC_DEBUG
+	if (!state)
+		mc_dbg_window = 600;
+#endif
 	mc->display = state ? 1 : 0;
 	mc->serial++;
 	return old;
@@ -302,6 +306,10 @@ static BOOL GetVSyncState(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD ex
  * over to the desktop. With it, Picasso96 lets go of the lock before it
  * waits.
  */
+#ifdef MC_DEBUG
+volatile LONG mc_dbg_window;
+#endif
+
 static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
 {
 	struct McCard *mc = MC_CARD(bi);
@@ -310,11 +318,33 @@ static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
 
 	if (++beats % 50 == 0)
 		KDEBUG(("V%ld\n", (LONG)(beats / 50)));
+	if (mc_dbg_window > 0) {
+		mc_dbg_window--;
+		KDEBUG(("v%ld", (LONG)mc->vbint_on));
+	}
 #endif
 	if (mc->vbint_on)
 		Cause(&bi->SoftInterrupt);
 	return 0;
 }
+
+#ifdef MC_DEBUG
+typedef void (*SoftIntFn)(__reg("a1") struct BoardInfo *bi, __reg("a5") APTR code,
+                          __reg("a6") struct ExecBase *sb);
+static SoftIntFn rtg_softint;
+static ULONG softints;
+
+/* rtg.library's soft interrupt, counted */
+static void softint_trace(__reg("a1") struct BoardInfo *bi, __reg("a5") APTR code,
+                          __reg("a6") struct ExecBase *sb)
+{
+	if (++softints <= 400 || mc_dbg_window > 0)
+		KDEBUG(("i"));
+	rtg_softint(bi, code, sb);
+	if (softints <= 400 || mc_dbg_window > 0)
+		KDEBUG(("."));
+}
+#endif
 
 static void SetInterrupt(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD state)
 {
@@ -480,6 +510,13 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	bi->HardInterrupt.is_Data = bi;
 	bi->HardInterrupt.is_Code = (void (*)())vblank_int;
 	AddIntServer(INTB_VERTB, &bi->HardInterrupt);
+#ifdef MC_DEBUG
+	if (!rtg_softint && bi->SoftInterrupt.is_Code) {
+		rtg_softint = (SoftIntFn)bi->SoftInterrupt.is_Code;
+		bi->SoftInterrupt.is_Code = (void (*)())softint_trace;
+	}
+	KDEBUG(("C:InitCard softint %lx\n", (ULONG)rtg_softint));
+#endif
 
 	mc->moniswitch = 1;
 	mc->display = 1;

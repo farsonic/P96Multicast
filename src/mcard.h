@@ -179,6 +179,9 @@ struct McCard {
 };
 
 #define MC_CARD(bi) ((struct McCard *)(bi)->CardData[0])
+#ifdef MC_DEBUG
+extern volatile LONG mc_dbg_window;   /* blanks left of a verbose trace (make DEBUG=1) */
+#endif
 
 /*
  * SPRITES=1: graphics.library's sprites 1-7 on a Panorama screen (sprite.c).

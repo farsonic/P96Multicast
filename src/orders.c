@@ -28,6 +28,7 @@
 #include <proto/exec.h>
 #include <stddef.h>
 #include "mcard.h"
+#include "kdebug.h"
 
 /* libstart.s: one stub per MC_BLIT_* kind, 8 bytes each */
 extern char DmgStubs[];
@@ -184,6 +185,10 @@ void mc_damage_rect(struct McCard *mc, LONG x, LONG y, LONG w, LONG h)
  */
 void mc_record(struct McCard *mc, ULONG kind, ULONG *regs)
 {
+#ifdef MC_DEBUG
+	if (mc_dbg_window > 0)
+		KDEBUG(("R%ld", (LONG)kind));
+#endif
 	const struct BlitDesc *d = &descs[kind];
 	struct RenderInfo *ri = (struct RenderInfo *)regs[d->ri];
 	BOOL first = mc->boardnum == 0;
@@ -413,6 +418,10 @@ void mc_pointer_show(struct McCard *mc, ULONG on)
 static BOOL SetSprite(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG on,
                       __reg("d7") RGBFTYPE fmt)
 {
+#ifdef MC_DEBUG
+	if (mc_dbg_window > 0)
+		KDEBUG(("P"));
+#endif
 	mc_pointer_show(MC_CARD(bi), on & 0xffff);
 	return TRUE;
 }
@@ -420,11 +429,19 @@ static BOOL SetSprite(__reg("a0") struct BoardInfo *bi, __reg("d0") ULONG on,
 static void SetSpritePosition(__reg("a0") struct BoardInfo *bi, __reg("d0") WORD x,
                               __reg("d1") WORD y, __reg("d7") RGBFTYPE fmt)
 {
+#ifdef MC_DEBUG
+	if (mc_dbg_window > 0)
+		KDEBUG(("p"));
+#endif
 	mc_pointer_pos(MC_CARD(bi), bi);
 }
 
 static void SetSpriteImage(__reg("a0") struct BoardInfo *bi, __reg("d7") RGBFTYPE fmt)
 {
+#ifdef MC_DEBUG
+	if (mc_dbg_window > 0)
+		KDEBUG(("Pi"));
+#endif
 	mc_pointer_image(MC_CARD(bi), bi);
 }
 
@@ -432,6 +449,10 @@ static void SetSpriteColor(__reg("a0") struct BoardInfo *bi, __reg("d0") UBYTE i
                            __reg("d1") UBYTE r, __reg("d2") UBYTE g, __reg("d3") UBYTE b,
                            __reg("d7") RGBFTYPE fmt)
 {
+#ifdef MC_DEBUG
+	if (mc_dbg_window > 0)
+		KDEBUG(("Pc"));
+#endif
 	mc_pointer_colour(MC_CARD(bi), index, r, g, b);
 }
 
