@@ -90,6 +90,9 @@ struct McStatus {
 	ULONG sprite_pixels[3];               /* ... and its pixels of colours 1, 2, 3 */
 	ULONG sprite_calls;    /* calls of the patched sprite functions, on any screen */
 	UWORD sprite_lastnum;  /* ... the last one's sprite number */
+	ULONG viewer_addr;     /* the viewer last heard from: IPv4, network order (0: none) */
+	UWORD viewer_port;     /* ... and its port */
+	UWORD viewer_pad;
 	ULONG pass_us;         /* the sender's pass, on average: microseconds */
 	ULONG snapshot_us;     /* ... of which: finding the screen */
 	ULONG viewers_us;      /* ... reading what viewers sent */

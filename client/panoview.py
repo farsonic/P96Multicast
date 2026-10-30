@@ -48,6 +48,7 @@ IN_MOVE, IN_BUTTON, IN_KEY, IN_LEAVE = 1, 2, 3, 4
 SF_INPUT = 1                    # SURFACE: the card takes our mouse and keys
 SF_BEHIND = 2                   # SURFACE: another screen is in front on the Amiga
 CU_SPRITE_IMAGES = 64           # sprite image ids the card uses
+DECODE_PORT = 9700              # TCP: the Amiga asks us to decode pictures (panoramapic.datatype)
 
 # P96 RGBFTYPE numbers
 CLUT, R8G8B8, B8G8R8, R5G6B5PC, R5G5B5PC = 1, 2, 3, 4, 5
@@ -751,6 +752,101 @@ class Viewer:
                 self.last_want = now
 
 
+def decode_picture(data):
+    """A picture file's bytes (JPEG, PNG, GIF, BMP, ...) as (width, height,
+    RGB bytes), decoded here for the Amiga; transparency over white; turned
+    as its EXIF says. None if it can't be."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return None
+    import io
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            im = im.convert("RGBA")
+            bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+            bg.alpha_composite(im)
+            im = bg
+        im = im.convert("RGB")
+    except Exception:
+        return None
+    w, h = im.size
+    if not w or not h or w > 16384 or h > 16384:
+        return None
+    return w, h, im.tobytes()
+
+
+def decode_server(port, log=sys.stderr):  # pragma: no cover - a thread with sockets
+    """Decode pictures for the Amiga (panoramapic.datatype): a TCP request
+    "CUDC", version u8, codec u8, flags u8, pad u8, length u32, the file;
+    the answer "CUDR", status u8 (0 done, 1 not a picture we can decode,
+    2 too big), format u8 (0 RGB, 3 bytes a pixel), pad u16, width u16,
+    height u16, then the rows. One picture a connection."""
+    import socket as so
+    import threading
+
+    def serve(conn, addr):
+        try:
+            conn.settimeout(30)
+            head = b""
+            while len(head) < 12:
+                part = conn.recv(12 - len(head))
+                if not part:
+                    return
+                head += part
+            if head[:4] != b"CUDC":
+                return
+            length = struct.unpack(">I", head[8:12])[0]
+            if length > 64 << 20:
+                conn.sendall(b"CUDR" + struct.pack(">BBHHH", 2, 0, 0, 0, 0))
+                return
+            buf = bytearray()
+            while len(buf) < length:
+                part = conn.recv(min(1 << 16, length - len(buf)))
+                if not part:
+                    return
+                buf += part
+            t0 = time.monotonic()
+            got = decode_picture(bytes(buf))
+            if not got:
+                conn.sendall(b"CUDR" + struct.pack(">BBHHH", 1, 0, 0, 0, 0))
+                print("panoview: %s sent %d bytes that aren't a picture I can decode" %
+                      (addr[0], length), file=log)
+                return
+            w, h, rgb = got
+            conn.sendall(b"CUDR" + struct.pack(">BBHHH", 0, 0, 0, w, h) + rgb)
+            print("panoview: decoded a %dx%d picture (%d KB) for %s in %.2f s" %
+                  (w, h, length >> 10, addr[0], time.monotonic() - t0), file=log)
+        except (OSError, struct.error):
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    def run():
+        s = so.socket(so.AF_INET, so.SOCK_STREAM)
+        s.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1)
+        try:
+            s.bind(("", port))
+            s.listen(4)
+        except OSError as e:
+            print("panoview: no picture decoding for the Amiga: port %d: %s" % (port, e), file=log)
+            return
+        while True:
+            try:
+                conn, addr = s.accept()
+            except OSError:
+                return
+            threading.Thread(target=serve, args=(conn, addr), daemon=True).start()
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def sprite_rgba(data, w, rows, cols, depth=2):
     """Amiga sprite rows (planes 0 ... depth - 1, (w + 15) / 16 words each:
     2, or 4 for an attached pair) as RGBA: colour 0 clear, the others from
@@ -1258,9 +1354,20 @@ def run_window(heads, args):  # pragma: no cover - interactive
                 part = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, hh) +
                                      screen.rgb_rect(x, y, w, hh), format="PPM")
                 st["img"].tk.call(st["img"], "copy", part, "-to", x, y)
-            if screen.pointer_serial != st["ptr_serial"]:
+            # The Amiga's pointer: where the Amiga says it is, or, while our
+            # own pointer is in this window working the Amiga, where ours is:
+            # the Amiga's follows ours anyway, a round trip later, and this way
+            # it is under the hand at once (the Amiga's shape, our place)
+            local = state.get("local")
+            local = local if local and local[0] == i and screen.takes_input and \
+                not args.no_input else None
+            if screen.pointer_serial != st["ptr_serial"] or st.get("ptr_local") != local:
                 st["ptr_serial"] = screen.pointer_serial
+                st["ptr_local"] = local
                 x, y, vis = screen.pointer_pos
+                if screen.pointer and local:
+                    x, y = local[1] - screen.pointer[2], local[2] - screen.pointer[3]
+                    vis = 1
                 if screen.pointer and vis:
                     w, hh, _hx, _hy, rgba = screen.pointer
                     if st["ptr"] is None or st["ptr"][0] is not screen.pointer:
@@ -1346,6 +1453,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
         i, x, y = head_at(e.widget, e.x, e.y)
         if i is not None:
             state["keys"] = i
+            state["local"] = (i, x, y)
         add(i, IN_MOVE, 0, x, y)
 
     def on_button(e, up):
@@ -1386,6 +1494,7 @@ def run_window(heads, args):  # pragma: no cover - interactive
     canvases = [canvas for _, canvas in windows]
     state["inside"] = False
     state["pointer"] = None
+    state["local"] = None            # (head, x, y): our pointer, while it is in a window
 
     def track_pointer():
         """Where the computer's pointer is, asked for, not waited for: a
@@ -1409,9 +1518,11 @@ def run_window(heads, args):  # pragma: no cover - interactive
             i, x, y = head_at(w, px - w.winfo_rootx(), py - w.winfo_rooty())
             if i is not None:
                 state["keys"] = i
+                state["local"] = (i, x, y)
             add(i, IN_MOVE, 0, x, y)
         elif state["inside"]:
             state["inside"] = False
+            state["local"] = None
             for i, h in enumerate(heads):
                 if h.screen.takes_input:
                     pending[i].append((IN_LEAVE, 0, 0, 0))
@@ -1449,7 +1560,9 @@ def run_window(heads, args):  # pragma: no cover - interactive
         flush_input()
         ready = step.receive()
         now = time.monotonic()
-        if ready or now - state["shown"] > 0.25:
+        moved = state.get("local") != state.get("local_shown")
+        if ready or moved or now - state["shown"] > 0.25:
+            state["local_shown"] = state.get("local")
             present()
             state["shown"] = now
             if ready:
@@ -1708,6 +1821,9 @@ def main(argv=None):
                          "DEST + N - 1, PORT + N - 1), e.g. on a second device")
     ap.add_argument("--one-window", action="store_true",
                     help="with --span: all boards in one window, not a window each")
+    ap.add_argument("--decode-port", type=int, default=DECODE_PORT, metavar="PORT",
+                    help="decode pictures (JPEG, PNG, ...) for the Amiga's panoramapic.datatype "
+                         "on this TCP port (default %d; 0: don't)" % DECODE_PORT)
     ap.add_argument("--no-pacing", action="store_true",
                     help="show each update as it arrives, not at its time on the Amiga "
                          "(less delay, less even motion)")
@@ -1743,6 +1859,8 @@ def main(argv=None):
                           port=args.port + n))
         heads[-1].viewer.drop = max(0.0, min(args.drop, 90.0)) / 100
     args.port += first
+    if args.decode_port:
+        decode_server(args.decode_port)
     try:
         if args.snapshot:
             run_headless(heads, args)

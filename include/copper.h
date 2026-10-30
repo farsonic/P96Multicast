@@ -95,12 +95,26 @@
 #define CU_IN_KEY     3        /* a: Amiga raw key code; | 0x80 released */
 #define CU_IN_LEAVE   4        /* the pointer has left the viewer's windows */
 /*
- * Not on the wire: the ie_SubClass of the RAWMOUSE events Panorama.card
- * writes for the viewers, so commodities (PanoramaDesk) can tell them from
- * the Amiga's own mouse. Intuition doesn't look at a RAWMOUSE's SubClass.
+ * Not on the wire: the viewers' mouse goes into the Amiga through
+ * input.device: the pointer as NEWPOINTERPOS events of IESUBCLASS_PIXEL (a
+ * screen and a place on it), the buttons as RAWMOUSE events exactly like a
+ * mouse's, each followed by the pointer placed again. Intuition 47 takes a
+ * RAWMOUSE of an unknown subclass (cards up to 3.3 marked the viewers' with
+ * 0x50) for no button at all, and a button on a NEWPOINTERPOS for none
+ * either; a plain RAWMOUSE goes through every input handler, and one that
+ * keeps its own idea of where the mouse is may move the pointer, so it is
+ * placed again after. PanoramaDesk tells a viewer's button by the viewers'
+ * pointer event just before it.
  */
-#define CU_IN_TAG     0x50
-
 #define CU_CTRL_MAX   1024
+
+/*
+ * Pictures decoded by a viewer (panoramapic.datatype): TCP to this port on
+ * the viewer, a request "CUDC", version u8 (1), codec u8 (0: any), flags u8,
+ * pad u8, length u32, the file; the answer "CUDR", status u8 (0 done, 1 not
+ * a picture it can decode, 2 too big), format u8 (0: RGB, 3 bytes a pixel),
+ * pad u16, width u16, height u16, then the rows, top to bottom.
+ */
+#define CU_DECODE_PORT 9700
 
 #endif

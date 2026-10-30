@@ -234,7 +234,12 @@ the same desktop, from the same device or different ones. `INPUTFROM=` limits
 input to one address. Anyone else who can reach the card can type on the Amiga,
 so INPUT is off unless set (`SETUP=DESKTOP` and PanoramaPrefs' Open set it).
 The card reads `INPUT=` and `INPUTFROM=` from ENV:Panorama.prefs again
-when the file changes, and tells the viewers in its next SURFACE.
+when the file changes, and tells the viewers in its next SURFACE. On the Amiga they are input.device events: the pointer as NEWPOINTERPOS
+(IESUBCLASS_PIXEL, a screen and a place on it), a button as a RAWMOUSE event
+exactly like a mouse's, followed by the pointer placed again (Intuition 47
+takes a RAWMOUSE of an unknown subclass, or a button on a NEWPOINTERPOS, for
+no button; and a plain RAWMOUSE goes through every input handler, one of
+which may move the pointer by its own idea of where the mouse is).
 
 ## Reliability
 
@@ -259,6 +264,19 @@ when the file changes, and tells the viewers in its next SURFACE.
 * While no viewer has talked for 10 s, the card sends the whole screen every
   `REFRESH=` seconds (default 10, 0 = never). This is for listen-only viewers
   behind a firewall.
+
+## Pictures decoded by a viewer
+
+Not Copper (multicast, one way) but its companion: `panoramapic.datatype` on
+the Amiga asks a viewer to decode a picture file, over TCP to the viewer's
+`CU_DECODE_PORT` (9700), one picture a connection. The request is `"CUDC"`,
+version u8 (1), codec u8 (0: the viewer tells), flags u8, pad u8, length u32,
+then the file; the answer `"CUDR"`, status u8 (0 done, 1 not a picture it can
+decode, 2 too big), format u8 (0: RGB, 3 bytes a pixel), pad u16, width u16,
+height u16, then the rows top to bottom. The viewer is the one the card last
+heard from (`McStatus.viewer_addr`), or ENV:PanoramaDecoder. The decoded
+picture then reaches the viewers as any pixels do, through Copper, when the
+program draws it.
 
 ## Settings (Panorama.prefs)
 

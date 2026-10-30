@@ -16,6 +16,8 @@
 #                        uaegfx: the mouse across to the Workbench and back
 #   make emu-open        Open on a system as users have it (Workbench on uaegfx,
 #                        Riptide): the Amiga goes on, the mouse moves under load
+#   make emu-select      clicks from a viewer select windows, the pointer out and back
+#   make emu-picture     JPEG and PNG decoded by the viewer (panoramapic.datatype)
 #   make emu-sprite      Boing's sprites over Riptide's multicast to panoview,
 #                        on AmigaOS with Picasso96 (FSUAE_PCAP, root; LOSS=5)
 #                        (these three: your own ROM, OS and P96, see the scripts)
@@ -42,7 +44,8 @@ MUI ?= /home/user/toolchain/mui/include
 
 all: $(BUILD)/Panorama.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
      $(BUILD)/PanoramaDesk $(BUILD)/Boing \
-     $(BUILD)/PanoramaPrefs
+     $(BUILD)/PanoramaPrefs \
+     $(BUILD)/panoramapic.datatype $(BUILD)/dtypes/JPEG $(BUILD)/dtypes/PNG $(BUILD)/dtpic
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -56,6 +59,24 @@ $(BUILD)/%.o: src/%.c $(HDRS) | $(BUILD)
 # a library: no startup code, libstart.o must come first
 $(BUILD)/Panorama.card: $(CARD_OBJ)
 	$(VC) -nostdlib -o $@ $(CARD_OBJ) -lvc -lamiga
+
+# panoramapic.datatype: pictures decoded by the viewer (dt/), and its
+# descriptors for DEVS:DataTypes
+DT_OBJ := $(BUILD)/dtstart.o $(BUILD)/panoramapic.o
+$(BUILD)/dtstart.o: dt/dtstart.s | $(BUILD)
+	$(VASM) -quiet -Fhunk -m68020 -o $@ $<
+$(BUILD)/panoramapic.o: dt/panoramapic.c $(HDRS) | $(BUILD)
+	$(VC) $(CFLAGS) -c -o $@ $<
+$(BUILD)/panoramapic.datatype: $(DT_OBJ)
+	$(VC) -nostdlib -o $@ $(DT_OBJ) -lvc -lamiga
+$(BUILD)/dtypes/JPEG: dist/mkdtype.py | $(BUILD)
+	mkdir -p $(BUILD)/dtypes
+	python3 dist/mkdtype.py $@ JPEG JPEG 0 ff d8 ff
+$(BUILD)/dtypes/PNG: dist/mkdtype.py | $(BUILD)
+	mkdir -p $(BUILD)/dtypes
+	python3 dist/mkdtype.py $@ PNG "PNG " 0 89 50 4e 47
+$(BUILD)/dtpic: tests/dtpic.c | $(BUILD)
+	$(VC) $(CFLAGS) -o $@ $< -lamiga
 
 # the same, wrapstart.o first
 $(BUILD)/Wrap.card: $(WRAP_OBJ)
@@ -148,7 +169,13 @@ emu-sprite: package
 emu-open: package
 	emu/open_test.sh
 
+emu-select: package
+	emu/select_test.sh
+
+emu-picture: package
+	emu/picture_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite emu-open clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite emu-open emu-select emu-picture clean

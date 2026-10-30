@@ -67,7 +67,7 @@
 #include "copper.h"
 #include "lang.h"
 
-#define MD_VERSION "1.9"
+#define MD_VERSION "2.0"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
@@ -519,6 +519,19 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
  * the desktop not its own: the Workbench to the front, and its window
  * active, before a click lands on the desktop nobody here sees.
  */
+/*
+ * Whose mouse is an event from? The viewers' comes through Panorama.card:
+ * their pointer as NEWPOINTERPOS of IESUBCLASS_PIXEL, their buttons as
+ * RAWMOUSE events exactly like a mouse's (Intuition 47 takes no other for
+ * a button; cards up to 3.3 marked them with a subclass of their own,
+ * OLD_IN_TAG, and Intuition 47 took those for no button at all). The card
+ * places the pointer just before and after each button, so a button
+ * pressed right after the viewers' pointer event is theirs; the Amiga's
+ * own mouse moving ends that.
+ */
+#define OLD_IN_TAG 0x50
+static BOOL viewers_pointed;
+
 static void whose_mouse(struct Screen *desk, struct InputEvent *ie)
 {
 	struct Screen *front = IntuitionBase->FirstScreen, *wb;
@@ -531,11 +544,15 @@ static void whose_mouse(struct Screen *desk, struct InputEvent *ie)
 			return;
 		}
 		local = ie->ie_SubClass != IESUBCLASS_PIXEL;
+		viewers_pointed = !local;
 		moving = TRUE;
 	} else {
-		local = ie->ie_SubClass != CU_IN_TAG;
-		moving = ie->ie_X || ie->ie_Y ||
-		         (ie->ie_Code != IECODE_NOBUTTON && !(ie->ie_Code & IECODE_UP_PREFIX));
+		BOOL down = ie->ie_Code != IECODE_NOBUTTON && !(ie->ie_Code & IECODE_UP_PREFIX);
+
+		local = ie->ie_SubClass != OLD_IN_TAG && !(down && viewers_pointed);
+		if (ie->ie_X || ie->ie_Y)
+			viewers_pointed = FALSE;
+		moving = ie->ie_X || ie->ie_Y || down;
 	}
 	if (front != seen_front) {
 		/* the front changed: by whose mouse? */

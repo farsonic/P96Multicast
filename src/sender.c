@@ -103,6 +103,7 @@ struct Sender {
 	UWORD  img_next;                 /* the next to replace */
 	UWORD *pair;                     /* an attached pair's 4 planes, put together */
 	WORD   mouse_x, mouse_y;         /* Intuition's, last pass */
+	WORD   in_x, in_y;               /* INPUT=1: where the viewers' pointer was last put */
 	UWORD  mouse_hot;                /* passes to keep comparing around it */
 
 	/* tiles */
@@ -1227,10 +1228,19 @@ static void hear(struct Sender *s, struct sockaddr_in *from)
 	oldest->addr = from->sin_addr.s_addr;
 	oldest->port = from->sin_port;
 	oldest->last = s->pass;
+	if (first_board(s)) {
+		/* for programs that ask a viewer for work (panoramapic.datatype) */
+		mc_status->viewer_addr = from->sin_addr.s_addr;
+		mc_status->viewer_port = from->sin_port;
+	}
 	mc_log(s, "a viewer at %ld.%ld.%ld.%ld\n", from->sin_addr.s_addr >> 24,
 	       (from->sin_addr.s_addr >> 16) & 255, (from->sin_addr.s_addr >> 8) & 255,
 	       from->sin_addr.s_addr & 255);
 count:
+	if (first_board(s)) {
+		mc_status->viewer_addr = from->sin_addr.s_addr;
+		mc_status->viewer_port = from->sin_port;
+	}
 	for (i = 0; i < MAX_VIEWERS; i++)
 		if (s->viewers[i].last && s->pass - s->viewers[i].last < 10UL * s->cfg->fps)
 			n++;
@@ -1391,6 +1401,43 @@ static void write_event(struct Sender *s, struct InputEvent *ie)
 	DoIO((struct IORequest *)s->inreq);
 }
 
+/* the pointer put at x, y on scr (NEWPOINTERPOS, pixels), code as a mouse event's */
+static void place(struct Sender *s, struct Screen *scr, WORD x, WORD y, UWORD code)
+{
+	struct InputEvent ie;
+	struct IEPointerPixel pp;
+
+	memset(&ie, 0, sizeof(ie));
+	pp.iepp_Screen = scr;
+	pp.iepp_Position.X = x;
+	pp.iepp_Position.Y = y;
+	ie.ie_Class = IECLASS_NEWPOINTERPOS;
+	ie.ie_SubClass = IESUBCLASS_PIXEL;
+	ie.ie_Code = code;
+	ie.ie_Qualifier = s->mc->in_qual;
+	ie.ie_EventAddress = (APTR)&pp;
+	write_event(s, &ie);
+}
+
+/*
+ * A button of the viewers' mouse, as a mouse's own event (Intuition 47
+ * takes no other for a button), then the pointer put back where the
+ * viewers have it: a plain mouse event goes through every input handler,
+ * and one that keeps its own idea of where the mouse is (P96ScreenCx,
+ * which never sees a pointer placed) may move it.
+ */
+static void button(struct Sender *s, struct Screen *scr, UWORD code)
+{
+	struct InputEvent ie;
+
+	memset(&ie, 0, sizeof(ie));
+	ie.ie_Class = IECLASS_RAWMOUSE;
+	ie.ie_Code = code;
+	ie.ie_Qualifier = s->mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
+	write_event(s, &ie);
+	place(s, scr, s->in_x, s->in_y, IECODE_NOBUTTON);
+}
+
 /*
  * The viewer's pointer has left its windows (for the Workbench's, beside
  * them on the same computer, say): the buttons it held let go, and the
@@ -1406,19 +1453,12 @@ static void leave(struct Sender *s, struct Screen *scr)
 	struct McCard *mc = s->mc;
 	struct IntuitionBase *IntuitionBase = s->ibase;
 	struct Screen *prev = mc->in_prev, *x;
-	struct InputEvent ie;
 	int b;
 
 	for (b = 0; b < 3; b++)
 		if (mc->in_qual & bit[b]) {
 			mc->in_qual &= ~bit[b];
-			ie.ie_Class = IECLASS_RAWMOUSE;
-			ie.ie_SubClass = CU_IN_TAG;
-			ie.ie_Code = code[b] | IECODE_UP_PREFIX;
-			ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
-			ie.ie_X = ie.ie_Y = 0;
-			ie.ie_EventAddress = NULL;
-			write_event(s, &ie);
+			button(s, scr, code[b] | IECODE_UP_PREFIX);
 		}
 	mc->in_prev = NULL;
 	/*
@@ -1439,14 +1479,8 @@ static void leave(struct Sender *s, struct Screen *scr)
 	if (!x)
 		return;
 	ScreenToFront(x);
-	/* a mouse event that moves nothing: commodities (PanoramaDesk) see the screen changed */
-	ie.ie_Class = IECLASS_RAWMOUSE;
-	ie.ie_SubClass = CU_IN_TAG;
-	ie.ie_Code = IECODE_NOBUTTON;
-	ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
-	ie.ie_X = ie.ie_Y = 0;
-	ie.ie_EventAddress = NULL;
-	write_event(s, &ie);
+	/* the pointer where it is on that screen: commodities (PanoramaDesk) see the screen changed */
+	place(s, x, x->MouseX, x->MouseY, IECODE_NOBUTTON);
 }
 
 /* one event from a viewer, as if from this Amiga's own mouse or keyboard */
@@ -1485,9 +1519,11 @@ static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 
 	switch (kind) {
 	case CU_IN_MOVE:
+		s->in_x = x + s->vx + s->xoff;
+		s->in_y = y + s->vy + s->yoff;
 		pp.iepp_Screen = scr;
-		pp.iepp_Position.X = x + s->vx + s->xoff;
-		pp.iepp_Position.Y = y + s->vy + s->yoff;
+		pp.iepp_Position.X = s->in_x;
+		pp.iepp_Position.Y = s->in_y;
 		ie.ie_Class = IECLASS_NEWPOINTERPOS;
 		ie.ie_SubClass = IESUBCLASS_PIXEL;
 		ie.ie_Code = IECODE_NOBUTTON;
@@ -1507,11 +1543,10 @@ static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 			mc->in_qual &= ~bit[b];
 		else
 			mc->in_qual |= bit[b];
-		ie.ie_Class = IECLASS_RAWMOUSE;
-		ie.ie_SubClass = CU_IN_TAG;
-		ie.ie_Code = code[b] | (a & 0x80 ? IECODE_UP_PREFIX : 0);
-		ie.ie_Qualifier = mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
-		break;
+		button(s, scr, code[b] | (a & 0x80 ? IECODE_UP_PREFIX : 0));
+		if (first_board(s))
+			mc_status->input_events++;
+		return;
 	}
 	case CU_IN_KEY:
 		q = key_qualifier(a & 0x7f);

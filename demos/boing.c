@@ -41,6 +41,8 @@
 #include <graphics/sprite.h>
 #include <graphics/displayinfo.h>
 #include <graphics/view.h>
+#include <exec/execbase.h>
+#include "mc_status.h"
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -410,6 +412,22 @@ static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 		}
 	}
 
+	/*
+	 * Did Panorama.card take them? It counts the sprite moves it saw: one
+	 * now, and the count must grow. (Where it didn't, as on a system whose
+	 * screen it can't tell, the sprites show nowhere: the window instead.)
+	 */
+	{
+		struct McBase *card = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
+		ULONG before = card ? card->status.sprite_moves : 0;
+
+		MoveSprite(vp, &cur[0]->es_SimpleSprite, b->x, b->y);
+		WaitTOF();
+		if (card && card->status.sprite_moves == before) {
+			printf("Boing: Panorama.card doesn't take sprites on this screen: the window instead\n");
+			goto out;
+		}
+	}
 	printf("Boing: drawn in %ld.%ld s; bouncing over %dx%d as sprites; Ctrl-C to stop\n",
 	       drawn / TICKS_PER_SECOND, drawn % TICKS_PER_SECOND * 10 / TICKS_PER_SECOND,
 	       scr->Width, scr->Height);
