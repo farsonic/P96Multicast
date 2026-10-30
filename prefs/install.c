@@ -482,6 +482,64 @@ static void install_tool(const char *file)
 }
 
 /*
+ * panoramapic.datatype (pictures decoded by the viewer) to
+ * SYS:Classes/DataTypes, and its descriptors JPEG and PNG to
+ * DEVS:DataTypes, unless a descriptor of that name is there already (a
+ * JPEG datatype of the user's own stays). picture.datatype V43 (Picasso96
+ * installs one; AmigaOS 3.2 has V47) is what it needs: said if missing.
+ */
+static void install_datatype(void)
+{
+	static const char *const names[] = { "JPEG", "PNG", NULL };
+	static const char *const from[] = { "PROGDIR:", "" };
+	char src[100], dst[100];
+	int i, k, n = 0;
+
+	for (i = 0; i < 2; i++) {
+		snprintf(src, sizeof(src), "%sClasses/DataTypes/panoramapic.datatype", from[i]);
+		if (exists(src))
+			break;
+	}
+	if (i == 2) {
+		notef("panoramapic.datatype: not found in the package, pictures stay as they are%s%s", "", "");
+		return;
+	}
+	if (!copy_file(src, "SYS:Classes/DataTypes/panoramapic.datatype")) {
+		notef("Could not copy %s to SYS:Classes/DataTypes/%s", src, "");
+		failed = TRUE;
+		return;
+	}
+	notef("Copied %s to SYS:Classes/DataTypes/%s", src, "");
+	for (k = 0; names[k]; k++) {
+		snprintf(dst, sizeof(dst), "DEVS:DataTypes/%s", names[k]);
+		if (exists(dst)) {
+			notef("DEVS:DataTypes/%s is there already: left as it is (remove it for Panorama's)%s",
+			      names[k], "");
+			continue;
+		}
+		snprintf(src, sizeof(src), "%sDevs/DataTypes/%s", from[i], names[k]);
+		if (copy_file(src, dst))
+			n++;
+		else {
+			notef("Could not copy %s to %s", src, dst);
+			failed = TRUE;
+		}
+	}
+	if (n)
+		notef("DEVS:DataTypes: JPEG and PNG pictures are decoded by the viewer (panoview) "
+		      "from the next boot%s%s", "", "");
+	{
+		struct Library *pic = OpenLibrary((STRPTR)"datatypes/picture.datatype", 43);
+
+		if (pic)
+			CloseLibrary(pic);
+		else
+			notef("  picture.datatype V43 is missing: install Picasso96's (Classes/DataTypes) "
+			      "for them to show%s%s", "", "");
+	}
+}
+
+/*
  * ATBOOT=1: PanoramaDesk in SYS:WBStartup, with an icon, so the shared
  * desktop opens at every boot; ATBOOT=0 takes it out again.
  */
@@ -1127,6 +1185,8 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	install_tool("wrapstat");
 	install_tool("PanoramaDesk");
 	install_tool("Boing");
+	install_tool("dtpic");
+	install_datatype();
 	install_script("DesktopOpen");
 	install_script("DesktopShell");
 	install_script("DesktopBoing");

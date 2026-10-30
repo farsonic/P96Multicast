@@ -146,6 +146,17 @@ sprites: Panorama.card (`SPRITES=1`) takes a program's sprites 1-7 on its
 screens and the viewers draw them on top, so the ball is round and moves
 without a pixel of the screen being sent.
 
+## Pictures decoded by the viewer
+
+`panoramapic.datatype` (dt/) is a picture.datatype subclass for JPEG and
+PNG (DEVS:DataTypes descriptors from dist/mkdtype.py) that does no decoding
+itself: it sends the file over TCP to the viewer Panorama.card last heard
+from (panoview's `--decode-port`, 9700; Pillow decodes) and writes the
+pixels it gets back into picture.datatype V43 (`PDTM_WRITEPIXELARRAY`).
+Multiview and everything else that uses datatypes shows JPEG and PNG that
+way, in seconds instead of minutes on a 68020. `dtpic` (tests/) loads a
+picture and times it; emu/picture_test.sh checks it end to end.
+
 ## Watching
 
 ```

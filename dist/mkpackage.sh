@@ -14,16 +14,18 @@ STAGE=build/package
 PKG=$STAGE/Panorama
 
 for f in build/Panorama.card build/Wrap.card build/mctest build/wrapstat build/PanoramaPrefs \
-         build/PanoramaDesk build/Boing; do
+         build/PanoramaDesk build/Boing build/panoramapic.datatype build/dtpic; do
 	[ -f "$f" ] || { echo "$f missing: run make first"; exit 1; }
 done
 rm -rf "$STAGE" build/Panorama.lha
-mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Prefs" "$PKG/C" \
-	"$PKG/Client" "$PKG/Docs" "$PKG/Source" "$PKG/Scripts"
+mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Devs/DataTypes" "$PKG/Prefs" "$PKG/C" \
+	"$PKG/Classes/DataTypes" "$PKG/Client" "$PKG/Docs" "$PKG/Source" "$PKG/Scripts"
 
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Panorama.card build/Wrap.card "$PKG/Libs/Picasso96/"
-cp build/mctest build/wrapstat build/PanoramaDesk build/Boing "$PKG/C/"
+cp build/mctest build/wrapstat build/PanoramaDesk build/Boing build/dtpic "$PKG/C/"
+cp build/panoramapic.datatype "$PKG/Classes/DataTypes/"
+cp build/dtypes/JPEG build/dtypes/PNG "$PKG/Devs/DataTypes/"
 cp build/PanoramaPrefs "$PKG/"
 cp client/panoview.py tests/fake_sender.py "$PKG/Client/"
 # scripts: the shared desktop from Workbench (IconX) or a Shell; the viewer on a Mac

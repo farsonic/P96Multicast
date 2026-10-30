@@ -34,6 +34,9 @@ Contents
   C/wrapstat                       shows what Wrap.card wraps
   C/PanoramaDesk               the shared desktop, with hotkeys (below)
   C/Boing                          the ball, bouncing over the desktop
+  C/dtpic                          a picture through datatypes, timed
+  Classes/DataTypes/panoramapic.datatype, Devs/DataTypes/JPEG, PNG
+                                   JPEG and PNG pictures, decoded by the viewer
   Scripts/                         the desktop without typing (double-click,
                                    or by name in a Shell once installed):
     DesktopOpen                    open it, with a Shell in the middle
@@ -145,6 +148,22 @@ round, smooth, and nothing of the screen redrawn. Ctrl-C stops it. On any
 other screen, or with WINDOW, it is a window: click the ball or Ctrl-C.
 Boing SHADED lights the ball in 12 shades: attached sprite pairs, 15
 colours each, as the hardware has them.
+
+Pictures decoded by the viewer
+-------------------------------
+The computer showing the desktop decodes pictures in a moment; a 68020
+takes a minute over a JPEG. panoramapic.datatype (INSTALL puts it in
+SYS:Classes/DataTypes, with DEVS:DataTypes/JPEG and PNG naming it for
+those files) sends a picture file to the viewer (panoview decodes it:
+--decode-port, 9700 by default; it needs the Pillow Python package) and
+gets the pixels back: Multiview, Workbench and every program that shows
+pictures through datatypes gets JPEG and PNG this way, with no decoder
+on the Amiga. It needs picture.datatype V43 or later: Picasso96's, or
+AmigaOS 3.2's. The viewer asked is the one Panorama.card last heard
+from; ENV:PanoramaDecoder (address, or address:port) names another.
+A JPEG or PNG datatype of your own in DEVS:DataTypes is left alone:
+remove it to use Panorama's. dtpic FILE [PUBSCREEN=] [SECS=] shows a
+picture and says how long the loading took.
 
 The easy way: PanoramaPrefs
 ----------------------------
