@@ -15,6 +15,7 @@
 #   EXTRA_PREFS='SPRITES=0' ...         ... these lines added to Panorama.prefs
 #   INSTANCE=1 ...                      ... on a network, display and group of
 #                                           its own: several runs at once
+#   WBMODE=UAE ...                      ... the Workbench on the UAE board itself, not through Wrap.card
 #   SERIAL=1 ...                        ... the Amiga's serial output (a card
 #                                           built with make DEBUG=1) to serial-*.log
 set -u
@@ -198,7 +199,7 @@ C:mctest LIST >Work:modes2.txt
 Echo >Work:bootm.done done
 EOF
 boot bootm.done
-id=$(tr -d '\r' < "$work/modes2.txt" 2>/dev/null | awk '$2 == 640 && $4 == 480 && $6 == 8 && $7 ~ /^(Wrap|UAE):/ { print $1; exit }')
+id=$(tr -d '\r' < "$work/modes2.txt" 2>/dev/null | awk -v pre="^(${WBMODE:-Wrap|UAE}):" '$2 == 640 && $4 == 480 && $6 == 8 && $7 ~ pre { print $1; exit }')
 echo "Workbench mode: $id"
 mkdir -p "$sys/Prefs/Env-Archive/Sys"
 python3 - "$sys/Prefs/Env-Archive/Sys/screenmode.prefs" "$id" <<'PYEOF'
