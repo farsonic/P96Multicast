@@ -45,7 +45,8 @@ MUI ?= /home/user/toolchain/mui/include
 all: $(BUILD)/Panorama.card $(BUILD)/Wrap.card $(BUILD)/mctest $(BUILD)/wrapstat \
      $(BUILD)/PanoramaDesk $(BUILD)/Boing \
      $(BUILD)/PanoramaPrefs \
-     $(BUILD)/panoramapic.datatype $(BUILD)/dtypes/JPEG $(BUILD)/dtypes/PNG $(BUILD)/dtpic
+     $(BUILD)/panoramapic.datatype $(BUILD)/dtypes/JPEG $(BUILD)/dtypes/PNG $(BUILD)/dtpic \
+     $(BUILD)/cxlog
 
 $(BUILD):
 	mkdir -p $(BUILD)

@@ -23,7 +23,7 @@ mkdir -p "$PKG/Libs/Picasso96" "$PKG/Devs/Monitors" "$PKG/Devs/DataTypes" "$PKG/
 
 cp dist/ReadMe "$PKG/ReadMe"
 cp build/Panorama.card build/Wrap.card "$PKG/Libs/Picasso96/"
-cp build/mctest build/wrapstat build/PanoramaDesk build/Boing build/dtpic "$PKG/C/"
+cp build/mctest build/wrapstat build/PanoramaDesk build/Boing build/dtpic build/cxlog "$PKG/C/"
 cp build/panoramapic.datatype "$PKG/Classes/DataTypes/"
 cp build/dtypes/JPEG build/dtypes/PNG "$PKG/Devs/DataTypes/"
 cp build/PanoramaPrefs "$PKG/"

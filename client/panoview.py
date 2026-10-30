@@ -1460,16 +1460,23 @@ def run_window(heads, args):  # pragma: no cover - interactive
             return
         ev = pending[i]
         if kind == IN_MOVE and ev and ev[-1][0] == IN_MOVE:
-            ev[-1] = (kind, a, x, y)
+            # the later place; the buttons' state if either knows it
+            ev[-1] = (kind, a if a & 0x80 or not ev[-1][1] & 0x80 else ev[-1][1], x, y)
         else:
             ev.append((kind, a, x, y))
 
     def on_motion(e):
+        # with the buttons held as the system has them (Tk's e.state): the
+        # card lets go of one it thinks is held but isn't (a release lost to
+        # the window getting the focus, say), which left every later click
+        # dead until the pointer left the window
         i, x, y = head_at(e.widget, e.x, e.y)
         if i is not None:
             state["keys"] = i
             state["local"] = (i, x, y)
-        add(i, IN_MOVE, 0, x, y)
+        held_mask = (1 if e.state & 0x100 else 0) | (2 if e.state & 0x400 else 0) | \
+            (4 if e.state & 0x200 else 0)
+        add(i, IN_MOVE, 0x80 | held_mask, x, y)
 
     def on_button(e, up):
         i, x, y = head_at(e.widget, e.x, e.y)

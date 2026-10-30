@@ -93,6 +93,7 @@ struct McStatus {
 	ULONG viewer_addr;     /* the viewer last heard from: IPv4, network order (0: none) */
 	UWORD viewer_port;     /* ... and its port */
 	UWORD viewer_pad;
+	ULONG viewer_addrs[8]; /* every viewer heard from lately, the last first (0: none) */
 	ULONG pass_us;         /* the sender's pass, on average: microseconds */
 	ULONG snapshot_us;     /* ... of which: finding the screen */
 	ULONG viewers_us;      /* ... reading what viewers sent */

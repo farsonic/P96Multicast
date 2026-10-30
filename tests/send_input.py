@@ -8,6 +8,8 @@ address and stream), then sends each STEP:
 
     move:X,Y    the pointer to X,Y on this part of the screen
     click:B     button B (1 left, 2 right, 3 middle) pressed and released
+    press:B     button B pressed, and left so (a release lost)
+    release:B   button B released
     type:TEXT   the keys for TEXT (a US keyboard; \\n is Return)
     leave       the pointer out of the viewer's windows
     wait:S      S seconds
@@ -83,6 +85,10 @@ def main():
             send([(panoview.IN_BUTTON, b, 0, 0)])
             time.sleep(0.1)
             send([(panoview.IN_BUTTON, b | 0x80, 0, 0)])
+        elif kind == "press":
+            send([(panoview.IN_BUTTON, int(arg), 0, 0)])
+        elif kind == "release":
+            send([(panoview.IN_BUTTON, int(arg) | 0x80, 0, 0)])
         elif kind == "type":
             send(keys_for(arg.replace("\\n", "\n")))
         elif kind == "leave":

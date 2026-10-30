@@ -228,6 +228,20 @@ If NOT EXISTS Work:g6
   Skip w6 BACK
 EndIf
 C:mctest WHERE >Work:sel6.txt
+Echo >Work:mark-s7 x
+Lab w7
+If NOT EXISTS Work:g7
+  Wait 1
+  Skip w7 BACK
+EndIf
+C:mctest WHERE >Work:sel7.txt
+Echo >Work:mark-s8 x
+Lab w8
+If NOT EXISTS Work:g8
+  Wait 1
+  Skip w8 BACK
+EndIf
+C:mctest WHERE >Work:sel8.txt
 Echo >Work:boot2.done done
 EOF
 
@@ -256,13 +270,23 @@ step() {
 		xdotool mousemove $((X + 600)) $((Y + 175)); sleep 0.3; xdotool click 1 ;;
 	3|5)	xdotool mousemove 20 1000; sleep 1
 		xdotool mousemove $((X + 250)) $((Y + 175)); sleep 0.3; xdotool click 1 ;;
+	7)	# a press on Shell B whose release never comes (as a Mac loses the
+		# release of the click that gives a window the focus): sent as a
+		# viewer would, the real pointer out of the window meanwhile
+		xdotool mousemove 20 1000; sleep 1
+		python3 tests/send_input.py --group $GROUP --port 9696 --iface $HOST_IP \
+			move:600,175 press:1 >"$OUT/press.log" 2>&1
+		sleep 1 ;;
+	8)	# back in, a plain click on Shell A: the move carries the buttons'
+		# true state, the card lets go of the one it thought held
+		xdotool mousemove $((X + 250)) $((Y + 175)); sleep 0.3; xdotool click 1 ;;
 	esac
 	sleep 1
 	import -window root "$OUT/step-$1.png" 2>/dev/null
 	touch "$work/g$1"
 }
 during() {
-	for n in 1 2 3 4 5 6; do
+	for n in 1 2 3 4 5 6 7 8; do
 		if [ -f "$work/mark-s$n" ] && [ ! -f "$work/g$n" ]; then
 			step $n
 		fi
@@ -273,9 +297,10 @@ kill $vpid 2>/dev/null
 wait $vpid 2>/dev/null
 [ -n "$xpid" ] && kill "$xpid" 2>/dev/null
 
-for n in 0 1 2 3 4 5 6; do
+for n in 0 1 2 3 4 5 6 7 8; do
 	echo "sel$n: $(tr -d '\r' < "$work/sel$n.txt" 2>/dev/null)"
 done
+cat "$OUT/press.log" 2>/dev/null
 cat "$OUT/panoview.log"
 check() {
 	if eval "$1"; then
@@ -295,4 +320,6 @@ check '[ "$(active 6)" = ShellB ]' "... and on Shell B"
 at() { tr -d '\r' < "$work/sel$1.txt" 2>/dev/null | sed -n 's/.* mouse \([0-9]* [0-9]*\) .*/\1/p'; }
 check '[ "$(at 1)" = "250 175" ] && [ "$(at 2)" = "600 175" ]' \
 	"the pointer stays where the viewer clicked ($(at 1); $(at 2))"
+check '[ "$(active 7)" = ShellB ]' "a press on Shell B whose release is lost selects it"
+check '[ "$(active 8)" = ShellA ]' "... and a plain click on Shell A after it still selects (the button let go by the move's state)"
 exit $status

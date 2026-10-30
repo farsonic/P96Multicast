@@ -1228,18 +1228,41 @@ static void hear(struct Sender *s, struct sockaddr_in *from)
 	oldest->addr = from->sin_addr.s_addr;
 	oldest->port = from->sin_port;
 	oldest->last = s->pass;
-	if (first_board(s)) {
-		/* for programs that ask a viewer for work (panoramapic.datatype) */
-		mc_status->viewer_addr = from->sin_addr.s_addr;
-		mc_status->viewer_port = from->sin_port;
-	}
 	mc_log(s, "a viewer at %ld.%ld.%ld.%ld\n", from->sin_addr.s_addr >> 24,
 	       (from->sin_addr.s_addr >> 16) & 255, (from->sin_addr.s_addr >> 8) & 255,
 	       from->sin_addr.s_addr & 255);
 count:
 	if (first_board(s)) {
+		/*
+		 * For programs that ask a viewer for work (panoramapic.datatype):
+		 * the one heard from now, and every one heard from lately after
+		 * it, the most recent first (an old viewer without a decoder may
+		 * be among them: they try each)
+		 */
+		ULONG last = 0;
+		int k = 0;
+
 		mc_status->viewer_addr = from->sin_addr.s_addr;
 		mc_status->viewer_port = from->sin_port;
+		mc_status->viewer_addrs[k++] = from->sin_addr.s_addr;
+		for (;;) {
+			struct Viewer *best = NULL;
+
+			for (i = 0; i < MAX_VIEWERS; i++) {
+				v = &s->viewers[i];
+				if (v->last && s->pass - v->last < 10UL * s->cfg->fps &&
+				    v->addr != from->sin_addr.s_addr && (!last || v->last < last) &&
+				    (!best || v->last > best->last))
+					best = v;
+			}
+			if (!best || k >= 8)
+				break;
+			last = best->last;
+			if (best->addr != mc_status->viewer_addrs[k - 1])
+				mc_status->viewer_addrs[k++] = best->addr;
+		}
+		while (k < 8)
+			mc_status->viewer_addrs[k++] = 0;
 	}
 	for (i = 0; i < MAX_VIEWERS; i++)
 		if (s->viewers[i].last && s->pass - s->viewers[i].last < 10UL * s->cfg->fps)
@@ -1523,15 +1546,37 @@ static void input_event(struct Sender *s, UBYTE kind, UBYTE a, WORD x, WORD y)
 	case CU_IN_MOVE:
 		s->in_x = x + s->vx + s->xoff;
 		s->in_y = y + s->vy + s->yoff;
-		pp.iepp_Screen = scr;
-		pp.iepp_Position.X = s->in_x;
-		pp.iepp_Position.Y = s->in_y;
-		ie.ie_Class = IECLASS_NEWPOINTERPOS;
-		ie.ie_SubClass = IESUBCLASS_PIXEL;
-		ie.ie_Code = IECODE_NOBUTTON;
-		ie.ie_Qualifier = mc->in_qual;
-		ie.ie_EventAddress = (APTR)&pp;
-		break;
+		place(s, scr, s->in_x, s->in_y, IECODE_NOBUTTON);
+		if (a & 0x80) {
+			/*
+			 * The buttons as the viewer's system has them (1 left, 2
+			 * right, 4 middle): one held here but not there (its release
+			 * never came: every click after it would be "still down" and
+			 * select nothing) let go, one held there pressed
+			 */
+			static const UWORD code[3] = { IECODE_LBUTTON, IECODE_RBUTTON, IECODE_MBUTTON };
+			static const UWORD bit[3] = {
+				IEQUALIFIER_LEFTBUTTON, IEQUALIFIER_RBUTTON, IEQUALIFIER_MIDBUTTON
+			};
+			int b;
+
+			for (b = 0; b < 3; b++) {
+				BOOL there = (a >> b) & 1, here = (mc->in_qual & bit[b]) != 0;
+
+				if (there == here)
+					continue;
+				if (here) {
+					mc->in_qual &= ~bit[b];
+					button(s, scr, code[b] | IECODE_UP_PREFIX);
+				} else {
+					mc->in_qual |= bit[b];
+					button(s, scr, code[b]);
+				}
+			}
+		}
+		if (first_board(s))
+			mc_status->input_events++;
+		return;
 	case CU_IN_BUTTON: {
 		static const UWORD code[3] = { IECODE_LBUTTON, IECODE_RBUTTON, IECODE_MBUTTON };
 		static const UWORD bit[3] = {

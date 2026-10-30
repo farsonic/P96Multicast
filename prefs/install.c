@@ -1186,6 +1186,7 @@ BOOL install(void (*note)(const char *), BOOL dry_run, const char *from, const c
 	install_tool("PanoramaDesk");
 	install_tool("Boing");
 	install_tool("dtpic");
+	install_tool("cxlog");
 	install_datatype();
 	install_script("DesktopOpen");
 	install_script("DesktopShell");

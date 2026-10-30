@@ -220,7 +220,7 @@ INPUT kinds:
 
 | Kind | Name | |
 |---|---|---|
-| 1 | MOVE | the pointer to x, y on this part of the screen |
+| 1 | MOVE | the pointer to x, y on this part of the screen; a: 0, or 0x80 + the buttons the viewer's system holds (1 left, 2 right, 4 middle): the card presses or releases what differs (a release lost to the viewer left a button held here, and every click after it dead) |
 | 2 | BUTTON | a: 1 left, 2 right, 3 middle; + 0x80 when released |
 | 3 | KEY | a: an Amiga raw key code; + 0x80 when released (0x7A/0x7B: the wheel, as NewMouse) |
 | 4 | LEAVE | the pointer has left all of the viewer's windows: buttons still held are released, and the screen that was in front before the viewer's mouse brought the card's (the Workbench, say) is in front again |

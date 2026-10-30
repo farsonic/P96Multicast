@@ -128,21 +128,62 @@ static BOOL parse_addr(const char *v, ULONG *addr, UWORD *port)
 	return TRUE;
 }
 
-/* the decoder: ENV:PanoramaDecoder, else the viewer Panorama.card last heard from */
-static BOOL decoder(ULONG *addr, UWORD *port)
+/*
+ * The decoders to try, in order: ENV:PanoramaDecoder, else the viewers
+ * Panorama.card heard from lately, the last first (one of them may be an
+ * old viewer with no decoder). How many.
+ */
+static int decoders(ULONG *addr, UWORD *port, int max)
 {
 	struct McBase *card;
 	char buf[64];
+	int n = 0, i;
 
-	*port = CU_DECODE_PORT;
+	port[0] = CU_DECODE_PORT;
 	if (GetVar((STRPTR)"PanoramaDecoder", (STRPTR)buf, sizeof(buf), 0) > 0 &&
-	    parse_addr(buf, addr, port))
-		return TRUE;
+	    parse_addr(buf, &addr[0], &port[0]))
+		return 1;
 	Forbid();
 	card = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
-	*addr = card && card->status.magic == MC_STATUS_MAGIC ? card->status.viewer_addr : 0;
+	if (card && card->status.magic == MC_STATUS_MAGIC) {
+		for (i = 0; i < 8 && n < max; i++)
+			if (card->status.viewer_addrs[i]) {
+				addr[n] = card->status.viewer_addrs[i];
+				port[n++] = CU_DECODE_PORT;
+			}
+		if (!n && card->status.viewer_addr) {
+			addr[0] = card->status.viewer_addr;
+			port[0] = CU_DECODE_PORT;
+			n = 1;
+		}
+	}
 	Permit();
-	return *addr != 0;
+	return n;
+}
+
+/* a connection to the first decoder that takes one, or -1 */
+static LONG connect_decoder(struct Library *SocketBase)
+{
+	ULONG addr[8];
+	UWORD port[8];
+	struct sockaddr_in sa;
+	int n = decoders(addr, port, 8), i;
+
+	for (i = 0; i < n; i++) {
+		LONG s = socket(AF_INET, SOCK_STREAM, 0);
+
+		if (s < 0)
+			return -1;
+		memset(&sa, 0, sizeof(sa));
+		sa.sin_len = sizeof(sa);
+		sa.sin_family = AF_INET;
+		sa.sin_port = port[i];
+		sa.sin_addr.s_addr = addr[i];
+		if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) == 0)
+			return s;
+		CloseSocket(s);
+	}
+	return -1;
 }
 
 /* the largest picture wanted: ENV:PanoramaDecoderMax ("2048" or "1600x1200"), else MAXDEFAULT */
@@ -176,31 +217,27 @@ static void largest(UWORD *mw, UWORD *mh)
 static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd, STRPTR name)
 {
 	struct Library *SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 3);
-	struct sockaddr_in sa;
 	UBYTE head[16], *rows = NULL;
-	ULONG addr, rowbytes, band, y;
-	UWORD port, w, h, mw, mh;
+	ULONG rowbytes, band, y;
+	UWORD w, h, mw, mh;
 	LONG s = -1;
 	BOOL ok = FALSE;
 
+	/*
+	 * The errors a program shows: DTERROR_COULDNT_OPEN ("couldn't open")
+	 * when no viewer decodes for us, ERROR_OBJECT_WRONG_TYPE when the
+	 * viewer says it isn't a picture it knows, DTERROR_NOT_ENOUGH_DATA when
+	 * the connection broke
+	 */
 	if (!SocketBase) {
 		SetIoErr(DTERROR_COULDNT_OPEN);
 		return FALSE;
 	}
-	if (!decoder(&addr, &port)) {
+	s = connect_decoder(SocketBase);
+	if (s < 0) {
 		SetIoErr(DTERROR_COULDNT_OPEN);
 		goto out;
 	}
-	s = socket(AF_INET, SOCK_STREAM, 0);
-	if (s < 0)
-		goto out;
-	memset(&sa, 0, sizeof(sa));
-	sa.sin_len = sizeof(sa);
-	sa.sin_family = AF_INET;
-	sa.sin_port = port;
-	sa.sin_addr.s_addr = addr;
-	if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0)
-		goto out;
 	{
 		/* a slow viewer is one thing, a gone one another: a minute */
 		struct timeval tv;
@@ -224,9 +261,12 @@ static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd
 	head[14] = mh >> 8;
 	head[15] = mh;
 	if (!send_all(SocketBase, s, head, 16) || !send_all(SocketBase, s, data, size) ||
-	    !recv_all(SocketBase, s, head, 12) || memcmp(head, "CUDR", 4) != 0 || head[4] != 0 ||
-	    head[5] != 0) {
-		SetIoErr(ERROR_OBJECT_WRONG_TYPE);
+	    !recv_all(SocketBase, s, head, 12) || memcmp(head, "CUDR", 4) != 0) {
+		SetIoErr(DTERROR_NOT_ENOUGH_DATA);
+		goto out;
+	}
+	if (head[4] != 0 || head[5] != 0) {
+		SetIoErr(head[4] == 2 ? ERROR_NO_FREE_STORE : ERROR_OBJECT_WRONG_TYPE);
 		goto out;
 	}
 	w = (head[8] << 8) | head[9];
@@ -260,7 +300,7 @@ static BOOL decode(Object *o, UBYTE *data, ULONG size, struct BitMapHeader *bmhd
 		ULONG n = h - y < band ? h - y : band;
 
 		if (!recv_all(SocketBase, s, rows, n * rowbytes)) {
-			SetIoErr(ERROR_OBJECT_WRONG_TYPE);
+			SetIoErr(DTERROR_NOT_ENOUGH_DATA);
 			goto out;
 		}
 		if (!DoMethod(o, PDTM_WRITEPIXELARRAY, (ULONG)rows, PBPAFMT_RGB, rowbytes, 0, y, w, n)) {

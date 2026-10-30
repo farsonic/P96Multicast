@@ -5,7 +5,8 @@
  *   cxlog [SECS=10] [MAX=40]
  *
  * Prints class, subclass, code, qualifier, x, y of each RAWMOUSE,
- * NEWPOINTERPOS, POINTERPOS and TABLET event.
+ * NEWPOINTERPOS, POINTERPOS and TABLET event, then the screen in front, the
+ * pointer on it and the active window: what a click did.
  */
 #include <exec/ports.h>
 #include <dos/dos.h>
@@ -15,10 +16,14 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/commodities.h>
+#include <proto/intuition.h>
+#include <intuition/intuitionbase.h>
+#include <intuition/screens.h>
 #include <stdio.h>
 #include <string.h>
 
 struct Library *CxBase;
+struct IntuitionBase *IntuitionBase;
 
 static const char template[] = "SECS/N,MAX/N";
 
@@ -37,6 +42,7 @@ int main(void)
 	struct DateStamp ds;
 	int i;
 
+	IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 37);
 	CxBase = OpenLibrary("commodities.library", 37);
 	port = CreateMsgPort();
 	if (!CxBase || !port)
@@ -73,10 +79,19 @@ int main(void)
 		while ((m = (CxMsg *)GetMsg(port)) != NULL) {
 			struct InputEvent *ie = (struct InputEvent *)CxMsgData(m);
 
-			if (n++ < max)
-				printf("class %02x sub %02x code %04x qual %04x x %d y %d addr %08lx\n",
+			if (n++ < max) {
+				struct Screen *scr = IntuitionBase ? IntuitionBase->FirstScreen : NULL;
+				struct Window *w = IntuitionBase ? IntuitionBase->ActiveWindow : NULL;
+
+				printf("class %02x sub %02x code %04x qual %04x x %d y %d addr %08lx",
 				       ie->ie_Class, ie->ie_SubClass, ie->ie_Code, ie->ie_Qualifier,
 				       ie->ie_X, ie->ie_Y, (ULONG)ie->ie_EventAddress);
+				if (scr)
+					printf("  front \"%s\" at %d,%d active \"%s\"",
+					       scr->Title ? (char *)scr->Title : "?", scr->MouseX, scr->MouseY,
+					       w && w->Title ? (char *)w->Title : "-");
+				printf("\n");
+			}
 			ReplyMsg((struct Message *)m);
 		}
 	}
@@ -89,6 +104,8 @@ int main(void)
 	}
 	DeleteMsgPort(port);
 	CloseLibrary(CxBase);
+	if (IntuitionBase)
+		CloseLibrary((struct Library *)IntuitionBase);
 	if (rda)
 		FreeArgs(rda);
 	return RETURN_OK;
