@@ -62,6 +62,7 @@
 #include <intuition/intuitionbase.h>
 #include <string.h>
 #include <stdio.h>
+#include "kdebug.h"
 
 struct Library *CyberGfxBase;
 
@@ -89,9 +90,9 @@ void __UnLockBitMap(__reg("a6") void *, __reg("a0") APTR lock) = "\tjsr\t-174(a6
 #define LBMI_BYTESPERROW  0x84001006UL
 #define LBMI_BASEADDRESS  0x84001007UL
 
-static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S,WINDOWS/S,BROKERS/S,KEY/K/N,BUSY/K/N";
+static const char template[] = "LIST/S,STATUS/S,NAME/K,WIDTH/N,HEIGHT/N,DEPTH/N,SECS/N,PUBSCREEN/K,DEFAULT/S,BACK/S,SPAN/K,MARK/K,STEP/N,WORKLOAD/S,DUMP/K,MOUSE/K,WHERE/S,WINDOWS/S,BROKERS/S,KEY/K/N,BUSY/K/N,TOF/K/N";
 enum { A_LIST, A_STATUS, A_NAME, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_PUBSCREEN, A_DEFAULT, A_BACK,
-       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_WINDOWS, A_BROKERS, A_KEY, A_BUSY, A_COUNT };
+       A_SPAN, A_MARK, A_STEP, A_WORKLOAD, A_DUMP, A_MOUSE, A_WHERE, A_WINDOWS, A_BROKERS, A_KEY, A_BUSY, A_TOF, A_COUNT };
 
 static const char *blit_names[MC_BLIT_KINDS + 1] = {
 	"FillRect", "InvertRect", "BlitRect", "BlitTemplate", "BlitPattern", "DrawLine",
@@ -975,6 +976,24 @@ int main(void)
 		} while ((now.ds_Minute - start.ds_Minute) * 60 * TICKS_PER_SECOND + now.ds_Tick -
 		         start.ds_Tick < *(LONG *)args[A_BUSY] * TICKS_PER_SECOND);
 		printf("busy: %lu rounds\n", spins);
+		FreeArgs(rda);
+		return RETURN_OK;
+	}
+	if (args[A_TOF]) {
+		/* TOF=n: n seconds of WaitTOF() in a loop, as a program in step with the display */
+		struct DateStamp start, now;
+		ULONG frames = 0;
+
+		DateStamp(&start);
+		do {
+			WaitTOF();
+			frames++;
+			if (frames % 50 == 0)
+				KDEBUG(("T%ld\n", (LONG)(frames / 50)));
+			DateStamp(&now);
+		} while ((now.ds_Minute - start.ds_Minute) * 60 * TICKS_PER_SECOND + now.ds_Tick -
+		         start.ds_Tick < *(LONG *)args[A_TOF] * TICKS_PER_SECOND);
+		printf("tof: %lu frames\n", frames);
 		FreeArgs(rda);
 		return RETURN_OK;
 	}

@@ -22,8 +22,8 @@
 #include "mc_status.h"
 
 #define MC_CARDNAME "Panorama.card"
-#define MC_VERSION_STR "3.4"
-#define MC_REVISION    4      /* the library's lib_Revision: keep with the string and libstart.s */
+#define MC_VERSION_STR "3.5"
+#define MC_REVISION    5      /* the library's lib_Revision: keep with the string and libstart.s */
 #define MC_DATE "29.10.2026"
 
 extern struct ExecBase *SysBase;
@@ -110,6 +110,7 @@ struct McPattern { struct McRec r; UBYTE rowmask, px, py, pad; ULONG fg, bg; };
 struct McCard {
 	struct BoardInfo *bi;
 	UWORD  boardnum;       /* 0 for the first board */
+	UWORD  vbint_on;       /* SetInterrupt(): the vertical blank interrupt wanted */
 	char   boardname[16];
 	struct McConfig cfg;
 	APTR   vram_alloc;     /* AllocMem() block, vram is aligned inside it */

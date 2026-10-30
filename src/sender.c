@@ -38,6 +38,7 @@
 #include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
 #include "mcard.h"
+#include "kdebug.h"
 #include "copper.h"
 #include "render.h"
 #include "riptide_mmsg.h"
@@ -60,6 +61,7 @@ struct Viewer {
 
 struct Sender {
 	struct McCard *mc;
+	ULONG  dbg_passes;               /* make DEBUG=1: passes, for the heartbeat */
 	UWORD  view;                     /* which part of a SPLIT= screen, 0 for the first */
 	BOOL   behind;                   /* the board is switched off: another board's in front */
 	WORD   vx, vy;                   /* its top left on the screen */
@@ -2246,6 +2248,10 @@ static void SenderMain(void)
 			Permit();
 		}
 		pass(s);
+#ifdef MC_DEBUG
+		if (++s->dbg_passes % 50 == 0)
+			KDEBUG(("S%ld\n", (LONG)(s->dbg_passes / 50)));
+#endif
 		if (mc->nviews > 1 && s->view && !mc->lead_gone) {
 			if (Wait(SIGBREAKF_CTRL_F | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 				break;

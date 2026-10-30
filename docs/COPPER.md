@@ -88,9 +88,8 @@ Copper is built on three rules:
   20-byte record instead of two redrawn areas. Under Wrap.card, a head passes on
   the wrapped card's pointer, if that card has one.
 * **Timing:** with `FPS=50` (the default) a pass runs just after each vertical
-  blank (the sender is woken by the vertical blank interrupt; not with
-  `WaitTOF()`, which under Picasso96 holds the shown board's lock until the
-  blank), as the programs that wait for it have just moved their sprites and
+  blank (the sender is woken by a vertical blank interrupt server of its own),
+  as the programs that wait for it have just moved their sprites and
   drawn: one update per frame they make, none of them shown twice
   or missed. Each FRAME carries its time on the Amiga, and panoview shows
   every update that far after the one before, a little behind (the network's

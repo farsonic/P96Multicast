@@ -66,6 +66,7 @@
 #include "mcprefs.h"
 #include "copper.h"
 #include "lang.h"
+#include "kdebug.h"
 
 #define MD_VERSION "2.0"
 #define PORTNAME "PanoramaDesk"
@@ -412,7 +413,9 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 		y = wb_side == WB_ABOVE ? 2 : wb_side == WB_BELOW ? desk->Height - 3 :
 		    my0 + (WORD)((frac * mhei) >> 16);
 	}
+	KDEBUG(("D:cross to_wb=%ld a\n", (LONG)to_wb));
 	ScreenToFront(to);
+	KDEBUG(("D:cross b\n"));
 
 	/* the pointer across, as an event, as a tablet would */
 	pp.iepp_Screen = to;
@@ -427,10 +430,12 @@ static void cross(struct Screen *desk, BOOL to_wb, ULONG frac)
 	if (!to_wb)
 		desk_owner = OWN_LOCAL;
 	AddIEvents(&ie);
+	KDEBUG(("D:cross c\n"));
 
 	/* the window last active there, else the one under the pointer, else the frontmost */
 	w = to_wb ? last_wb : last_desk;
 	activate_on(to, w, x, y);
+	KDEBUG(("D:cross d\n"));
 	UnlockPubScreen(NULL, wb);
 }
 

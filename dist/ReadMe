@@ -271,6 +271,11 @@ Settings (ENV:Panorama.prefs, or ToolTypes of the monitor icon)
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.
 
+The card has a vertical blank interrupt for Picasso96 (the native
+display's), as a real card has: programs that wait for the blank
+(WaitTOF(), WaitBOVP(), double buffering) wait as on any card, and
+Picasso96 holds no lock of the board while they do (Panorama.card 3.5).
+
 Testing
 -------
   mctest STATUS     is the card loaded, is its sender running, is there a stack

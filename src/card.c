@@ -9,12 +9,15 @@
 #include <exec/execbase.h>
 #include <exec/memory.h>
 #include <exec/resident.h>
+#include <exec/interrupts.h>
+#include <hardware/intbits.h>
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
 #include "mcard.h"
 #include "mc_status.h"
+#include "kdebug.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -133,6 +136,7 @@ static BOOL SetSwitch(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD state)
 	struct McCard *mc = MC_CARD(bi);
 	UWORD old = mc->moniswitch;
 
+	KDEBUG(("C:SetSwitch %ld b%ld\n", (LONG)state, (LONG)mc->boardnum));
 	mc->moniswitch = state ? 1 : 0;
 	bi->MoniSwitch = mc->moniswitch;
 	mc->serial++;
@@ -175,6 +179,7 @@ static void SetGC(__reg("a0") struct BoardInfo *bi, __reg("a1") struct ModeInfo 
 {
 	struct McCard *mc = MC_CARD(bi);
 
+	KDEBUG(("C:SetGC %ldx%ld b%ld\n", (LONG)mi->Width, (LONG)mi->Height, (LONG)mc->boardnum));
 	mc_status->setgc_calls++;
 	bi->Border = border;
 	mc->width = mi->Width;
@@ -188,6 +193,7 @@ static void SetPanning(__reg("a0") struct BoardInfo *bi, __reg("a1") UBYTE *mem,
 {
 	struct McCard *mc = MC_CARD(bi);
 
+	KDEBUG(("C:SetPanning %ld,%ld b%ld\n", (LONG)x, (LONG)y, (LONG)mc->boardnum));
 	mc_status->panning_calls++;
 	bi->XOffset = x;
 	bi->YOffset = y;
@@ -221,6 +227,7 @@ static BOOL SetDisplay(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD state
 	struct McCard *mc = MC_CARD(bi);
 	UWORD old = mc->display;
 
+	KDEBUG(("C:SetDisplay %ld b%ld\n", (LONG)state, (LONG)mc->boardnum));
 	mc->display = state ? 1 : 0;
 	mc->serial++;
 	return old;
@@ -268,17 +275,51 @@ static void SetClock(__reg("a0") struct BoardInfo *bi)
  */
 static void WaitVerticalSync(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD end)
 {
+	KDEBUG(("C:WaitVSync %ld in\n", (LONG)end));
 	if (!end)
 		WaitTOF();
+	KDEBUG(("C:WaitVSync out\n"));
 }
 
 static BOOL GetVSyncState(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD expected)
 {
+	KDEBUG(("C:GetVSyncState %ld\n", (LONG)expected));
 	return expected;
+}
+
+/*
+ * The board's vertical blank interrupt (BIF_VBLANKINTERRUPT): the native
+ * display's, as a server on INTB_VERTB. Picasso96 fills in the board's
+ * SoftInterrupt (it wakes the programs in WaitTOF() and WaitBOVP(), and
+ * keeps its software pointer), and the card's HardInterrupt is to Cause()
+ * it at each blank while SetInterrupt() has it on, as the UAE board's does.
+ *
+ * Without the interrupt Picasso96 waits for the blank in WaitTOF() with
+ * the board's lock held (the whole frame, every frame, for a program like
+ * Boing): with a screen of the board in front, Intuition and whatever
+ * else needs the lock get it only between two frames, and the Amiga can
+ * stop for good when a program loops on WaitTOF() as the mouse crosses
+ * over to the desktop. With it, Picasso96 lets go of the lock before it
+ * waits.
+ */
+static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
+{
+	struct McCard *mc = MC_CARD(bi);
+#ifdef MC_DEBUG
+	static ULONG beats;
+
+	if (++beats % 50 == 0)
+		KDEBUG(("V%ld\n", (LONG)(beats / 50)));
+#endif
+	if (mc->vbint_on)
+		Cause(&bi->SoftInterrupt);
+	return 0;
 }
 
 static void SetInterrupt(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD state)
 {
+	KDEBUG(("C:SetInterrupt %ld b%ld\n", (LONG)state, (LONG)MC_CARD(bi)->boardnum));
+	MC_CARD(bi)->vbint_on = state;
 }
 
 static void WaitBlitter(__reg("a0") struct BoardInfo *bi)
@@ -395,7 +436,8 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	 * Bits 16-31 are user settings and stay. No video switch either: the
 	 * native display keeps its own monitor.
 	 */
-	bi->Flags = (bi->Flags & 0xffff0000UL & ~BIF_INDISPLAYCHAIN) | BIF_GRANTDIRECTACCESS;
+	bi->Flags = (bi->Flags & 0xffff0000UL & ~BIF_INDISPLAYCHAIN) | BIF_GRANTDIRECTACCESS |
+	            BIF_VBLANKINTERRUPT;
 	if (mc->cfg.quiet)
 		bi->Flags |= BIF_QUIET;
 	bi->RGBFormats = MC_FORMATS;
@@ -433,6 +475,11 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	bi->SetInterrupt = (APTR)SetInterrupt;
 	bi->WaitBlitter = (APTR)WaitBlitter;
 	bi->SetDPMSLevel = (APTR)SetDPMSLevel;
+	/* rtg.library has set the interrupt's data (bi), name and priority */
+	bi->HardInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+	bi->HardInterrupt.is_Data = bi;
+	bi->HardInterrupt.is_Code = (void (*)())vblank_int;
+	AddIntServer(INTB_VERTB, &bi->HardInterrupt);
 
 	mc->moniswitch = 1;
 	mc->display = 1;

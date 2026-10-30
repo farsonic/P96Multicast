@@ -14,6 +14,7 @@
 #   make emu-os3         PanoramaPrefs' window on AmigaOS 3.1.4 with MUI 3.8
 #   make emu-p96         the desktop install on AmigaOS with Picasso96 and
 #                        uaegfx: the mouse across to the Workbench and back
+#   make emu-boingcross  Boing from the Workbench's side, the mouse over to the desktop
 #   make emu-open        Open on a system as users have it (Workbench on uaegfx,
 #                        Riptide): the Amiga goes on, the mouse moves under load
 #   make emu-select      clicks from a viewer select windows, the pointer out and back
@@ -33,6 +34,10 @@ VAMOS ?= vamos -C 68020
 
 BUILD := build
 CFLAGS := -c99 -O2 -cpu=68020 -Iinclude -Isrc -I$(NDK)/Include_H -I$(NETINC)
+# make DEBUG=1: KDEBUG() output on the serial port (include/kdebug.h)
+ifdef DEBUG
+CFLAGS += -DMC_DEBUG
+endif
 
 CARD_OBJ := $(BUILD)/libstart.o $(BUILD)/card.o $(BUILD)/config.o $(BUILD)/sender.o $(BUILD)/orders.o $(BUILD)/render.o $(BUILD)/modes.o $(BUILD)/sprite.o
 WRAP_OBJ := $(BUILD)/wrapstart.o $(BUILD)/wrap.o $(BUILD)/mirror.o
@@ -176,7 +181,10 @@ emu-select: package
 emu-picture: package
 	emu/picture_test.sh
 
+emu-boingcross: package
+	emu/boing_cross_test.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite emu-open emu-select emu-picture clean
+.PHONY: all check package emu-test emu-wrap emu-mirror emu-span emu-copper emu-prefs emu-os3 emu-p96 emu-sprite emu-open emu-select emu-picture emu-boingcross clean
