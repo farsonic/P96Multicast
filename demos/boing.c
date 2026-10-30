@@ -413,17 +413,20 @@ static int sprite_boing(struct Ball *b, LONG secs, BOOL shaded)
 	}
 
 	/*
-	 * Did Panorama.card take them? It counts the sprite moves it saw: one
-	 * now, and the count must grow. (Where it didn't, as on a system whose
-	 * screen it can't tell, the sprites show nowhere: the window instead.)
+	 * Did Panorama.card take them? It counts the sprite images it took:
+	 * one now, and the count must grow. (Where it didn't, as on a system
+	 * whose screen it can't tell, the sprites show nowhere: the window
+	 * instead. A change, not a move: AROS's graphics fails on a sprite
+	 * moved before it was ever changed.)
 	 */
 	{
 		struct McBase *card = (struct McBase *)FindName(&SysBase->LibList, "Panorama.card");
-		ULONG before = card ? card->status.sprite_moves : 0;
+		ULONG before = card ? card->status.sprite_changes : 0;
 
-		MoveSprite(vp, &cur[0]->es_SimpleSprite, b->x, b->y);
-		WaitTOF();
-		if (card && card->status.sprite_moves == before) {
+		/* to another turn of the ball (AROS fails changing a sprite to its own image) */
+		ChangeExtSprite(vp, cur[0], spr[1][0], TAG_END);
+		cur[0] = spr[1][0];
+		if (card && card->status.sprite_changes == before) {
 			printf("Boing: Panorama.card doesn't take sprites on this screen: the window instead\n");
 			goto out;
 		}

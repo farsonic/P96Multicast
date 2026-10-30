@@ -1435,7 +1435,9 @@ static void button(struct Sender *s, struct Screen *scr, UWORD code)
 	ie.ie_Code = code;
 	ie.ie_Qualifier = s->mc->in_qual | IEQUALIFIER_RELATIVEMOUSE;
 	write_event(s, &ie);
-	place(s, scr, s->in_x, s->in_y, IECODE_NOBUTTON);
+	/* only if something did move it (the handlers ran before DoIO() returned) */
+	if (scr->MouseX != s->in_x || scr->MouseY != s->in_y)
+		place(s, scr, s->in_x, s->in_y, IECODE_NOBUTTON);
 }
 
 /*
