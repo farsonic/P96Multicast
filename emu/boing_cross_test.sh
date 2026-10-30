@@ -15,6 +15,7 @@
 #   EXTRA_PREFS='SPRITES=0' ...         ... these lines added to Panorama.prefs
 #   INSTANCE=1 ...                      ... on a network, display and group of
 #                                           its own: several runs at once
+#   NOWRAP=1 WBMODE=UAE ...             ... without Wrap.card at all
 #   WBMODE=UAE ...                      ... the Workbench on the UAE board itself, not through Wrap.card
 #   SERIAL=1 ...                        ... the Amiga's serial output (a card
 #                                           built with make DEBUG=1) to serial-*.log
@@ -127,6 +128,12 @@ base_dir = $(cd "$OUT" && pwd)/fsuae
 EOF
 SERPORT=$((1234 + INSTANCE))
 [ -n "${SERIAL:-}" ] && echo "serial_port = tcp://127.0.0.1:$SERPORT" >> "$OUT/test.fs-uae"
+# the UAE debugger (F11+D, commands on FS-UAE's stdin): on a hang, the CPU's
+# state goes to the fs-uae-*.log
+echo "console_debugger = 1" >> "$OUT/test.fs-uae"
+rm -f "$OUT/dbg.fifo"
+mkfifo "$OUT/dbg.fifo"
+exec 7<>"$OUT/dbg.fifo"
 xpid=
 if [ -z "${DISPLAY:-}" ]; then
 	Xvfb :$XDISP -screen 0 1280x1024x24 >/dev/null 2>&1 &
@@ -137,10 +144,27 @@ if [ -z "${DISPLAY:-}" ]; then
 fi
 status=0
 
+# the Amiga stopped: into the UAE debugger (F11+D in the emulator's window),
+# the registers, the last instructions and the code around the PC
+debugger_dump() {
+	wid=$(xdotool search --classname fs-uae 2>/dev/null | head -1)
+	[ -z "$wid" ] && wid=$(xdotool search --name "FS-UAE" 2>/dev/null | head -1)
+	[ -z "$wid" ] && { echo "no FS-UAE window for the debugger"; return; }
+	xdotool windowactivate --sync "$wid" 2>/dev/null
+	xdotool mousemove --window "$wid" 100 100 click 1 2>/dev/null
+	sleep 1
+	xdotool keydown F11 key d keyup F11
+	sleep 2
+	printf 'r\ne\nT\nd pc-30 30\nH 40\n' >&7
+	sleep 3
+	printf 'g\n' >&7
+	sleep 1
+}
+
 # boot DONEFILE: run FS-UAE until Work:DONEFILE exists (during: each second)
 during() { :; }
 boot() {
-	SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" >"$OUT/fs-uae-$1.log" 2>&1 &
+	SDL_AUDIODRIVER=dummy "$FSUAE_PCAP" "$OUT/test.fs-uae" <"$OUT/dbg.fifo" >"$OUT/fs-uae-$1.log" 2>&1 &
 	upid=$!
 	serpid=
 	if [ -n "${SERIAL:-}" ]; then
@@ -170,6 +194,7 @@ PYEOF
 		if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
 			echo "FAIL: timeout waiting for $1"
 			import -window root "$OUT/root-timeout.png" 2>/dev/null
+			debugger_dump
 			status=1
 			break
 		fi
@@ -212,6 +237,10 @@ open(sys.argv[1], "wb").write(b"FORM" + struct.pack(">I", len(body)) + body)
 PYEOF
 # the card to try, and the settings
 [ -n "${CARD:-}" ] && cp "$CARD" "$sys/Libs/Picasso96/Panorama.card"
+# NOWRAP=1: the Workbench on its board directly, Wrap.card gone
+if [ -n "${NOWRAP:-}" ]; then
+	rm -f "$sys/Libs/Picasso96/Wrap.card" "$sys/Devs/Monitors/Wrap" "$sys/Devs/Monitors/Wrap.info"
+fi
 if [ -n "${EXTRA_PREFS:-}" ]; then
 	printf '%s\n' "$EXTRA_PREFS" >> "$sys/Prefs/Env-Archive/Panorama.prefs"
 fi
