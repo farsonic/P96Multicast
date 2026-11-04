@@ -17,6 +17,7 @@
 #                                           its own: several runs at once
 #   NOWRAP=1 WBMODE=UAE ...             ... without Wrap.card at all
 #   WBMODE=UAE ...                      ... the Workbench on the UAE board itself, not through Wrap.card
+#   WATCH=1 ...                         ... UAE watchpoints: who clears INTENA's vertical blank bit
 #   SERIAL=1 ...                        ... the Amiga's serial output (a card
 #                                           built with make DEBUG=1) to serial-*.log
 set -u
@@ -165,6 +166,27 @@ debugger_dump() {
 	sleep 1
 }
 
+# WATCH=1: once the desktop is open, UAE watchpoints on INTENA for a write
+# that clears the vertical blank interrupt: the emulation stops at the
+# writer, and debugger_dump (at the timeout) shows it
+watch_set=
+set_watchpoints() {
+	wid=$(xdotool search --name "FS-UAE" 2>/dev/null | head -1)
+	[ -z "$wid" ] && return
+	xdotool windowfocus --sync "$wid" 2>/dev/null
+	xdotool mousemove --window "$wid" 200 200 click 1 2>/dev/null
+	sleep 1
+	xdotool keydown F11
+	sleep 0.3
+	xdotool key d
+	sleep 0.3
+	xdotool keyup F11
+	sleep 2
+	printf 'w 0 dff09a 2 W 0070\nw 1 dff09a 2 W 0020\nw 2 dff09a 2 W 0030\nw 3 dff09a 2 W 0060\nw 4 dff09a 2 W 0010\ng\n' >&7
+	sleep 1
+	watch_set=1
+}
+
 # boot DONEFILE: run FS-UAE until Work:DONEFILE exists (during: each second)
 during() { :; }
 boot() {
@@ -301,6 +323,7 @@ spid=$!
 during() {
 	if [ -f "$work/mark-w0" ] && [ ! -f "$OUT/open.png" ]; then
 		import -window root "$OUT/open.png" 2>/dev/null
+		[ -n "${WATCH:-}" ] && [ -z "$watch_set" ] && set_watchpoints
 	fi
 	if [ -f "$work/mark-w2" ] && [ ! -f "$OUT/crossed.png" ]; then
 		import -window root "$OUT/crossed.png" 2>/dev/null
