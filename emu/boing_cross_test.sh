@@ -223,7 +223,7 @@ PYEOF
 		if ! kill -0 $upid 2>/dev/null || [ $(($(date +%s) - start)) -gt "$TIMEOUT" ]; then
 			echo "FAIL: timeout waiting for $1"
 			import -window root "$OUT/root-timeout.png" 2>/dev/null
-			debugger_dump
+			debugger_dump "$1"
 			status=1
 			break
 		fi
