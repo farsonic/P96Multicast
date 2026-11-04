@@ -31,12 +31,17 @@ def cmd(c, wait=0.3):
 def dump(addr, nwords):
     """nwords 16-bit words at addr, as the m command shows them (8 a line)"""
     lines = (nwords + 7) // 8
-    out = cmd("m %08x %d" % (addr, lines), 0.2 + 0.02 * lines)
+    out = cmd("m %08x %d" % (addr, lines), 0.15)
     words = []
-    for line in out.splitlines():
-        m = re.match(r"^>*([0-9A-Fa-f]{8}) ((?:[0-9A-Fa-f]{4} ?){1,8})", line.strip())
-        if m:
-            words += m.group(2).split()
+    for _ in range(40):
+        for line in out.splitlines():
+            m = re.match(r"^>*([0-9A-Fa-f]{8}) ((?:[0-9A-Fa-f]{4} ?){1,8})", line.strip())
+            if m:
+                words += m.group(2).split()
+        if len(words) >= nwords:
+            break
+        time.sleep(0.1)
+        out = log.read()
     return [int(w, 16) for w in words][:nwords]
 
 
@@ -135,7 +140,9 @@ for node, name, sp, sigwait in tasks:
     if not (sigwait & SIGF_SINGLE or re.search(r"PanoramaDesk|mctest|Boing|input|Panorama|Wrap|Workbench|Picasso", name)):
         continue
     print("---- %s: return addresses on its stack" % name)
-    for v in longs(sp, 96):
+    stack = longs(sp, 160)
+    print("  raw: " + " ".join("%08x" % v for v in stack[:48]))
+    for v in stack:
         w = where(v)
         if w:
             print("  %08x  %s" % (v, w))
