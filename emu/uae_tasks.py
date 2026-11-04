@@ -69,17 +69,20 @@ print("ExecBase %08x" % execbase)
 # the libraries and their function entries
 funcs = []   # (entry, library, lvo)
 libs = []
-node = long1(execbase + 378)
-while node and long1(node):
-    name = string(long1(node + 10))
-    negsize = dump(node + 16, 1)[0]
-    libs.append((node, name, negsize))
-    n = negsize // 6
-    for k in range(1, min(n, 200) + 1):
-        w = dump(node - 6 * k, 3)
-        if len(w) == 3 and w[0] == 0x4EF9:
-            funcs.append(((w[1] << 16) | w[2], name, -6 * k))
-    node = long1(node)
+for listhead in (execbase + 378, execbase + 350):   # LibList, DeviceList
+    node = long1(listhead)
+    while node and long1(node):
+        name = string(long1(node + 10))
+        negsize = dump(node + 16, 1)[0]
+        libs.append((node, name, negsize))
+        n = negsize // 6
+        for k in range(1, min(n, 200) + 1):
+            w = dump(node - 6 * k, 3)
+            if len(w) == 3 and w[0] == 0x4EF9:
+                entry = (w[1] << 16) | w[2]
+                if entry >= 0x1000:
+                    funcs.append((entry, name, -6 * k))
+        node = long1(node)
 funcs.sort()
 print("libraries: " + ", ".join("%s@%08x" % (n, a) for a, n, s in libs))
 
