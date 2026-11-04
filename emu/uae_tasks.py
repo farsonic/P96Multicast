@@ -90,6 +90,7 @@ for listhead in (execbase + 378, execbase + 350):   # LibList, DeviceList
         node = long1(node)
 funcs.sort()
 print("libraries: " + ", ".join("%s@%08x" % (n, a) for a, n, s in libs))
+print("functions: " + " ".join("%08x=%s%d" % (e, n.split(".")[0], l) for e, n, l in funcs))
 
 
 def where(addr):
@@ -140,9 +141,11 @@ for node, name, sp, sigwait in tasks:
     if not (sigwait & SIGF_SINGLE or re.search(r"PanoramaDesk|mctest|Boing|input|Panorama|Wrap|Workbench|Picasso", name)):
         continue
     print("---- %s: return addresses on its stack" % name)
-    stack = longs(sp, 160)
-    print("  raw: " + " ".join("%08x" % v for v in stack[:48]))
-    for v in stack:
+    words = dump(sp, 320)
+    print("  raw: " + " ".join("%04x" % v for v in words[:96]))
+    # a return address may sit at either word alignment
+    for i in range(len(words) - 1):
+        v = (words[i] << 16) | words[i + 1]
         w = where(v)
         if w:
-            print("  %08x  %s" % (v, w))
+            print("  +%03x %08x  %s" % (2 * i, v, w))
