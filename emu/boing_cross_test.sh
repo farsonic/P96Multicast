@@ -160,8 +160,9 @@ debugger_dump() {
 	sleep 0.3
 	xdotool keyup F11
 	sleep 2
-	printf 'r\ne\nT\nd pc-30 30\n' >&7
-	sleep 3
+	# the first line after the hotkey is lost
+	printf '\nr\ne\nT\nT\nd pc-30 30\n' >&7
+	sleep 4
 	# the tasks that matter: their stacks (return addresses) and code
 	awk '/PROCESS|TASK/ { name = $0 } /SP: / && name ~ /PanoramaDesk|mctest|Boing|input.device|Wrap|Panorama/ {
 		print "m " $2 " 24"; print "d " $4 "-20 16" }' "$OUT/fs-uae-$1.log" | sed 's/^m \(........\)/m \1/' >&7
