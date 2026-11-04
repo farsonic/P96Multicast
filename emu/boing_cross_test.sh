@@ -291,12 +291,12 @@ fi
 # ORDER=desk: the program started with the desktop in front, before the
 # first crossing (its WaitTOF() then goes through the Panorama board)
 if [ "${ORDER:-wb}" = desk ]; then
-	START_DESK="Run >Work:boing.txt $LOAD
+	START_DESK="Run >NIL: $LOAD >Work:boing.txt
 Wait 4"
 	START_WB=
 else
 	START_DESK=
-	START_WB="Run >Work:boing.txt $LOAD"
+	START_WB="Run >NIL: $LOAD >Work:boing.txt"
 fi
 cat > "$work/autorun" <<EOF
 FailAt 21
