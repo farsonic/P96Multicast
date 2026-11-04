@@ -161,12 +161,10 @@ debugger_dump() {
 	xdotool keyup F11
 	sleep 2
 	# the first line after the hotkey is lost
-	printf '\nr\ne\nT\nT\nd pc-30 30\n' >&7
+	printf '\nr\ne\nd pc-30 30\n' >&7
 	sleep 4
-	# the tasks that matter: their stacks (return addresses) and code
-	awk '/PROCESS|TASK/ { name = $0 } /SP: / && name ~ /PanoramaDesk|mctest|Boing|input.device|Wrap|Panorama/ {
-		print "m " $2 " 24"; print "d " $4 "-20 16" }' "$OUT/fs-uae-$1.log" | sed 's/^m \(........\)/m \1/' >&7
-	sleep 4
+	# the tasks: where each waits (emu/uae_tasks.py walks exec's lists)
+	python3 emu/uae_tasks.py "$OUT/dbg.fifo" "$OUT/fs-uae-$1.log" > "$OUT/tasks-$1.txt" 2>&1
 	printf 'g\n' >&7
 	sleep 1
 }
