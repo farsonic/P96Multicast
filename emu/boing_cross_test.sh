@@ -374,8 +374,10 @@ check 'tr -d "\r" < "$work/where0.txt" 2>/dev/null | grep -q "^front Panorama de
 	"Open: the desktop opens in front"
 check 'tr -d "\r" < "$work/where1.txt" 2>/dev/null | grep -q "^front Workbench"' \
 	"... over the left edge: the Workbench in front"
-check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "as sprites"' \
-	"... Boing started there bounces as sprites on the desktop"
+case "$LOAD" in
+*Boing*) check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "as sprites"' \
+	"... Boing started there bounces as sprites on the desktop" ;;
+esac
 check 'tr -d "\r" < "$work/where2.txt" 2>/dev/null | grep -q "^front Panorama desktop"' \
 	"... over the right edge back: the desktop in front, and the Amiga goes on"
 t1=$(secs t1.txt) t2=$(secs t2.txt) t3=$(secs t3.txt) t4=$(secs t4.txt)
@@ -383,7 +385,11 @@ check '[ -n "$t1" ] && [ -n "$t2" ] && [ $((t2 - t1)) -le 6 ]' \
 	"... the crossing took no longer than it should ($((${t2:-0} - ${t1:-0})) s)"
 check '[ -n "$t3" ] && [ -n "$t4" ] && [ $((t4 - t3)) -le 3 ]' \
 	"... the mouse moves at once while Boing bounces ($((${t4:-0} - ${t3:-0})) s)"
-check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "frames in"' \
-	"... Boing ran to its end"
+case "$LOAD" in
+*Boing*) check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "frames in"' \
+	"... Boing ran to its end" ;;
+*TOF*) check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "tof: "' \
+	"... the WaitTOF() loop ran to its end" ;;
+esac
 echo "screens: $OUT/open.png $OUT/crossed.png"
 exit $status

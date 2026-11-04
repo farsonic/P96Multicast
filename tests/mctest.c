@@ -319,6 +319,14 @@ static void status(void)
 			if (st.sprites)
 				printf("    sprites: graphics.library's are the card's; %u in use, %lu images, %lu moves\n",
 				       st.sprites_sent, st.sprite_changes, st.sprite_moves);
+			{
+				static const char *const ticks[] = { "VERTB", "CIA-B timer B", "CIA-A timer B",
+				                                     "CIA-B timer A", "CIA-A timer A" };
+
+				printf("    vertical blank: %s; WaitTOF() %s (%lu calls answered)\n",
+				       ticks[st.tick_source < 5 ? st.tick_source : 0],
+				       st.waittof ? "is the card's" : "is not the card's", st.tof_waits);
+			}
 			if (st.pass_us) {
 				/* ms with one decimal */
 #define MS(v) (v) / 1000, (v) % 1000 / 100

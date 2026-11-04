@@ -235,6 +235,13 @@ Settings (ENV:Panorama.prefs, or ToolTypes of the monitor icon)
   SPRITES=1           graphics.library's sprites (GetExtSprite, MoveSprite,
                       ...) show on Panorama screens: the viewers draw them
                       (0: they show nothing, as on other RTG boards)
+  WAITTOF=1           WaitTOF() waits for the card's blank (a CIA timer at
+                      the display's rate), holding no lock. 0: Picasso96's
+                      WaitTOF(), which with a board that has no vertical
+                      blank interrupt sleeps on the native one with its
+                      display lock held, and the Amiga can stop for good
+                      when a screen comes to the front (Boing on the
+                      desktop, the mouse crossing over to it)
   INPUT=0             1: the mouse and keys in the viewer's windows work
                       the Amiga (the card's screen comes to the front);
                       anyone who can reach the card could, so it is off
@@ -271,10 +278,15 @@ Settings (ENV:Panorama.prefs, or ToolTypes of the monitor icon)
 ENV: wins over ToolTypes. The network settings are read again when the
 TCP/IP stack appears, so the card can start before the network.
 
-The card has a vertical blank interrupt for Picasso96 (the native
-display's), as a real card has: programs that wait for the blank
+The card has a vertical blank interrupt for Picasso96, as a real card
+has: a CIA timer at the display's rate (50 or 60 a second), on through
+graphics.library's LoadView(), which switches the native VERTB interrupt
+off while it rebuilds the display. Programs that wait for the blank
 (WaitTOF(), WaitBOVP(), double buffering) wait as on any card, and
-Picasso96 holds no lock of the board while they do (Panorama.card 3.5).
+Picasso96 holds no lock of the board while they do. With WAITTOF=1,
+WaitTOF() itself is the card's: the caller sleeps until the tick, holding
+nothing (Panorama.card 3.5; see WAITTOF= above). mctest STATUS says which
+timer ticks.
 
 Testing
 -------

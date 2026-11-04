@@ -285,6 +285,7 @@ program draws it.
 | `BLITTER` | 1 | send the drawing as orders (0: compare and send pixels only) |
 | `POINTER` | 1 | a hardware pointer that the viewers draw (0: rtg.library draws it into the screen) |
 | `SPRITES` | 1 | graphics.library's sprites 1-7 on the board's screens, drawn by the viewers (0: not patched, they show nothing) |
+| `WAITTOF` | 1 | `WaitTOF()` waits for the card's blank (a CIA timer at the display's rate), holding no lock; 0: Picasso96's `WaitTOF()`, which for a board without a vertical blank interrupt sleeps on the native VERTB with Picasso96's display lock held, and `LoadView()` (VERTB off, the lock wanted) can then stop the Amiga |
 | `FPS` | 50 | passes per second; 50 or more: a pass after each vertical blank of the display (woken by its interrupt), in step with the programs that wait for it, as many as the display has (50 PAL, 60 NTSC) |
 | `RATE` | 1500 | most KB per second |
 | `SCAN` | 2 | seconds for the background scan to cover the screen, at the fastest |
