@@ -55,6 +55,7 @@ struct McConfig {
 	UWORD split_cols, split_rows;  /* SPLIT=CxR: a stream for each part of the screen */
 	UWORD pointer;     /* a hardware pointer, drawn by the viewers (POINTER=1) */
 	UWORD sprites;     /* graphics.library's sprites on the board's screens, drawn by the viewers (SPRITES=1) */
+	UWORD waittof;     /* WaitTOF() waits for the card's blank, holding nothing (WAITTOF=1) */
 	UWORD scan;        /* seconds to compare the whole screen at most once */
 	UWORD cpu;         /* percent of the CPU the background comparing may take */
 	ULONG history;     /* bytes of sent datagrams kept for repairs */
@@ -107,6 +108,13 @@ struct McPattern { struct McRec r; UBYTE rowmask, px, py, pad; ULONG fg, bg; };
 #define MC_PTR_MAXW 64
 #define MC_PTR_MAXH 64
 
+/* a task in the card's WaitTOF() */
+struct TofWait {
+	struct MinNode node;
+	struct Task *task;
+	BOOL done;
+};
+
 struct McCard {
 	struct BoardInfo *bi;
 	UWORD  boardnum;       /* 0 for the first board */
@@ -121,6 +129,8 @@ struct McCard {
 	volatile ULONG    ticks;       /* blanks so far (WaitVerticalSync polls it) */
 	struct Task      *tick_task;   /* the sender to wake at each blank, and its signal */
 	ULONG             tick_mask;
+	struct MinList    tof_waiters; /* tasks in the card's WaitTOF(), woken at the tick */
+	UWORD             tofwait_tries;
 	char   boardname[16];
 	struct McConfig cfg;
 	APTR   vram_alloc;     /* AllocMem() block, vram is aligned inside it */
@@ -242,6 +252,7 @@ void mc_pointer_show(struct McCard *mc, ULONG on);
 
 /* sprite.c */
 void mc_sprites_install(void);
+BOOL mc_waittof_install(struct McCard *mc);
 
 /* config.c */
 void mc_config_defaults(struct McConfig *cfg);

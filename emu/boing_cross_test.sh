@@ -165,7 +165,7 @@ debugger_dump() {
 	xdotool keyup F11
 	sleep 2
 	# the first line after the hotkey is lost
-	printf '\nr\ne\nd pc-30 30\n' >&7
+	printf '\nr\ne\nd pc-30 30\nm 400343d4 6\n' >&7
 	sleep 4
 	# the tasks: where each waits (emu/uae_tasks.py walks exec's lists)
 	python3 emu/uae_tasks.py "$OUT/dbg.fifo" "$OUT/fs-uae-$1.log" > "$OUT/tasks-$1.txt" 2>&1

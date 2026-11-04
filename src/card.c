@@ -354,8 +354,74 @@ static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
 			Signal(mc->tick_task, mc->tick_mask);
 		if (mc->vbint_on)
 			Cause(&mc->bi->SoftInterrupt);
+		if (i == 0) {
+			struct TofWait *w;
+
+			while ((w = (struct TofWait *)RemHead((struct List *)&mc->tof_waiters)) != NULL) {
+				w->done = TRUE;
+				Signal(w->task, SIGF_SINGLE);
+			}
+		}
 	}
 	return 0;
+}
+
+/*
+ * WaitTOF(), the card's: the next CIA tick, holding nothing. Picasso96's
+ * WaitTOF() holds its display lock shared while it waits, and for a board
+ * without a vertical blank interrupt (as the UAE board often is) that wait
+ * is the native one on VERTB: with LoadView() then wanting the lock
+ * exclusively with VERTB off, the Amiga stops (see above). Installed over
+ * Picasso96's by mc_waittof_install() (WAITTOF=1), once Picasso96 has its
+ * own in place. Not from an interrupt, and never without the tick: then on
+ * to the WaitTOF() before.
+ */
+typedef void (*WaitTOFFn)(__reg("a6") struct GfxBase *gb);
+static WaitTOFFn old_waittof;
+#define LVO_WaitTOF -270
+
+static void new_WaitTOF(__reg("a6") struct GfxBase *gb)
+{
+	struct McCard *mc = mc_cards[0];
+	struct TofWait w;
+
+	if (!mc || !mc->ciares) {
+		old_waittof(gb);
+		return;
+	}
+	w.task = SysBase->ThisTask;
+	w.done = FALSE;
+	SetSignal(0, SIGF_SINGLE);
+	Disable();
+	AddTail((struct List *)&mc->tof_waiters, (struct Node *)&w);
+	Enable();
+	while (!w.done)
+		Wait(SIGF_SINGLE);
+	mc_status->tof_waits++;
+}
+
+/* from the sender, once a second until done: TRUE once WaitTOF() is the card's */
+BOOL mc_waittof_install(struct McCard *mc)
+{
+	APTR now;
+
+	if (old_waittof)
+		return TRUE;
+	if (!mc->cfg.waittof || !mc_cards[0] || !mc_cards[0]->ciares)
+		return FALSE;
+	/*
+	 * Over Picasso96's, not under it: wait until the vector has left the
+	 * ROM (Picasso96 patches it when it starts); mc_sender_start() keeps
+	 * asking for up to a minute, then goes ahead regardless
+	 */
+	now = *(APTR *)((UBYTE *)GfxBase + LVO_WaitTOF + 2);
+	if ((ULONG)now >= 0xf00000UL && (ULONG)now < 0x1000000UL && mc->tofwait_tries++ < 60)
+		return FALSE;
+	Forbid();
+	old_waittof = (WaitTOFFn)SetFunction((struct Library *)GfxBase, LVO_WaitTOF, (APTR)new_WaitTOF);
+	Permit();
+	mc_status->waittof = 1;
+	return TRUE;
 }
 
 /* cia.resource: AddICRVector (NULL: the bit is ours), AbleICR */
@@ -415,6 +481,7 @@ static BOOL cia_tick_setup(struct McCard *mc)
 		__mc_AbleICR(res, 0x80 | (1 << timers[i].bit));
 		mc->ciares = res;
 		mc->tick_source = timers[i].name;
+		mc_status->tick_source = i + 1;
 		return TRUE;
 	}
 	return FALSE;
@@ -600,6 +667,9 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	/* the blank: board 0's CIA timer ticks for every board; else VERTB for each */
 	if (mc->boardnum < MC_MAXBOARDS)
 		mc_cards[mc->boardnum] = mc;
+	mc->tof_waiters.mlh_Head = (struct MinNode *)&mc->tof_waiters.mlh_Tail;
+	mc->tof_waiters.mlh_Tail = NULL;
+	mc->tof_waiters.mlh_TailPred = (struct MinNode *)&mc->tof_waiters;
 	if (mc->boardnum == 0 && cia_tick_setup(mc)) {
 		;
 	} else if (!mc_cards[0] || !mc_cards[0]->ciares) {

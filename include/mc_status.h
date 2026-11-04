@@ -102,6 +102,9 @@ struct McStatus {
 	ULONG compare_us;      /* ... comparing the screen */
 	ULONG wanted_us;       /* ... pixels wanted, the datagram finished */
 	ULONG transmit_us;     /* ... handing the datagrams to the stack */
+	UWORD waittof;         /* 1: WaitTOF() is the card's (WAITTOF=1 and a CIA timer) */
+	UWORD tick_source;     /* 0 VERTB, 1 CIA-B timer B, 2 CIA-A timer B, 3 CIA-B timer A, 4 CIA-A timer A */
+	ULONG tof_waits;       /* WaitTOF() calls the card answered */
 };
 
 struct McBase {

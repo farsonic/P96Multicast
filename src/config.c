@@ -26,6 +26,7 @@ void mc_config_defaults(struct McConfig *cfg)
 	cfg->history = 512UL * 1024;
 	cfg->pointer = 1;
 	cfg->sprites = 1;
+	cfg->waittof = 1;
 	cfg->split_cols = cfg->split_rows = 1;
 	cfg->vramsize = 8UL * 1024 * 1024;
 	cfg->maxwidth = 1920;
@@ -172,6 +173,9 @@ void mc_config_line(struct McConfig *cfg, const char *line)
 	} else if ((v = match_key(line, "sprites")) != NULL) {
 		if (parse_num(v, &n))
 			cfg->sprites = n != 0;
+	} else if ((v = match_key(line, "waittof")) != NULL) {
+		if (parse_num(v, &n))
+			cfg->waittof = n != 0;
 	} else if ((v = match_key(line, "vram")) != NULL) {
 		/* megabytes */
 		if (parse_num(v, &n) && n >= 1 && n <= 256)

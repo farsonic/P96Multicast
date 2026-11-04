@@ -156,6 +156,8 @@ struct Sender {
 	struct VBlank { struct Task *task; ULONG mask; } vb;
 	BYTE   vbsig;
 	BOOL   vbown;                    /* vbint is ours (a VERTB server), not the card's tick */
+	BOOL   tof_done;                 /* WaitTOF() is the card's (or never will be) */
+	ULONG  passes_dbg;
 	BOOL   timed;
 
 	/* statistics, for the log */
@@ -2258,6 +2260,8 @@ static void SenderMain(void)
 			Permit();
 		}
 		pass(s);
+		if (!s->view && !s->tof_done && (s->passes_dbg++ % 50) == 0)
+			s->tof_done = mc_waittof_install(mc);
 #ifdef MC_DEBUG
 		if (++s->dbg_passes % 50 == 0)
 			KDEBUG(("S%ld\n", (LONG)(s->dbg_passes / 50)));
