@@ -111,6 +111,16 @@ struct McCard {
 	struct BoardInfo *bi;
 	UWORD  boardnum;       /* 0 for the first board */
 	UWORD  vbint_on;       /* SetInterrupt(): the vertical blank interrupt wanted */
+	/*
+	 * The board's vertical blank: a CIA timer at the display's rate (board
+	 * 0 owns it; it ticks for every board), else the native VERTB
+	 */
+	struct Library   *ciares;      /* the CIA resource the timer is from, or NULL */
+	struct Interrupt  ciaint;      /* its ICR vector */
+	const char       *tick_source; /* "CIA-B timer B" ..., or "VERTB" */
+	volatile ULONG    ticks;       /* blanks so far (WaitVerticalSync polls it) */
+	struct Task      *tick_task;   /* the sender to wake at each blank, and its signal */
+	ULONG             tick_mask;
 	char   boardname[16];
 	struct McConfig cfg;
 	APTR   vram_alloc;     /* AllocMem() block, vram is aligned inside it */

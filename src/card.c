@@ -11,6 +11,8 @@
 #include <exec/resident.h>
 #include <exec/interrupts.h>
 #include <hardware/intbits.h>
+#include <hardware/cia.h>
+#include <resources/cia.h>
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -279,9 +281,21 @@ static void SetClock(__reg("a0") struct BoardInfo *bi)
  */
 static void WaitVerticalSync(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD end)
 {
+	struct McCard *first = mc_cards[0];
+
 	KDEBUG(("C:WaitVSync %ld in\n", (LONG)end));
-	if (!end)
+	if (end) {
+		;
+	} else if (first && first->ciares) {
+		/* the next CIA tick, polled: not WaitTOF(), which LoadView() may have switched off */
+		ULONG t = first->ticks;
+		LONG n = 2000000;
+
+		while (first->ticks == t && --n)
+			;
+	} else {
 		WaitTOF();
+	}
 	KDEBUG(("C:WaitVSync out\n"));
 }
 
@@ -292,27 +306,33 @@ static BOOL GetVSyncState(__reg("a0") struct BoardInfo *bi, __reg("d0") UWORD ex
 }
 
 /*
- * The board's vertical blank interrupt (BIF_VBLANKINTERRUPT): the native
- * display's, as a server on INTB_VERTB. Picasso96 fills in the board's
- * SoftInterrupt (it wakes the programs in WaitTOF() and WaitBOVP(), and
- * keeps its software pointer), and the card's HardInterrupt is to Cause()
- * it at each blank while SetInterrupt() has it on, as the UAE board's does.
+ * The board's vertical blank interrupt (BIF_VBLANKINTERRUPT). Picasso96
+ * fills in the board's SoftInterrupt (it wakes the programs in WaitTOF()
+ * and WaitBOVP(), and keeps its software pointer), and the card's
+ * interrupt is to Cause() it at each blank while SetInterrupt() has it on,
+ * as the UAE board's does.
  *
- * Without the interrupt Picasso96 waits for the blank in WaitTOF() with
- * the board's lock held (the whole frame, every frame, for a program like
- * Boing): with a screen of the board in front, Intuition and whatever
- * else needs the lock get it only between two frames, and the Amiga can
- * stop for good when a program loops on WaitTOF() as the mouse crosses
- * over to the desktop. With it, Picasso96 lets go of the lock before it
- * waits.
+ * The blank comes from a CIA timer at the display's rate (50 or 60 a
+ * second), not from the native VERTB interrupt: graphics.library's
+ * LoadView() switches VERTB off while it rebuilds the display and takes
+ * Picasso96's display lock; a program then asleep in WaitTOF() on a VERTB
+ * blank holds that lock shared, LoadView() waits for it, and the Amiga
+ * stops for good (Boing bouncing on the desktop, the mouse crossing over to
+ * it, with Panorama.card 3.4 and 3.5). A CIA interrupt (INTB_PORTS or
+ * INTB_EXTER) goes on through LoadView(), as a real card's does. Only
+ * without a free CIA timer the native VERTB is used.
+ *
+ * Without any interrupt Picasso96 would wait for the blank in WaitTOF()
+ * with the board's lock held for the whole frame.
  */
 #ifdef MC_DEBUG
 volatile LONG mc_dbg_window;
 #endif
 
+/* a blank: every board's soft interrupt and sender (board 0's CIA timer or VERTB) */
 static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
 {
-	struct McCard *mc = MC_CARD(bi);
+	int i;
 #ifdef MC_DEBUG
 	static ULONG beats;
 
@@ -320,12 +340,84 @@ static LONG vblank_int(__reg("a1") struct BoardInfo *bi)
 		KDEBUG(("V%ld\n", (LONG)(beats / 50)));
 	if (mc_dbg_window > 0) {
 		mc_dbg_window--;
-		KDEBUG(("v%ld", (LONG)mc->vbint_on));
+		KDEBUG(("v%ld", (LONG)MC_CARD(bi)->vbint_on));
 	}
 #endif
-	if (mc->vbint_on)
-		Cause(&bi->SoftInterrupt);
+	for (i = 0; i < MC_MAXBOARDS; i++) {
+		struct McCard *mc = mc_cards[i];
+
+		/* from a VERTB server: that board only (each has one) */
+		if (!mc || (!MC_CARD(bi)->ciares && mc != MC_CARD(bi)))
+			continue;
+		mc->ticks++;
+		if (mc->tick_task)
+			Signal(mc->tick_task, mc->tick_mask);
+		if (mc->vbint_on)
+			Cause(&mc->bi->SoftInterrupt);
+	}
 	return 0;
+}
+
+/* cia.resource: AddICRVector (NULL: the bit is ours), AbleICR */
+struct Interrupt *__mc_AddICRVector(__reg("a6") struct Library *, __reg("d0") LONG,
+                                    __reg("a1") struct Interrupt *) = "\tjsr\t-6(a6)";
+WORD __mc_AbleICR(__reg("a6") struct Library *, __reg("d0") LONG) = "\tjsr\t-18(a6)";
+
+/*
+ * A free CIA timer, in continuous mode at the display's rate: ciab timer B
+ * first (ciab timer A is timer.device's, ciaa timer A the keyboard's on
+ * some systems). TRUE if one ticks for us.
+ */
+static BOOL cia_tick_setup(struct McCard *mc)
+{
+	static const struct { const char *res; UWORD bit; ULONG base; const char *name; } timers[] = {
+		{ "ciab.resource", CIAICRB_TB, 0xbfd000, "CIA-B timer B" },
+		{ "ciaa.resource", CIAICRB_TB, 0xbfe001, "CIA-A timer B" },
+		{ "ciab.resource", CIAICRB_TA, 0xbfd000, "CIA-B timer A" },
+		{ "ciaa.resource", CIAICRB_TA, 0xbfe001, "CIA-A timer A" },
+	};
+	ULONG eclock = SysBase->LibNode.lib_Version >= 36 ? SysBase->ex_EClockFrequency : 0;
+	UWORD hz = SysBase->VBlankFrequency, latch;
+	int i;
+
+	if (!eclock)
+		eclock = 709379;
+	if (hz < 50 || hz > 60)
+		hz = 50;
+	latch = eclock / hz - 1;
+	for (i = 0; i < 4; i++) {
+		struct Library *res = OpenResource((STRPTR)timers[i].res);
+		volatile struct CIA *cia = (volatile struct CIA *)timers[i].base;
+
+		if (!res)
+			continue;
+		mc->ciaint.is_Node.ln_Type = NT_INTERRUPT;
+		mc->ciaint.is_Node.ln_Pri = 0;
+		mc->ciaint.is_Node.ln_Name = (char *)"Panorama.card blank";
+		mc->ciaint.is_Data = mc->bi;
+		mc->ciaint.is_Code = (void (*)())vblank_int;
+		if (__mc_AddICRVector(res, timers[i].bit, &mc->ciaint))
+			continue;   /* taken */
+		Disable();
+		if (timers[i].bit == CIAICRB_TA) {
+			cia->ciacra &= ~(CIACRAF_START | CIACRAF_RUNMODE | CIACRAF_INMODE | CIACRAF_PBON);
+			cia->ciatalo = latch & 0xff;
+			cia->ciatahi = latch >> 8;
+			cia->ciacra |= CIACRAF_START;
+		} else {
+			cia->ciacrb &= ~(CIACRBF_START | CIACRBF_RUNMODE | CIACRBF_INMODE0 | CIACRBF_INMODE1 |
+			                 CIACRBF_PBON | CIACRBF_ALARM);
+			cia->ciatblo = latch & 0xff;
+			cia->ciatbhi = latch >> 8;
+			cia->ciacrb |= CIACRBF_START;
+		}
+		Enable();
+		__mc_AbleICR(res, 0x80 | (1 << timers[i].bit));
+		mc->ciares = res;
+		mc->tick_source = timers[i].name;
+		return TRUE;
+	}
+	return FALSE;
 }
 
 #ifdef MC_DEBUG
@@ -505,11 +597,21 @@ BOOL InitCard(__reg("a0") struct BoardInfo *bi, __reg("a1") char **tooltypes)
 	bi->SetInterrupt = (APTR)SetInterrupt;
 	bi->WaitBlitter = (APTR)WaitBlitter;
 	bi->SetDPMSLevel = (APTR)SetDPMSLevel;
-	/* rtg.library has set the interrupt's data (bi), name and priority */
-	bi->HardInterrupt.is_Node.ln_Type = NT_INTERRUPT;
-	bi->HardInterrupt.is_Data = bi;
-	bi->HardInterrupt.is_Code = (void (*)())vblank_int;
-	AddIntServer(INTB_VERTB, &bi->HardInterrupt);
+	/* the blank: board 0's CIA timer ticks for every board; else VERTB for each */
+	if (mc->boardnum < MC_MAXBOARDS)
+		mc_cards[mc->boardnum] = mc;
+	if (mc->boardnum == 0 && cia_tick_setup(mc)) {
+		;
+	} else if (!mc_cards[0] || !mc_cards[0]->ciares) {
+		/* rtg.library has set the interrupt's data (bi), name and priority */
+		bi->HardInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+		bi->HardInterrupt.is_Data = bi;
+		bi->HardInterrupt.is_Code = (void (*)())vblank_int;
+		AddIntServer(INTB_VERTB, &bi->HardInterrupt);
+		mc->tick_source = "VERTB";
+	} else {
+		mc->tick_source = mc_cards[0]->tick_source;
+	}
 #ifdef MC_DEBUG
 	if (!rtg_softint && bi->SoftInterrupt.is_Code) {
 		rtg_softint = (SoftIntFn)bi->SoftInterrupt.is_Code;

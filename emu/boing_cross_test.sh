@@ -17,6 +17,7 @@
 #                                           its own: several runs at once
 #   NOWRAP=1 WBMODE=UAE ...             ... without Wrap.card at all
 #   WBMODE=UAE ...                      ... the Workbench on the UAE board itself, not through Wrap.card
+#   RTGINT=1 ...                        ... the UAE board with a blank interrupt of its own
 #   WATCH=1 ...                         ... UAE watchpoints: who clears INTENA's vertical blank bit
 #   SERIAL=1 ...                        ... the Amiga's serial output (a card
 #                                           built with make DEBUG=1) to serial-*.log
@@ -127,6 +128,8 @@ automatic_input_grab = 0
 video_sync = off
 base_dir = $(cd "$OUT" && pwd)/fsuae
 EOF
+# RTGINT=1: the UAE board with a vertical blank interrupt of its own, as a modern real card
+[ -n "${RTGINT:-}" ] && echo "uae_rtg_hardwareinterrupt = true" >> "$OUT/test.fs-uae"
 SERPORT=$((1234 + INSTANCE))
 [ -n "${SERIAL:-}" ] && echo "serial_port = tcp://127.0.0.1:$SERPORT" >> "$OUT/test.fs-uae"
 # the UAE debugger (F11+D, commands on FS-UAE's stdin): on a hang, the CPU's

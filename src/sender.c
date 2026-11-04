@@ -155,6 +155,7 @@ struct Sender {
 	struct Interrupt vbint;
 	struct VBlank { struct Task *task; ULONG mask; } vb;
 	BYTE   vbsig;
+	BOOL   vbown;                    /* vbint is ours (a VERTB server), not the card's tick */
 	BOOL   timed;
 
 	/* statistics, for the log */
@@ -2225,12 +2226,21 @@ static void SenderMain(void)
 	if (mc->cfg.fps >= 50 && (s->vbsig = AllocSignal(-1)) >= 0) {
 		s->vb.task = (struct Task *)me;
 		s->vb.mask = 1UL << s->vbsig;
-		s->vbint.is_Node.ln_Type = NT_INTERRUPT;
-		s->vbint.is_Node.ln_Pri = -60;
-		s->vbint.is_Node.ln_Name = (char *)"Panorama.card sender";
-		s->vbint.is_Data = &s->vb;
-		s->vbint.is_Code = (void (*)())vblank_server;
-		AddIntServer(INTB_VERTB, &s->vbint);
+		if (mc->tick_source && mc_cards[0] && mc_cards[0]->ciares && !s->view) {
+			/* the card's blank (a CIA timer: on through LoadView()) */
+			mc->tick_mask = s->vb.mask;
+			mc->tick_task = (struct Task *)me;
+			s->vbown = FALSE;
+		} else {
+			s->vbint.is_Node.ln_Type = NT_INTERRUPT;
+			s->vbint.is_Node.ln_Pri = -60;
+			s->vbint.is_Node.ln_Name = (char *)"Panorama.card sender";
+			s->vbint.is_Data = &s->vb;
+			s->vbint.is_Code = (void (*)())vblank_server;
+			AddIntServer(INTB_VERTB, &s->vbint);
+			s->vbown = TRUE;
+		}
+		mc_log(s, "vertical blank: %s\n", (LONG)(s->vbown ? "VERTB" : mc->tick_source), 0, 0, 0);
 	}
 	while (s->sockbase && !mc->sender_quit) {
 		if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
@@ -2271,7 +2281,13 @@ static void SenderMain(void)
 		}
 	}
 	if (s->vbsig >= 0) {
-		RemIntServer(INTB_VERTB, &s->vbint);
+		if (s->vbown) {
+			RemIntServer(INTB_VERTB, &s->vbint);
+		} else {
+			Forbid();
+			mc->tick_task = NULL;
+			Permit();
+		}
 		FreeSignal(s->vbsig);
 	}
 	Forbid();
