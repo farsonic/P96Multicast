@@ -150,10 +150,14 @@ debugger_dump() {
 	wid=$(xdotool search --classname fs-uae 2>/dev/null | head -1)
 	[ -z "$wid" ] && wid=$(xdotool search --name "FS-UAE" 2>/dev/null | head -1)
 	[ -z "$wid" ] && { echo "no FS-UAE window for the debugger"; return; }
-	xdotool windowactivate --sync "$wid" 2>/dev/null
-	xdotool mousemove --window "$wid" 100 100 click 1 2>/dev/null
+	xdotool windowfocus --sync "$wid" 2>/dev/null
+	xdotool mousemove --window "$wid" 200 200 click 1 2>/dev/null
 	sleep 1
-	xdotool keydown F11 key d keyup F11
+	xdotool keydown F11
+	sleep 0.3
+	xdotool key d
+	sleep 0.3
+	xdotool keyup F11
 	sleep 2
 	printf 'r\ne\nT\nd pc-30 30\nH 40\n' >&7
 	sleep 3
@@ -215,6 +219,10 @@ Echo >Work:boot1.done done
 EOF
 boot boot1.done
 
+# NOWRAP=1: the Workbench on its board directly, Wrap.card gone
+if [ -n "${NOWRAP:-}" ]; then
+	rm -f "$sys/Libs/Picasso96/Wrap.card" "$sys/Devs/Monitors/Wrap" "$sys/Devs/Monitors/Wrap.info"
+fi
 # the Workbench on the Workbench's card (uaegfx, through Wrap.card), as the
 # user has it: one of its 640x480 modes, as emu/p96_test.sh does
 cat > "$work/autorun" <<'EOF'
@@ -237,10 +245,6 @@ open(sys.argv[1], "wb").write(b"FORM" + struct.pack(">I", len(body)) + body)
 PYEOF
 # the card to try, and the settings
 [ -n "${CARD:-}" ] && cp "$CARD" "$sys/Libs/Picasso96/Panorama.card"
-# NOWRAP=1: the Workbench on its board directly, Wrap.card gone
-if [ -n "${NOWRAP:-}" ]; then
-	rm -f "$sys/Libs/Picasso96/Wrap.card" "$sys/Devs/Monitors/Wrap" "$sys/Devs/Monitors/Wrap.info"
-fi
 if [ -n "${EXTRA_PREFS:-}" ]; then
 	printf '%s\n' "$EXTRA_PREFS" >> "$sys/Prefs/Env-Archive/Panorama.prefs"
 fi
