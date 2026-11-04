@@ -17,6 +17,7 @@
 #                                           its own: several runs at once
 #   NOWRAP=1 WBMODE=UAE ...             ... without Wrap.card at all
 #   WBMODE=UAE ...                      ... the Workbench on the UAE board itself, not through Wrap.card
+#   ORDER=desk ...                      ... the program started with the desktop in front
 #   RTGINT=1 ...                        ... the UAE board with a blank interrupt of its own
 #   WATCH=1 ...                         ... UAE watchpoints: who clears INTENA's vertical blank bit
 #   SERIAL=1 ...                        ... the Amiga's serial output (a card
@@ -287,6 +288,16 @@ PYEOF
 if [ -n "${EXTRA_PREFS:-}" ]; then
 	printf '%s\n' "$EXTRA_PREFS" >> "$sys/Prefs/Env-Archive/Panorama.prefs"
 fi
+# ORDER=desk: the program started with the desktop in front, before the
+# first crossing (its WaitTOF() then goes through the Panorama board)
+if [ "${ORDER:-wb}" = desk ]; then
+	START_DESK="Run >Work:boing.txt $LOAD
+Wait 4"
+	START_WB=
+else
+	START_DESK=
+	START_WB="Run >Work:boing.txt $LOAD"
+fi
 cat > "$work/autorun" <<EOF
 FailAt 21
 Wait 6
@@ -295,13 +306,15 @@ Wait 8
 Work:pkg/PanoramaPrefs OPEN >NIL:
 Wait 10
 C:mctest WHERE >Work:where0.txt
+Copy RAM:Panorama.log Work:card.log
 Echo >Work:mark-w0 x
+$START_DESK
 C:mctest MOUSE=-1000,0,1
 Wait 1
 C:mctest MOUSE=-1,0,2
 Wait 2
 C:mctest WHERE >Work:where1.txt
-Run >Work:boing.txt $LOAD
+$START_WB
 Wait 4
 C:mctest STATUS >Work:status0.txt
 Date >Work:t1.txt
