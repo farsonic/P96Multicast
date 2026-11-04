@@ -219,9 +219,20 @@ Echo >Work:boot1.done done
 EOF
 boot boot1.done
 
-# NOWRAP=1: the Workbench on its board directly, Wrap.card gone
+# NOWRAP=1: the Workbench on its board directly, Wrap.card gone and the
+# board's own monitor back where INSTALL put it away (a monitor of its own)
 if [ -n "${NOWRAP:-}" ]; then
 	rm -f "$sys/Libs/Picasso96/Wrap.card" "$sys/Devs/Monitors/Wrap" "$sys/Devs/Monitors/Wrap.info"
+	mv "$sys/Storage/Monitors/uaegfx" "$sys/Storage/Monitors/uaegfx.info" "$sys/Devs/Monitors/" 2>/dev/null
+	python3 "$MKICON" project "$sys/Devs/Monitors/uaegfx.info" --tooltype "BOARDTYPE=uaegfx" \
+		--tooltype "DISPLAYCHAIN=NO" >/dev/null
+	python3 - "$sys/Devs/Monitors/uaegfx.info" <<'EOF'
+import sys
+p = sys.argv[1]
+b = bytearray(open(p, "rb").read())
+b[48] = 3   # do_Type: WBTOOL, as monitors are
+open(p, "wb").write(b)
+EOF
 fi
 # the Workbench on the Workbench's card (uaegfx, through Wrap.card), as the
 # user has it: one of its 640x480 modes, as emu/p96_test.sh does
