@@ -79,8 +79,8 @@ struct GfxBase *GfxBase;
 struct Library *CxBase;
 struct Library *LayersBase;
 
-static const char template[] = "MOVE/K,CENTRE=CENTER/K/N,SWAP/S,CLOSE/S,WINDOW/K,SHELL/S,WAIT/K/N,INFO/S";
-enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_COUNT };
+static const char template[] = "MOVE/K,CENTRE=CENTER/K/N,SWAP/S,CLOSE/S,RELOAD/S,WINDOW/K,SHELL/S,WAIT/K/N,INFO/S";
+enum { A_MOVE, A_CENTRE, A_SWAP, A_CLOSE, A_RELOAD, A_WINDOW, A_SHELL, A_WAIT, A_INFO, A_COUNT };
 
 /* the desktop: C x R monitors of MW x MH */
 static UWORD cols = 1, rows = 1, mw = 800, mh = 600, depth = 16;
@@ -1043,10 +1043,12 @@ static int commodity(void)
 
 	while (!done) {
 		ULONG prefs_mask = prefs_sig >= 0 ? 1UL << prefs_sig : 0;
-		ULONG sig = Wait((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C | prefs_mask);
+		ULONG sig = Wait((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F |
+		                 prefs_mask);
 		CxMsg *msg;
 
-		if (sig & prefs_mask)
+		/* PanoramaPrefs Save or Use (RELOAD, Ctrl-F), or the file seen to change */
+		if (sig & (prefs_mask | SIGBREAKF_CTRL_F))
 			settings_again();
 		if (sig & SIGBREAKF_CTRL_C)
 			done = close_desktop(scr, ours, isdefault ? olddefault : NULL);
@@ -1135,11 +1137,12 @@ static int command(LONG *args)
 	struct MsgPort *port;
 	int rc = RETURN_OK;
 
-	if (args[A_CLOSE]) {
+	if (args[A_CLOSE] || args[A_RELOAD]) {
+		/* RELOAD: the running desktop reads the settings again (as PanoramaPrefs asks it to) */
 		Forbid();
 		port = FindPort((STRPTR)PORTNAME);
 		if (port)
-			Signal(port->mp_SigTask, SIGBREAKF_CTRL_C);
+			Signal(port->mp_SigTask, args[A_CLOSE] ? SIGBREAKF_CTRL_C : SIGBREAKF_CTRL_F);
 		Permit();
 		if (!port && Output() && IsInteractive(Output()))
 			printf("PanoramaDesk: is not running.\n");

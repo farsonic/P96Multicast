@@ -1152,6 +1152,7 @@ int gui(int start_page, int timeout, const char *pubscreen)
 					}
 					mp_trace("save/use: written, %d bytes of report", (int)strlen(report));
 					place_monitors(note);
+					desk_reload();
 					if (report[0]) {
 						/* changes that the card only takes at boot: offer it */
 						if (strstr(report, "reboot") && g->GadgetID == ID_SAVE) {

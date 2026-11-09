@@ -1027,6 +1027,18 @@ static BOOL set_tooltypes(const char *monitor, const char **set, int nset, const
  * Workbench's board is one of its own too, so it keeps its screen shown
  * while the desktop is in front, instead of going blank.
  */
+/* a running PanoramaDesk reads the settings again (its RELOAD) */
+void desk_reload(void)
+{
+	struct MsgPort *port;
+
+	Forbid();
+	port = FindPort((STRPTR)"PanoramaDesk");
+	if (port)
+		Signal(port->mp_SigTask, SIGBREAKF_CTRL_F);
+	Permit();
+}
+
 void place_monitors(void (*note)(const char *))
 {
 	static const char *drop[] = { "LEFT_OF", "RIGHT_OF", "ABOVE", "BELOW" };

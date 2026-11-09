@@ -188,6 +188,7 @@ EOF
 	# WORKBENCH=RIGHT1 written while PanoramaDesk runs: it takes it at once,
 	# and the mouse crosses over the desktop's right edge now
 	echo 'Echo >>ENV:Panorama.prefs "WORKBENCH=RIGHT1"'
+	echo 'Work:PanoramaDesk RELOAD'
 	echo 'Wait 2'
 	echo 'Work:mctest MOUSE=1000,0,1'
 	echo 'Wait 1'

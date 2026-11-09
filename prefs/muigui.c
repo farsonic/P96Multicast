@@ -2010,6 +2010,7 @@ static BOOL save(BOOL envarc)
 		return FALSE;
 	}
 	place_monitors(note);
+	desk_reload();
 	if (report[0]) {
 		/* changes that the card only takes at boot: offer it */
 		if (strstr(report, "reboot") && envarc) {
