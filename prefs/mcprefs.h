@@ -15,7 +15,7 @@
 #include <exec/types.h>
 
 #define MP_VERSION "3.5"
-#define MP_DATE "26.10.2026"
+#define MP_DATE "09.11.2026"
 
 /* the two files */
 #define FILE_MC   0   /* Panorama.prefs */

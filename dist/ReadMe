@@ -124,7 +124,9 @@ monitor 1; RIGHT2, ABOVE1, BELOW2, ...; NONE: the hotkey only), as the
 Desktop page's picture shows: click around the monitors to move it. Push
 the mouse over that edge and the Workbench comes to the front with the
 pointer on its matching edge, and the window you last used there active;
-over the Workbench's edge back to the desktop the same way.
+over the Workbench's edge back to the desktop the same way. A side changed
+in PanoramaPrefs (Save or Use) PanoramaDesk takes at once; P96ScreenCx
+reads its tool types when it starts, so start it again.
 From a Shell:
   PanoramaDesk MOVE=RIGHT       (LEFT, UP, DOWN)
   PanoramaDesk MOVE=SCREEN [WINDOW=title]   (as ctrl alt s)

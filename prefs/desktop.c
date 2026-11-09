@@ -69,7 +69,7 @@
 #include "kdebug.h"
 #include <dos/notify.h>
 
-#define MD_VERSION "2.0"
+#define MD_VERSION "2.1"
 #define PORTNAME "PanoramaDesk"
 
 static const char version[] = "$VER: PanoramaDesk " MD_VERSION " (" MP_DATE ")";
