@@ -67,6 +67,7 @@
 #include "copper.h"
 #include "lang.h"
 #include "kdebug.h"
+#include <dos/notify.h>
 
 #define MD_VERSION "2.0"
 #define PORTNAME "PanoramaDesk"
@@ -130,6 +131,55 @@ static void read_settings(void)
 static BOOL setting_on(const char *key)
 {
 	return prefs_value(find_setting(key))[0] == '1';
+}
+
+/*
+ * Told when ENV:Panorama.prefs changes (PanoramaPrefs Save or Use): the
+ * settings that matter while running are read again, WORKBENCH= (where
+ * the mouse crosses over) first of all. FALSE: no notification (the
+ * settings then hold until the next start).
+ */
+static struct NotifyRequest prefs_notify;
+static BYTE prefs_sig = -1;
+
+static BOOL watch_prefs(void)
+{
+	prefs_sig = AllocSignal(-1);
+	if (prefs_sig < 0)
+		return FALSE;
+	memset(&prefs_notify, 0, sizeof(prefs_notify));
+	prefs_notify.nr_Name = (STRPTR)"ENV:Panorama.prefs";
+	prefs_notify.nr_Flags = NRF_SEND_SIGNAL;
+	prefs_notify.nr_stuff.nr_Signal.nr_Task = FindTask(NULL);
+	prefs_notify.nr_stuff.nr_Signal.nr_SignalNum = prefs_sig;
+	if (!StartNotify(&prefs_notify)) {
+		FreeSignal(prefs_sig);
+		prefs_sig = -1;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static void unwatch_prefs(void)
+{
+	if (prefs_sig < 0)
+		return;
+	EndNotify(&prefs_notify);
+	FreeSignal(prefs_sig);
+	prefs_sig = -1;
+}
+
+/* the settings again, as far as a running desktop can take them */
+static void settings_again(void)
+{
+	int side = wb_side, mon = wb_mon;
+
+	prefs_load();
+	if (!wb_place(prefs_value(find_setting("WORKBENCH")), &wb_side, &wb_mon))
+		wb_side = WB_NONE;
+	wb_fit(&wb_side, &wb_mon, cols, rows);
+	if (wb_side != side || wb_mon != mon)
+		KDEBUG(("D:WORKBENCH now side %ld monitor %ld\n", (LONG)wb_side, (LONG)wb_mon));
 }
 
 /* ---------------------------------------------------------------- messages */
@@ -989,11 +1039,15 @@ static int commodity(void)
 		isdefault = TRUE;
 	}
 	ActivateCxObj(broker, 1);
+	watch_prefs();
 
 	while (!done) {
-		ULONG sig = Wait((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C);
+		ULONG prefs_mask = prefs_sig >= 0 ? 1UL << prefs_sig : 0;
+		ULONG sig = Wait((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C | prefs_mask);
 		CxMsg *msg;
 
+		if (sig & prefs_mask)
+			settings_again();
 		if (sig & SIGBREAKF_CTRL_C)
 			done = close_desktop(scr, ours, isdefault ? olddefault : NULL);
 		while ((msg = (CxMsg *)GetMsg(port)) != NULL) {
@@ -1056,6 +1110,7 @@ static int commodity(void)
 			}
 		}
 	}
+	unwatch_prefs();
 	DeleteCxObjAll(broker);
 	{
 		struct Message *m;

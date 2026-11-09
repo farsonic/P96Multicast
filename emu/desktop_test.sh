@@ -185,6 +185,20 @@ EOF
 	echo 'Work:mctest MOUSE=1,0,2'
 	echo 'Wait 1'
 	echo 'Work:mctest WHERE >Work:where2.log'
+	# WORKBENCH=RIGHT1 written while PanoramaDesk runs: it takes it at once,
+	# and the mouse crosses over the desktop's right edge now
+	echo 'Echo >>ENV:Panorama.prefs "WORKBENCH=RIGHT1"'
+	echo 'Wait 2'
+	echo 'Work:mctest MOUSE=1000,0,1'
+	echo 'Wait 1'
+	echo 'Work:mctest MOUSE=1,0,2'
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:where3.log'
+	echo 'Work:mctest MOUSE=-1000,0,1'
+	echo 'Wait 1'
+	echo 'Work:mctest MOUSE=-1,0,2'
+	echo 'Wait 1'
+	echo 'Work:mctest WHERE >Work:where4.log'
 	echo 'Work:mctest STATUS >Work:status.txt'
 	echo 'Copy RAM:Panorama.log Work:card.log'
 	echo 'Echo >Work:autorun.done done'
@@ -334,8 +348,8 @@ else
 	echo "FAIL: INPUT: the pointer where the viewer put it ('$ptr')"
 	status=1
 fi
-echo "---- crossing over (WORKBENCH=LEFT1)"
-for n in 0 1 2; do tr -d '\r' < "$work/where$n.log" 2>/dev/null; done
+echo "---- crossing over (WORKBENCH=LEFT1, then RIGHT1 while it runs)"
+for n in 0 1 2 3 4; do tr -d '\r' < "$work/where$n.log" 2>/dev/null; done
 w0=$(tr -d '\r' < "$work/where0.log" 2>/dev/null)
 w1=$(tr -d '\r' < "$work/where1.log" 2>/dev/null)
 w2=$(tr -d '\r' < "$work/where2.log" 2>/dev/null)
@@ -356,6 +370,22 @@ if [ "$(front "$w2")" = "$(front "$w0")" ] && [ -n "$x2" ] && [ "$x2" -le 12 ] &
 	echo "PASS: ... and back: the desktop, at its left edge, a window there active (${w2#* active })"
 else
 	echo "FAIL: ... and back: the desktop, at its left edge, a window there active ('$w0' / '$w2')"
+	status=1
+fi
+w3=$(tr -d '\r' < "$work/where3.log" 2>/dev/null)
+w4=$(tr -d '\r' < "$work/where4.log" 2>/dev/null)
+x3=$(mousex "$w3")
+if [ "$(front "$w3")" = Workbench ] && [ -n "$x3" ] && [ "$x3" -le 12 ]; then
+	echo "PASS: WORKBENCH=RIGHT1 while it runs: the mouse over the desktop's right edge: the Workbench, at its left edge"
+else
+	echo "FAIL: WORKBENCH=RIGHT1 while it runs: the mouse over the desktop's right edge: the Workbench, at its left edge ('$w3')"
+	status=1
+fi
+x4=$(mousex "$w4")
+if [ "$(front "$w4")" = "$(front "$w0")" ] && [ -n "$x4" ] && [ "$x4" -ge $(( $(width "$w4") - 12 )) ]; then
+	echo "PASS: ... and back over the Workbench's left edge: the desktop, at its right edge"
+else
+	echo "FAIL: ... and back over the Workbench's left edge: the desktop, at its right edge ('$w4')"
 	status=1
 fi
 echo "---- the viewer's mouse in and out (LEAVE)"

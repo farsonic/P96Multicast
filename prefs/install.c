@@ -1074,7 +1074,8 @@ void place_monitors(void (*note)(const char *))
 	}
 	if (set_tooltypes("DEVS:Monitors/Panorama", set, nset, drop, 4))
 		notef("DEVS:Monitors/Panorama: %s%s", nset > 1 ? place : "DISPLAYCHAIN=NO",
-		      nset > 1 ? " (for P96ScreenCx: the mouse crosses to the Workbench)" : "");
+		      nset > 1 ? " (for P96ScreenCx, which reads it when it starts: start it again "
+		                 "after a change; PanoramaDesk takes the change at once)" : "");
 out:
 	if (opened && IconBase) {
 		CloseLibrary(IconBase);
