@@ -178,8 +178,9 @@ static void settings_again(void)
 	if (!wb_place(prefs_value(find_setting("WORKBENCH")), &wb_side, &wb_mon))
 		wb_side = WB_NONE;
 	wb_fit(&wb_side, &wb_mon, cols, rows);
-	if (wb_side != side || wb_mon != mon)
-		KDEBUG(("D:WORKBENCH now side %ld monitor %ld\n", (LONG)wb_side, (LONG)wb_mon));
+	KDEBUG(("D:WORKBENCH '%s': side %ld monitor %ld (was %ld %ld)\n",
+	        (ULONG)prefs_value(find_setting("WORKBENCH")), (LONG)wb_side, (LONG)wb_mon, (LONG)side,
+	        (LONG)mon));
 }
 
 /* ---------------------------------------------------------------- messages */
@@ -1050,8 +1051,10 @@ static int commodity(void)
 		CxMsg *msg;
 
 		/* PanoramaPrefs Save or Use (RELOAD, Ctrl-F), or the file seen to change */
-		if (sig & (prefs_mask | SIGBREAKF_CTRL_F))
+		if (sig & (prefs_mask | SIGBREAKF_CTRL_F)) {
+			KDEBUG(("D:settings again (signals %lx)\n", sig));
 			settings_again();
+		}
 		if (sig & SIGBREAKF_CTRL_C)
 			done = close_desktop(scr, ours, isdefault ? olddefault : NULL);
 		while ((msg = (CxMsg *)GetMsg(port)) != NULL) {
@@ -1146,6 +1149,7 @@ static int command(LONG *args)
 		if (port)
 			Signal(port->mp_SigTask, args[A_CLOSE] ? SIGBREAKF_CTRL_C : SIGBREAKF_CTRL_F);
 		Permit();
+		KDEBUG(("D:%s port %lx\n", args[A_CLOSE] ? "CLOSE" : "RELOAD", (ULONG)port));
 		if (!port && Output() && IsInteractive(Output()))
 			printf("PanoramaDesk: is not running.\n");
 		return port ? RETURN_OK : RETURN_WARN;
