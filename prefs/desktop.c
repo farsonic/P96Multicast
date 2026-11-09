@@ -1272,8 +1272,8 @@ int main(int argc, char **argv)
 			goto out;
 		}
 	}
-	if (args[A_MOVE] || args[A_CENTRE] || args[A_SWAP] || args[A_CLOSE] || args[A_SHELL] ||
-	    args[A_INFO])
+	if (args[A_MOVE] || args[A_CENTRE] || args[A_SWAP] || args[A_CLOSE] || args[A_RELOAD] ||
+	    args[A_SHELL] || args[A_INFO])
 		rc = command(args);
 	else
 		rc = commodity();
