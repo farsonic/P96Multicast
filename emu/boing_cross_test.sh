@@ -285,6 +285,10 @@ open(sys.argv[1], "wb").write(b"FORM" + struct.pack(">I", len(body)) + body)
 PYEOF
 # the card to try, and the settings
 [ -n "${CARD:-}" ] && cp "$CARD" "$sys/Libs/Picasso96/Panorama.card"
+if [ -n "${SIDETEST:-}" ]; then
+	tr -d '\r' < "$sys/Prefs/Env-Archive/Panorama.prefs" | grep -v "^WORKBENCH=" > "$work/prefs-right1"
+	echo "WORKBENCH=RIGHT1" >> "$work/prefs-right1"
+fi
 if [ -n "${EXTRA_PREFS:-}" ]; then
 	printf '%s\n' "$EXTRA_PREFS" >> "$sys/Prefs/Env-Archive/Panorama.prefs"
 fi
@@ -293,7 +297,9 @@ fi
 # then the mouse goes back over the Workbench's LEFT edge and out again over
 # the desktop's RIGHT edge
 if [ -n "${SIDETEST:-}" ]; then
-	LOAD="Echo >>ENV:Panorama.prefs WORKBENCH=RIGHT1"
+	# the settings as INSTALL wrote them, the side changed (Work:prefs-right1
+	# is made before the last boot, as PanoramaPrefs Save rewrites the file)
+	LOAD="Copy Work:prefs-right1 ENV:Panorama.prefs"
 	[ "$SIDETEST" != notify ] && LOAD="$LOAD
 Work:pkg/C/PanoramaDesk RELOAD"
 	CROSS_BACK="C:mctest MOUSE=-1000,0,1
