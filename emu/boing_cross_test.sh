@@ -288,6 +288,28 @@ PYEOF
 if [ -n "${EXTRA_PREFS:-}" ]; then
 	printf '%s\n' "$EXTRA_PREFS" >> "$sys/Prefs/Env-Archive/Panorama.prefs"
 fi
+# SIDETEST=1: no program; on the Workbench, WORKBENCH=RIGHT1 is written and
+# PanoramaDesk told (RELOAD; SIDETEST=notify: the file notification alone),
+# then the mouse goes back over the Workbench's LEFT edge and out again over
+# the desktop's RIGHT edge
+if [ -n "${SIDETEST:-}" ]; then
+	LOAD="Echo >>ENV:Panorama.prefs WORKBENCH=RIGHT1"
+	[ "$SIDETEST" != notify ] && LOAD="$LOAD
+Work:pkg/C/PanoramaDesk RELOAD"
+	CROSS_BACK="C:mctest MOUSE=-1000,0,1
+Wait 1
+C:mctest MOUSE=-1,0,2"
+	CROSS_OUT="C:mctest MOUSE=1000,0,1
+Wait 1
+C:mctest MOUSE=1,0,2
+Wait 2
+C:mctest WHERE >Work:where5.txt"
+else
+	CROSS_BACK="C:mctest MOUSE=1000,0,1
+Wait 1
+C:mctest MOUSE=1,0,2"
+	CROSS_OUT=
+fi
 # ORDER=desk: the program started with the desktop in front, before the
 # first crossing (its WaitTOF() then goes through the Panorama board)
 if [ "${ORDER:-wb}" = desk ]; then
@@ -297,6 +319,7 @@ Wait 4"
 else
 	START_DESK=
 	START_WB="Run >NIL: $LOAD >Work:boing.txt"
+	[ -n "${SIDETEST:-}" ] && START_WB="$LOAD"
 fi
 cat > "$work/autorun" <<EOF
 FailAt 21
@@ -318,13 +341,12 @@ $START_WB
 Wait 4
 C:mctest STATUS >Work:status0.txt
 Date >Work:t1.txt
-C:mctest MOUSE=1000,0,1
-Wait 1
-C:mctest MOUSE=1,0,2
+$CROSS_BACK
 Wait 2
 Date >Work:t2.txt
 C:mctest WHERE >Work:where2.txt
 Echo >Work:mark-w2 x
+$CROSS_OUT
 Wait 5
 Date >Work:t3.txt
 C:mctest MOUSE=5,0,10
@@ -385,6 +407,13 @@ check '[ -n "$t1" ] && [ -n "$t2" ] && [ $((t2 - t1)) -le 6 ]' \
 	"... the crossing took no longer than it should ($((${t2:-0} - ${t1:-0})) s)"
 check '[ -n "$t3" ] && [ -n "$t4" ] && [ $((t4 - t3)) -le 3 ]' \
 	"... the mouse moves at once while Boing bounces ($((${t4:-0} - ${t3:-0})) s)"
+if [ -n "${SIDETEST:-}" ]; then
+	check 'tr -d "\r" < "$work/where2.txt" 2>/dev/null | grep -q "^front Panorama desktop 1600x600 mouse 159[0-9]"' \
+		"... WORKBENCH=RIGHT1 taken: back over the left edge of the Workbench, the pointer at the right edge of the desktop"
+	check 'tr -d "\r" < "$work/where5.txt" 2>/dev/null | grep -q "^front Workbench"' \
+		"... and over the right edge of the desktop to the Workbench"
+	echo "---- where5"; tr -d "\r" < "$work/where5.txt" 2>/dev/null
+fi
 case "$LOAD" in
 *Boing*) check 'tr -d "\r" < "$work/boing.txt" 2>/dev/null | grep -q "frames in"' \
 	"... Boing ran to its end" ;;
