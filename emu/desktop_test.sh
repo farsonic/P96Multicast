@@ -62,6 +62,11 @@ DEFAULTSCREEN=1
 INPUT=0
 WORKBENCH=LEFT1
 EOF
+# the same settings with the Workbench on the right (and INPUT=1, as the run
+# has it by then): copied over ENV:Panorama.prefs while PanoramaDesk runs,
+# as PanoramaPrefs Save rewrites the file
+sed -e 's/^WORKBENCH=.*/WORKBENCH=RIGHT1/' -e 's/^INPUT=0/INPUT=1/' \
+	"$AROSFS/Prefs/Env-Archive/Panorama.prefs" > "$work/prefs-right1"
 if [ -f "$AROSFS/Libs/usergroup.library" ]; then
 	mv "$AROSFS/Libs/usergroup.library" "$AROSFS/Libs/usergroup.library.aros"
 fi
@@ -187,7 +192,7 @@ EOF
 	echo 'Work:mctest WHERE >Work:where2.log'
 	# WORKBENCH=RIGHT1 written while PanoramaDesk runs: it takes it at once,
 	# and the mouse crosses over the desktop's right edge now
-	echo 'Echo >>ENV:Panorama.prefs "WORKBENCH=RIGHT1"'
+	echo 'Copy Work:prefs-right1 ENV:Panorama.prefs'
 	echo 'Work:PanoramaDesk RELOAD'
 	echo 'Wait 2'
 	echo 'Work:mctest MOUSE=1000,0,1'
