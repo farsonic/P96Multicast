@@ -553,6 +553,8 @@ static void edge(struct Screen *desk, WORD dx, WORD dy)
 			frac = mx >= 0 ? ((ULONG)mx << 16) / front->Width : 0;
 		}
 	}
+	KDEBUG(("D:edge side %ld %s mx %ld dx %ld over %ld pushes %ld\n", (LONG)wb_side,
+	        front == desk ? "desk" : "wb", (LONG)mx, (LONG)dx, (LONG)over, (LONG)pushes));
 	if (!over) {
 		pushes = 0;
 		return;
