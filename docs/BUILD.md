@@ -2,7 +2,9 @@
 
 The driver is built on Linux with vbcc and the AmigaOS 3.2 NDK, the same
 setup as Riptide. Everything goes under `/home/user/toolchain`; override
-with `make VBCC=... NDK=...`.
+with `make VBCC=... NDK=...`. The complete setup, including the MUI
+includes, the AmigaOS test systems and the release steps, is in
+[../CLAUDE.md](../CLAUDE.md).
 
 ## Toolchain
 

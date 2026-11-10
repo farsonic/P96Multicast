@@ -173,7 +173,11 @@ let UDP from the Amiga's address in and back.
 
 ## Building
 
-vbcc, vasm, vlink and the NDK 3.2; see [docs/BUILD.md](docs/BUILD.md).
+vbcc, vasm, vlink, the NDK 3.2 and the MUI 3.8 developer includes;
+[CLAUDE.md](CLAUDE.md) has the complete setup from nothing (toolchain,
+emulator, test systems), the test matrix and the release checklist, for a
+person or an AI agent; [docs/BUILD.md](docs/BUILD.md) the toolchain in
+short.
 
 ```
 make            # build/Panorama.card, build/Wrap.card, mctest, wrapstat
@@ -187,6 +191,11 @@ make emu-copper # everyday work on AROS; the viewer must show exactly the card's
 make emu-prefs  # PanoramaPrefs: install on a clean AROS, its window, a second boot
 make emu-os3    # PanoramaPrefs' MUI window on AmigaOS 3.1.4 and MUI 3.8 (your ROM and OS)
 make emu-p96    # the desktop install with Picasso96 and uaegfx: the mouse across and back
+make emu-open   # Open on a system as users have it: the Amiga goes on, the mouse moves under load
+make emu-sprite # Boing's sprites over multicast, pacing, a late joiner, packet loss
+make emu-select # clicks from a viewer select windows
+make emu-picture # JPEG and PNG decoded by the viewer
+make emu-boingcross # Boing from the Workbench, the mouse over to the desktop
 ```
 
 ## Layout
