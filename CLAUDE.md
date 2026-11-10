@@ -242,4 +242,9 @@ changing any of that.
 3. Update `dist/ReadMe` (user-visible changes) and, if the protocol or
    settings changed, `docs/COPPER.md` and `README.md`.
 4. `make package`; the archive is `build/Panorama.lha`.
-5. Commit, push the branch, and tag the release (`panorama-3.5`).
+5. Commit, push the branch, and tag the release: project releases are
+   `v0.1`, `v0.2`, ... (v0.1 = Panorama.card 3.5, PanoramaPrefs 3.5,
+   PanoramaDesk 2.1, Wrap.card 0.6, panoramapic.datatype 1.0); a
+   component tag such as `panorama-3.5` may sit beside it. Attach
+   `build/Panorama.lha`, renamed `Panorama-vX.Y.lha`, to the GitHub
+   release.
