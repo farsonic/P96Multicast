@@ -243,8 +243,9 @@ changing any of that.
    settings changed, `docs/COPPER.md` and `README.md`.
 4. `make package`; the archive is `build/Panorama.lha`.
 5. Commit, push the branch, and tag the release: project releases are
-   `v0.1`, `v0.2`, ... (v0.1 = Panorama.card 3.5, PanoramaPrefs 3.5,
-   PanoramaDesk 2.1, Wrap.card 0.6, panoramapic.datatype 1.0); a
-   component tag such as `panorama-3.5` may sit beside it. Attach
-   `build/Panorama.lha`, renamed `Panorama-vX.Y.lha`, to the GitHub
-   release.
+   `v0.1`, `v0.2`, ... (v0.1 of 22 October 2026 was an early card;
+   v0.2 = Panorama.card 3.5, PanoramaPrefs 3.5, PanoramaDesk 2.1,
+   Wrap.card 0.6, panoramapic.datatype 1.0); a component tag such as
+   `panorama-3.5` may sit beside it. Create the GitHub release with
+   `gh api repos/farsonic/P96Multicast/releases` and attach
+   `build/Panorama.lha`, renamed `Panorama-vX.Y.lha`, to it.
