@@ -119,7 +119,8 @@ int main(void)
 			printf("heads: SPAN=%ux%u", mirror.cols, mirror.rows);
 		else
 			printf("heads: MIRROR=%s", mirror.head[0].card);
-		printf(" MIRRORFPS=%u HEADSHARE=%u, %s, %lu passes\n", mirror.fps, mirror.share,
+		printf(" MIRRORFPS=%u HEADSHARE=%u FOLLOWSWITCH=%u, %s, %lu passes\n", mirror.fps,
+		       mirror.share, mirror.followswitch,
 		       mirror.task ? "running" : "not running", mirror.passes);
 	}
 	for (i = 0; i < mirror.nheads && i < WRAP_MAXHEADS; i++) {

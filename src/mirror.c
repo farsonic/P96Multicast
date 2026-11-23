@@ -322,7 +322,13 @@ static void follow(struct Heads *hs, struct WrapDisplay *d)
 	if (tw && !span)
 		hs->src_mem += d->yoff * hs->src_bpr + d->xoff * hs->bpp;
 
-	on = tw && d->display && d->moniswitch;
+	/*
+	 * Copied while a mode is set, whatever the wrapped board says about its
+	 * display: some drivers (Emu68's VideoCore under P96 3.x) leave the
+	 * last SetDisplay/SetSwitch at "off" with the screen plainly on, and
+	 * the heads showed nothing. FOLLOWSWITCH=1: as before, off with it.
+	 */
+	on = tw && (!m->followswitch || (d->display && d->moniswitch));
 	for (i = 0; i < m->nheads; i++) {
 		struct Head *hd = &hs->head[i];
 

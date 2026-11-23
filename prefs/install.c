@@ -319,7 +319,43 @@ static void retire_monitors(const char *board, const char *keep)
 	}
 }
 
-/* a P96 monitor program to copy: AROS's P96, or any with BOARDTYPE= */
+/* a program's $VER: string, "" if none (the first 60 characters) */
+static void version_of(const char *path, char *out, int len)
+{
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR oldwin = me->pr_WindowPtr;
+	BPTR fh;
+	static char buf[8192];
+	LONG n, i;
+
+	out[0] = 0;
+	me->pr_WindowPtr = (APTR)-1;
+	fh = Open((STRPTR)path, MODE_OLDFILE);
+	me->pr_WindowPtr = oldwin;
+	if (!fh)
+		return;
+	n = Read(fh, buf, sizeof(buf) - 1);
+	Close(fh);
+	for (i = 0; i + 5 < n; i++) {
+		if (buf[i] == '$' && buf[i + 1] == 'V' && buf[i + 2] == 'E' && buf[i + 3] == 'R' &&
+		    buf[i + 4] == ':') {
+			LONG k = 0;
+
+			i += 5;
+			while (i < n && buf[i] == ' ')
+				i++;
+			while (i < n && k < len - 1 && k < 60 && buf[i] >= ' ')
+				out[k++] = buf[i++];
+			out[k] = 0;
+			return;
+		}
+	}
+}
+
+/*
+ * A P96 monitor program to copy: AROS's P96, or any whose icon has a
+ * BOARDTYPE= and whose card is in LIBS:Picasso96
+ */
 static BOOL find_template(char *out, int len)
 {
 	static const char *dirs[] = { "DEVS:Monitors", "SYS:Storage/Monitors" };
@@ -344,7 +380,18 @@ static BOOL find_template(char *out, int len)
 					continue;
 				snprintf(out, len, "%s/%s", dirs[d], fib->fib_FileName);
 				icon_board(out, b, sizeof(b));
-				found = b[0] != 0;
+				if (b[0]) {
+					/*
+					 * Only a monitor that loads LIBS:Picasso96/<BOARDTYPE>.card
+					 * is the generic P96 one. Others with a BOARDTYPE= (P96
+					 * 3.x's "Native" monitor for the chipset) load no card by
+					 * that name: a copy of them never opens Panorama.card.
+					 */
+					char card[64];
+
+					snprintf(card, sizeof(card), "LIBS:Picasso96/%s.card", b);
+					found = exists(card);
+				}
 			}
 		}
 		if (lock)
@@ -550,6 +597,9 @@ static void boot_desktop(void)
 
 	if (!exists("SYS:WBStartup"))
 		return;
+	/* a mirror or span has no desktop of its own */
+	if (*prefs_value(find_setting("MIRROR")) || *prefs_value(find_setting("SPAN")))
+		on = FALSE;
 	if (!on) {
 		if (exists(wb)) {
 			if (!dry) {
@@ -757,6 +807,8 @@ static BOOL apply_setup(const char *setup)
 		set("MIRRORFPS", "10");
 		set("BOARDS", "1");
 		set("SPLIT", "");
+		/* a 1920x1080 32-bit screen is 8 MB, and the head keeps a shadow of it */
+		set("VRAM", "32");
 		notef("Setup: the %s screen mirrored to a Panorama board%s", card,
 		      " (port 9696)");
 		return TRUE;
@@ -1145,7 +1197,12 @@ static void make_monitor(const char *monitor_name)
 			say("No P96 monitor in DEVS:Monitors to copy: is P96 installed?");
 			failed = TRUE;
 		} else if (copy_file(template, monitor)) {
-			notef("Made %s from %s", monitor, template);
+			char ver[64], made[200];
+
+			version_of(template, ver, sizeof(ver));
+			snprintf(made, sizeof(made), "Made %s from %s%s%s%s", monitor, template,
+			         ver[0] ? " (" : "", ver, ver[0] ? ")" : "");
+			notef("%s%s", made, "");
 			if (!write_icon(monitor, template, monitor_name))
 				notef("Could not write %s%s", icon, "");
 			else

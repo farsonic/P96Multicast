@@ -727,6 +727,14 @@ class Viewer:
                     self.stats["naks"] += 1
                     self.last_nak = now
         scr = self.screen
+        # joined while a screen was already showing and the card busy drawing:
+        # its SURFACE came before us and comes again only when the card is idle
+        # or asked (a card of 3.6 sends it to a new viewer by itself), so ask for
+        # all of it: the card answers with SURFACE first
+        if not scr.width and self.gap_since is None and now - self.last_want > 1.0:
+            self._msg(WANT, struct.pack(">HHHH", 0, 0, 0, 0))
+            self.stats["wants"] += 1
+            self.last_want = now
         # the pointer's and sprites' shapes come once: lost, they must be asked for
         if scr.lacking_sprite():
             if self.lacking_since is None:

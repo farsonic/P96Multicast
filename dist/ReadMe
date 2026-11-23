@@ -17,6 +17,15 @@ pointer. The viewer tells the card what it missed, so nothing is resent
 blindly. Use the panoview.py from this package: older viewers speak
 protocol 1 only, and Panorama.card 2 no longer does.
 
+Panorama.card 3.6, PanoramaPrefs 3.6, Wrap.card 0.7 (from a report from a
+real A1200 with PiStorm and P96 3.x): INSTALL copies only a monitor that
+loads a card (P96 3.x's "Native" monitor is not one, and a copy of it
+loaded nothing); a viewer that joins while a program draws every frame
+gets the screen at once (the card greets a new viewer with it, and the
+viewer asks); sends that fail before the network is up are counted apart
+from errors; the mirror copies whatever the wrapped board says about its
+display (FOLLOWSWITCH=).
+
 Needs: a 68020 or better, P96 (or AROS m68k), and a running TCP/IP stack
 with a bsdsocket.library (Riptide, Roadshow, MiamiDx, AmiTCP).
 
@@ -323,6 +332,9 @@ On the receiving machine:
                                            like two monitors (ports 9696, 9697);
                                            --one-window puts them in one
   python3 panoview.py --iface 192.168.1.10  join on a particular interface
+                                           (a PC with several adapters, VPN or
+                                           virtual ones among them, needs this:
+                                           the LAN address it shares with the Amiga)
   python3 panoview.py --no-pacing           show updates as they come: less delay,
                                            but motion only as even as the network
                                            (by default each update is shown at its
@@ -365,6 +377,12 @@ monitor. Docs/WRAP.md has the details.
 Mirror: add MIRROR=Panorama.card to Wrap.prefs. If CARD= is also
 Panorama.card, put BOARDS=2 in Panorama.prefs: the mirror then streams
 to port 9697 (python3 panoview.py --port 9697).
+The head copies the wrapped board's screen whatever that board says about
+its display (some drivers leave "off" standing with the screen showing);
+FOLLOWSWITCH=1 in Wrap.prefs makes it go off with the board instead. A
+mirror head needs video memory for the whole screen and a shadow of it:
+INSTALL SETUP=MIRROR sets VRAM=32; by hand, VRAM=16 for a 1920x1080
+32-bit screen at least.
 Span: SPAN=2x2 and HEAD=<card> (or HEAD1= ... HEAD4=) in Wrap.prefs, then
 open a screen twice as wide and high as its mode (1280x960 in a 640x480
 mode for 2x2), or use a mode that big. With CARD=Panorama.card and

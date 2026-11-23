@@ -207,6 +207,8 @@ static void config_line(const char *line)
 		}
 	} else if ((v = match_key(line, "headshare")) != NULL) {
 		mirror.share = *v == '1';
+	} else if ((v = match_key(line, "followswitch")) != NULL) {
+		mirror.followswitch = *v == '1';
 	} else if ((v = match_key(line, "head")) != NULL) {
 		copy_name(head_card, v);
 	} else {

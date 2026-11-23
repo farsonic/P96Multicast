@@ -250,6 +250,10 @@ during() {
 		shots=1
 		# a viewer joining now, which never asks for the whole screen
 		python3 tests/sprite_join.py $GROUP 9696 $HOST_IP 8 >"$OUT/join.txt" 2>&1 &
+		# and a whole viewer joining now, while the ball draws every frame:
+		# it must get the screen (the card greets it; it asks as well)
+		python3 client/panoview.py --group $GROUP --port 9696 --iface $HOST_IP \
+			--snapshot "$OUT/late.png" --duration 10 2>"$OUT/late.log" &
 		w=$(xdotool search --name "^Panorama" 2>/dev/null | head -1)
 		[ -n "$w" ] && xdotool windowraise "$w" 2>/dev/null && sleep 0.5
 		top -b -n 1 -w 200 2>/dev/null | head -20 >"$OUT/top.txt"
@@ -320,6 +324,8 @@ moves() {
 }
 [ -n "$TKPY" ] && moves view "the viewer's window (in $(cat "$OUT/view-tries.txt" 2>/dev/null) tries)"
 moves web "the web view"
+check 'grep -q "modes: [0-9]" "$OUT/late.log" 2>/dev/null' \
+	"a viewer joining while the ball draws every frame gets the screen ($(tr -d '\n' < "$OUT/late.log" 2>/dev/null | tail -c 90))"
 set -- $(cat "$OUT/join.txt" 2>/dev/null) ; js=${2:-0}
 check '[ "$js" -ge 2 ]' \
 	"a viewer joining late, never asking for the whole screen, has the sprites ($(cat "$OUT/join.txt" 2>/dev/null))"

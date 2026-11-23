@@ -163,6 +163,7 @@ struct Sender {
 	/* statistics, for the log */
 	ULONG  packets, bytes, errors, pixbytes;
 	LONG   lasterror;
+	ULONG  early_errors;             /* sends before the network was up (no viewer heard yet) */
 	BOOL   logstarted;
 
 	/* riptide.library 3, if running: many datagrams per call */
@@ -361,6 +362,19 @@ static void send_failed(struct Sender *s)
 		s->waits++;
 		if (first_board(s))
 			mc_status->send_waits++;
+		return;
+	}
+	/*
+	 * No route yet, and no viewer heard so far: the stack is up before
+	 * its interface is (a card started at boot sends into nothing for a
+	 * few seconds). Counted apart, not as errors.
+	 */
+	if (!s->last_heard && (e == ENETUNREACH || e == EHOSTUNREACH || e == ENETDOWN ||
+	                       e == EADDRNOTAVAIL)) {
+		if (!s->early_errors++)
+			mc_log(s, "sendto: errno %ld, the network not up yet\n", e, 0, 0, 0);
+		if (first_board(s))
+			mc_status->send_early_errors++;
 		return;
 	}
 	if (!s->errors++ || e != s->lasterror)
@@ -1236,6 +1250,20 @@ static void hear(struct Sender *s, struct sockaddr_in *from)
 	mc_log(s, "a viewer at %ld.%ld.%ld.%ld\n", from->sin_addr.s_addr >> 24,
 	       (from->sin_addr.s_addr >> 16) & 255, (from->sin_addr.s_addr >> 8) & 255,
 	       from->sin_addr.s_addr & 255);
+	/*
+	 * New here: it has nothing yet, and a screen the programs draw on
+	 * every frame sends no SURFACE of its own accord (that goes out when
+	 * the screen opens, changes or is idle). So the whole screen, as for a
+	 * WANT of all of it: SURFACE first, so a viewer that joined late can
+	 * start at all. (Viewers of 3.6 ask as well; older ones only waited.)
+	 */
+	if (s->visible) {
+		want_all(s);
+		send_surface(s);
+		send_palette(s);
+		send_pointer(s);
+		send_pointer_pos(s);
+	}
 count:
 	if (first_board(s)) {
 		/*

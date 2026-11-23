@@ -300,8 +300,11 @@ static void status(void)
 		if (card->lib.lib_Version >= 2) {
 			int k;
 
-			printf("  Copper: %lu KB sent in %lu datagrams, %lu send errors\n", st.sent_kb,
+			printf("  Copper: %lu KB sent in %lu datagrams, %lu send errors", st.sent_kb,
 			       st.datagrams, st.send_errors);
+			if (st.send_early_errors)
+				printf(" (and %lu sends before the network was up)", st.send_early_errors);
+			printf("\n");
 			printf("    pixels: %lu tiles, %lu KB; viewers: %u, %lu messages heard, %lu repairs, "
 			       "%lu tiles asked for\n", st.pixel_tiles, st.pixel_kb, st.viewers, st.heard,
 			       st.repairs, st.wanted);

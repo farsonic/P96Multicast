@@ -98,6 +98,7 @@ const struct Setting settings[] = {
 	{ "HEAD3",     FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver of head 3" },
 	{ "HEAD4",     FILE_WRAP, T_TEXT, 0, 31,    "",      "Card driver of head 4" },
 	{ "HEADSHARE", FILE_WRAP, T_BOOL, 0, 1,     "0",     "Heads that can show any memory need no copy" },
+	{ "FOLLOWSWITCH", FILE_WRAP, T_BOOL, 0, 1,  "0",     "Heads go off while the wrapped board says its display is off (0: they show it regardless)" },
 	{ "MIRRORFPS", FILE_WRAP, T_NUM,  1, 50,    "25",    "Head updates per second" },
 };
 const int nsettings = sizeof(settings) / sizeof(settings[0]);

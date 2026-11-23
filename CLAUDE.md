@@ -17,9 +17,9 @@ from there. Around the card:
 
 | Part | Source | Version is in |
 |---|---|---|
-| `Panorama.card` 3.5 | `src/` (`libstart.s` first, then `card.c`, `sender.c`, `orders.c`, `render.c`, `modes.c`, `sprite.c`, `config.c`) | `src/mcard.h` (`MC_VERSION_STR`, `MC_REVISION`) and `src/libstart.s` (`REVISION`, the `$VER` string): keep the three in step |
-| `Wrap.card` 0.6 | `src/wrapstart.s`, `src/wrap.c`, `src/mirror.c` | `src/wrapstart.s` |
-| `PanoramaPrefs` 3.5 (MUI, GadTools fallback, Shell) | `prefs/` | `prefs/mcprefs.h` (`MP_VERSION`, `MP_DATE`) |
+| `Panorama.card` 3.6 | `src/` (`libstart.s` first, then `card.c`, `sender.c`, `orders.c`, `render.c`, `modes.c`, `sprite.c`, `config.c`) | `src/mcard.h` (`MC_VERSION_STR`, `MC_REVISION`) and `src/libstart.s` (`REVISION`, the `$VER` string): keep the three in step |
+| `Wrap.card` 0.7 | `src/wrapstart.s`, `src/wrap.c`, `src/mirror.c` | `src/wrapstart.s` |
+| `PanoramaPrefs` 3.6 (MUI, GadTools fallback, Shell) | `prefs/` | `prefs/mcprefs.h` (`MP_VERSION`, `MP_DATE`) |
 | `PanoramaDesk` 2.1 (the shared desktop commodity) | `prefs/desktop.c` | `prefs/desktop.c` (`MD_VERSION`), date from `MP_DATE` |
 | `panoramapic.datatype` 1.0 (JPEG and PNG decoded by the viewer) | `dt/` | `dt/dtstart.s` |
 | `Boing`, `mctest`, `wrapstat`, `dtpic`, `cxlog` | `demos/boing.c`, `tests/*.c` | their `$VER` strings |

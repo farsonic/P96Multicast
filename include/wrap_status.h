@@ -178,6 +178,7 @@ struct WrapMirror {
 	UWORD cols, rows;      /* SPAN=, 1x1 for MIRROR= */
 	UWORD nheads;          /* cols * rows, 0 for none */
 	UWORD share;           /* HEADSHARE= */
+	UWORD followswitch;    /* FOLLOWSWITCH=1: heads go off while the wrapped board says it is off */
 	struct Process *task;  /* the process copying the screen */
 	ULONG passes;
 	struct WrapHead head[WRAP_MAXHEADS];

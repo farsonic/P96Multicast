@@ -196,6 +196,25 @@ class SpriteTests(unittest.TestCase):
         self.sprite(s, 4, 0, 16, 0, 0)                                 # hidden
         self.assertEqual([t[0] for t in s.shown_sprites()], [3])
 
+    def test_late_joiner_asks_for_the_screen(self):
+        # no SURFACE yet (the viewer joined while the card drew every frame):
+        # WANT of all of it, once a second, until the SURFACE comes
+        sent = []
+        v = pv.Viewer(pv.Screen(), send=lambda data, addr: sent.append(data))
+        v.amiga, v.stream, v.expect = ("10.0.0.2", 9696), 7, 0
+        wants = lambda: [d for d in sent if d[3] == pv.WANT]
+        v.tick(now=100.0)
+        self.assertEqual(len(wants()), 1)
+        self.assertEqual(wants()[0][-8:], bytes(8))
+        v.tick(now=100.5)
+        self.assertEqual(len(wants()), 1)
+        v.tick(now=101.1)
+        self.assertEqual(len(wants()), 2)
+        v.screen.width, v.screen.height = 640, 480      # the SURFACE came
+        v.screen.valid = [True]
+        v.tick(now=102.2)
+        self.assertEqual(len(wants()), 2)
+
     def test_lost_image_asked_for(self):
         # a shown sprite whose image never came: the viewer asks for the
         # sprites again, once LACKING has passed, then at most once a second
