@@ -344,8 +344,16 @@ static void version_of(const char *path, char *out, int len)
 			i += 5;
 			while (i < n && buf[i] == ' ')
 				i++;
+			/* some have "$VER: $VER: name ..." */
+			if (i + 5 < n && buf[i] == '$' && buf[i + 1] == 'V' && buf[i + 4] == ':') {
+				i += 5;
+				while (i < n && buf[i] == ' ')
+					i++;
+			}
 			while (i < n && k < len - 1 && k < 60 && buf[i] >= ' ')
 				out[k++] = buf[i++];
+			while (k && out[k - 1] == ' ')
+				k--;
 			out[k] = 0;
 			return;
 		}
